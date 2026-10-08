@@ -1,0 +1,38 @@
+name: voltstride
+description: "VoltStride - Sport-tech mobile app: AI Running Coach, Race Simulation, Interval Timer, dan katalog strength training."
+publish_to: 'none'
+
+# Constrain minimal 3.29 karena kode memakai CardThemeData dan
+# NavigationBarThemeData (Material 3 final API). Kalau Flutter kamu
+# lebih lama, turunkan ke 3.24 dan ganti CardThemeData menjadi CardTheme.
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: ">=3.29.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- GPS / Sensor -----------------------------------------------
+  # geolocator: akses lokasi perangkat (foreground + background) untuk
+  # mengukur jarak lari. Kita TIDAK memakai pedometer bawaan karena akurasinya
+  # jauh lebih rendah dibanding GPS + Kalman filter.
+  geolocator: ^13.0.2
+
+  # --- Internet ---------------------------------------------------
+  # http: POST JSON ke endpoint AI Coach online + upload activity ke Strava.
+  http: ^1.2.2
+
+  # url_launcher: membuka halaman OAuth Strava / authorize Strava di browser
+  # sistem, lalu membaca kembali kode authorization lewat deep link.
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  # WAJIB true supaya ikon Material (ikon kategori otot, play video, dsb.)
+  # tidak muncul sebagai kotak kosong.
+  uses-material-design: true

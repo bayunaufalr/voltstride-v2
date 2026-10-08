@@ -1,0 +1,36 @@
+# ============================================================
+# ANALISIS STATIS VOLTSTRIDE
+# ============================================================
+# Konfigurasi ini memakai base rule dari flutter_lints, ditambah
+# beberapa aturan tambahan yang relevan untuk kode ini.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # Typos di nama variabel dan método harus dianggap error, bukan
+    # sekadar saran. Ini penting karena banyak parameter di sini
+    # menyimpan satuan (detik, meter, kilometer) yang mudah tertukar.
+    unused_element: error
+    unused_local_variable: error
+  exclude:
+    - build/**
+    - android/**
+
+linter:
+  rules:
+    # --- wajib ---
+    - prefer_final_locals       # pakai final untuk variabel yang tidak berubah
+    - avoid_empty_else
+    - always_declare_return_types
+    - require_trailing_commas    # koma di baris terakhir argumen multi-baris
+    - unawaited_futures          # Future yang tidak di-await harus diberi tanda
+
+    # --- gaya kode ---
+    - lines_longer_than_80_chars
+    - prefer_single_quotes
+    - avoid_print                 # jangan pakai print di produksi, pakai debugPrint
+
+    # --- kebenaran nilai ---
+    - prefer_is_empty
+    - prefer_is_not_empty
