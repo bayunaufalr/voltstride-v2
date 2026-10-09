@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'running_controller.dart';
+import 'services/run_history_repository.dart';
 
 /// Halaman lari V2.
 ///
 /// Untuk sprint pertama ini kita sengaja fokus pada satu hal:
 /// start -> dapat GPS -> live metrics -> pause/resume -> finish -> summary.
-/// Map dan penyimpanan lokal akan masuk sprint berikutnya setelah engine
-/// benar-benar stabil.
+/// Hasil yang selesai disimpan otomatis ke SQLite lokal. Peta rute masuk
+/// sprint berikutnya setelah engine dan riwayat stabil.
 class RunningPage extends StatefulWidget {
   const RunningPage({super.key});
 
@@ -19,6 +20,8 @@ class RunningPage extends StatefulWidget {
 
 class _RunningPageState extends State<RunningPage> {
   late final RunningController _controller;
+  bool _isSavingSession = false;
+  String? _saveError;
 
   @override
   void initState() {
@@ -256,6 +259,8 @@ class _RunningPageState extends State<RunningPage> {
           children: <Widget>[
             _heroResultCard(session),
             const SizedBox(height: 12),
+            _saveStatusCard(),
+            const SizedBox(height: 12),
             Row(
               children: <Widget>[
                 Expanded(
@@ -279,11 +284,23 @@ class _RunningPageState extends State<RunningPage> {
             _gpsQualityCard(session),
             const SizedBox(height: 12),
             _summarySplitsCard(session),
+            if (_saveError != null) ...<Widget>[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _isSavingSession
+                    ? null
+                    : () => _persistSession(session),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('COBA SIMPAN LAGI'),
+              ),
+            ],
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: _controller.resetRun,
-              icon: const Icon(Icons.refresh),
-              label: const Text('SIMPAN & KEMBALI KE LARI'),
+              onPressed: _isSavingSession ? null : _backToRun,
+              icon: Icon(_isSavingSession ? Icons.sync : Icons.refresh),
+              label: Text(
+                _isSavingSession ? 'MENYIMPAN HASIL...' : 'KEMBALI KE LARI',
+              ),
             ),
           ],
         ),
@@ -351,7 +368,79 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Future<void> _finishRun() async {
-    _controller.finishRun();
+    if (_isSavingSession) return;
+
+    setState(() {
+      _isSavingSession = true;
+      _saveError = null;
+    });
+
+    final RunSession? session = _controller.finishRun();
+    if (session == null) {
+      if (mounted) setState(() => _isSavingSession = false);
+      return;
+    }
+
+    await _persistSession(session, alreadySaving: true);
+  }
+
+  Future<void> _persistSession(
+    RunSession session, {
+    bool alreadySaving = false,
+  }) async {
+    if (!alreadySaving && mounted) {
+      setState(() {
+        _isSavingSession = true;
+        _saveError = null;
+      });
+    }
+
+    try {
+      await RunHistoryRepository.instance.save(session);
+      if (mounted) setState(() => _saveError = null);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saveError =
+              'Hasil lari belum tersimpan. Periksa ruang penyimpanan lalu coba lagi.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingSession = false);
+    }
+  }
+
+  void _backToRun() {
+    if (_isSavingSession) return;
+    setState(() => _saveError = null);
+    _controller.resetRun();
+  }
+
+  Widget _saveStatusCard() {
+    final bool hasError = _saveError != null;
+    final String message = _isSavingSession
+        ? 'Menyimpan hasil lari ke perangkat...'
+        : _saveError ?? 'Hasil lari tersimpan lokal di perangkat ini.';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: <Widget>[
+            Icon(
+              _isSavingSession
+                  ? Icons.sync
+                  : hasError
+                      ? Icons.error_outline
+                      : Icons.check_circle_outline,
+              color: hasError ? VoltWarna.merah : VoltWarna.hijau,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _heroCard() {

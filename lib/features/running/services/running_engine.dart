@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../../services/lokasi_service.dart';
 import '../models/run_session.dart';
+import 'pace_sample.dart';
 
 /// Abstraksi sumber lokasi supaya RunningEngine dapat diuji tanpa perangkat.
 abstract class RunningLocationSource {
@@ -58,7 +59,12 @@ class RunningEngine extends ChangeNotifier {
   static const double maxSpeedKmh = 35.0;
   static const double minMovementMeters = 2.5;
   static const double movingSpeedMps = 1.0;
-  static const double minPaceSpeedMps = 0.8;
+  static const double minPaceSpeedMps = 0.7;
+  static const double maxPaceSpeedMps = 8.0;
+  static const double minimumPaceDistanceMeters = 15.0;
+  static const int paceWindowSeconds = 12;
+  static const int minimumPaceWindowSeconds = 8;
+  static const double minimumAveragePaceDistanceMeters = 100.0;
   static const int updateIntervalMilliseconds = 250;
 
   RunningEngine({RunningLocationSource? locationSource})
@@ -103,6 +109,7 @@ class RunningEngine extends ChangeNotifier {
 
   final List<RunPoint> _route = <RunPoint>[];
   final List<RunSplit> _splits = <RunSplit>[];
+  final List<PaceSample> _paceSamples = <PaceSample>[];
 
   RunSession? _lastFinishedSession;
 
@@ -123,7 +130,8 @@ class RunningEngine extends ChangeNotifier {
   double? get currentPaceSecondsPerKm => _currentPaceSecondsPerKm;
 
   double? get averagePaceSecondsPerKm {
-    if (_movingTime.inMilliseconds <= 0 || _distanceMeters <= 0) {
+    if (_movingTime.inMilliseconds <= 0 ||
+        _distanceMeters < minimumAveragePaceDistanceMeters) {
       return null;
     }
 
@@ -297,6 +305,7 @@ class RunningEngine extends ChangeNotifier {
     _awaitingResumeAnchor = false;
     _route.clear();
     _splits.clear();
+    _paceSamples.clear();
   }
 
   bool _isPositionUsable(Position position) {
@@ -321,6 +330,14 @@ class RunningEngine extends ChangeNotifier {
     _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
     _acceptedPoints = 1;
+    _paceSamples
+      ..clear()
+      ..add(
+        PaceSample(
+          timestamp: position.timestamp,
+          distanceMeters: _distanceMeters,
+        ),
+      );
 
     _route.add(_toRunPoint(position));
   }
@@ -399,18 +416,13 @@ class RunningEngine extends ChangeNotifier {
         _movingTime += segmentDuration;
       }
 
-      if (speedMps >= minPaceSpeedMps) {
-        _currentPaceSecondsPerKm = 1000.0 / speedMps;
-      } else {
-        _currentPaceSecondsPerKm = null;
-      }
-
       _appendRoutePoint(position);
       _createCompletedSplits();
-    } else {
-      _currentPaceSecondsPerKm = null;
     }
 
+    // Current pace dihitung dari jendela GPS beberapa detik, bukan dari satu
+    // segmen. Ini mencegah lompatan koordinat sesaat menampilkan pace palsu.
+    _recordPaceSample(position.timestamp);
     notifyListeners();
   }
 
@@ -424,6 +436,15 @@ class RunningEngine extends ChangeNotifier {
     _gpsAccuracyMeters = position.accuracy;
     _acceptedPoints++;
     _awaitingResumeAnchor = false;
+    _paceSamples
+      ..clear()
+      ..add(
+        PaceSample(
+          timestamp: position.timestamp,
+          distanceMeters: _distanceMeters,
+        ),
+      );
+    _currentPaceSecondsPerKm = null;
 
     _route.add(_toRunPoint(position));
   }
@@ -434,6 +455,60 @@ class RunningEngine extends ChangeNotifier {
     _lastRawTimestamp = position.timestamp;
     _gpsAccuracyMeters = position.accuracy;
     _acceptedPoints++;
+  }
+
+  void _recordPaceSample(DateTime timestamp) {
+    _paceSamples.add(
+      PaceSample(
+        timestamp: timestamp,
+        distanceMeters: _distanceMeters,
+      ),
+    );
+
+    final DateTime cutoff = timestamp.subtract(
+      const Duration(seconds: paceWindowSeconds),
+    );
+
+    // Pertahankan satu sampel tepat sebelum batas jendela untuk menghitung
+    // jarak/waktu secara stabil.
+    while (_paceSamples.length > 2 &&
+        _paceSamples[1].timestamp.isBefore(cutoff)) {
+      _paceSamples.removeAt(0);
+    }
+
+    _currentPaceSecondsPerKm = null;
+    if (_paceSamples.length < 2) return;
+
+    int anchorIndex = 0;
+    for (int index = 0; index < _paceSamples.length - 1; index++) {
+      if (!_paceSamples[index].timestamp.isAfter(cutoff)) {
+        anchorIndex = index;
+      } else {
+        break;
+      }
+    }
+
+    final PaceSample anchor = _paceSamples[anchorIndex];
+    final PaceSample latest = _paceSamples.last;
+    final int elapsedMilliseconds =
+        latest.timestamp.difference(anchor.timestamp).inMilliseconds;
+    final double distanceMeters =
+        latest.distanceMeters - anchor.distanceMeters;
+
+    if (elapsedMilliseconds < minimumPaceWindowSeconds * 1000 ||
+        distanceMeters < minimumPaceDistanceMeters) {
+      return;
+    }
+
+    final double elapsedSeconds = elapsedMilliseconds / 1000.0;
+    final double speedMps = distanceMeters / elapsedSeconds;
+    if (!speedMps.isFinite ||
+        speedMps < minPaceSpeedMps ||
+        speedMps > maxPaceSpeedMps) {
+      return;
+    }
+
+    _currentPaceSecondsPerKm = 1000.0 / speedMps;
   }
 
   void _appendRoutePoint(Position position) {

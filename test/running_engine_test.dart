@@ -198,5 +198,85 @@ void main() {
       expect(engine.rejectedPoints, 1);
       expect(engine.acceptedPoints, 1);
     });
+
+    test('pace tidak muncul dari jarak kecil dalam waktu panjang', () async {
+      await engine.start();
+
+      for (int index = 1; index <= 6; index++) {
+        source.emit(
+          makePosition(
+            latitude: 0,
+            longitude: index * 0.00008983,
+            timestamp: startTime.add(Duration(seconds: index * 30)),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(engine.distanceMeters, closeTo(60, 3));
+      expect(engine.currentPaceSecondsPerKm, isNull);
+      expect(engine.averagePaceSecondsPerKm, isNull);
+    });
+
+    test('pace stabil dihitung dari jendela beberapa detik', () async {
+      await engine.start();
+
+      for (int index = 1; index <= 12; index++) {
+        source.emit(
+          makePosition(
+            latitude: 0,
+            longitude: index * 0.000044915,
+            timestamp: startTime.add(Duration(seconds: index)),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(engine.currentPaceSecondsPerKm, isNotNull);
+      expect(engine.currentPaceSecondsPerKm!, closeTo(200, 3));
+    });
   });
+
+  test('RunSession dapat disimpan dan dipulihkan dari representasi SQLite', () {
+    runSessionStorageSerializationTest();
+  });
+}
+
+
+void runSessionStorageSerializationTest() {
+  // Kept as a top-level helper to make the persistence contract explicit.
+  final RunSession session = RunSession(
+    startedAt: DateTime.utc(2026, 10, 9, 6),
+    finishedAt: DateTime.utc(2026, 10, 9, 6, 30),
+    distanceMeters: 5820,
+    elapsed: const Duration(minutes: 30, seconds: 28),
+    movingTime: const Duration(minutes: 29, seconds: 51),
+    averagePaceSecondsPerKm: 314,
+    currentPaceSecondsPerKm: null,
+    gpsAccuracyMeters: 8,
+    acceptedPoints: 187,
+    rejectedPoints: 6,
+    route: <RunPoint>[
+      RunPoint(
+        latitude: -7.797068,
+        longitude: 110.370529,
+        timestamp: DateTime.utc(2026, 10, 9, 6),
+        accuracyMeters: 8,
+      ),
+    ],
+    splits: const <RunSplit>[
+      RunSplit(
+        kilometer: 1,
+        durationSeconds: 314,
+        paceSecondsPerKm: 314,
+        distanceMeters: 1000,
+      ),
+    ],
+  );
+
+  final RunSession restored = RunSession.fromStorageMap(session.toStorageMap());
+  expect(restored.distanceMeters, closeTo(5820, 0.001));
+  expect(restored.elapsed, const Duration(minutes: 30, seconds: 28));
+  expect(restored.route, hasLength(1));
+  expect(restored.splits.single.paceText, '5:14/km');
 }

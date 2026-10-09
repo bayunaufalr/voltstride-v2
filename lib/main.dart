@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'features/ai_coach/ai_coach_page.dart';
+import 'features/running/run_history_page.dart';
 import 'features/running/running_page.dart';
 import 'screens/muscle_page.dart';
 import 'screens/timer_page.dart';
@@ -56,11 +60,16 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
-  static const List<Widget> _pages = <Widget>[
-    RunningPage(),
-    TimerPage(),
-    MusclePage(),
-  ];
+  final GlobalKey<RunHistoryPageState> _historyKey =
+      GlobalKey<RunHistoryPageState>();
+
+  List<Widget> get _pages => <Widget>[
+        const RunningPage(),
+        RunHistoryPage(key: _historyKey),
+        const TimerPage(),
+        const AiCoachPage(),
+        const MusclePage(),
+      ];
 
   static const List<_NavigationItem> _items = <_NavigationItem>[
     _NavigationItem(
@@ -68,8 +77,16 @@ class _RootShellState extends State<RootShell> {
       icon: Icons.directions_run,
     ),
     _NavigationItem(
+      label: 'Riwayat',
+      icon: Icons.history,
+    ),
+    _NavigationItem(
       label: 'Timer',
       icon: Icons.timer_outlined,
+    ),
+    _NavigationItem(
+      label: 'AI Coach',
+      icon: Icons.chat_bubble_outline,
     ),
     _NavigationItem(
       label: 'Otot',
@@ -88,6 +105,9 @@ class _RootShellState extends State<RootShell> {
         selectedIndex: _index,
         onDestinationSelected: (int value) {
           setState(() => _index = value);
+          if (value == 1) {
+            unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
+          }
         },
         destinations: _items
             .map(

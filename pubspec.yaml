@@ -1,5 +1,5 @@
 name: voltstride
-description: "VoltStride - Sport-tech mobile app: AI Running Coach, Race Simulation, Interval Timer, dan katalog strength training."
+description: "VoltStride - Running engine, local run history, AI running coach, race planning, workouts, and strength training."
 publish_to: 'none'
 
 # Constrain minimal 3.29 karena kode memakai CardThemeData dan
@@ -26,6 +26,10 @@ dependencies:
   # url_launcher: membuka halaman OAuth Strava / authorize Strava di browser
   # sistem, lalu membaca kembali kode authorization lewat deep link.
   url_launcher: ^6.3.1
+
+  # Penyimpanan sesi lari lokal (SQLite).
+  path: ^1.9.1
+  sqflite: ^2.4.4+1
 
 dev_dependencies:
   flutter_test:
