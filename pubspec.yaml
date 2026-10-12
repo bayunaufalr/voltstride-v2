@@ -30,6 +30,7 @@ dependencies:
   # Penyimpanan sesi lari lokal (SQLite).
   path: ^1.9.1
   sqflite: ^2.4.4+1
+  file_picker: ^11.0.3
 
 dev_dependencies:
   flutter_test:

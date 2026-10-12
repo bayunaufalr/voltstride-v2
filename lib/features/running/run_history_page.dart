@@ -1,3 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
@@ -31,6 +37,149 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       // FutureBuilder reads the failed future and displays its error state.
       // Catch here as refresh callbacks shouldn't leak an unhandled error.
     }
+  }
+
+  Future<void> _exportBackup() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Ekspor cadangan riwayat?'),
+          content: const Text(
+            'Cadangan dapat berisi titik koordinat GPS rute lari. Simpan file '
+            'di tempat pribadi dan jangan unggah secara publik.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Lanjutkan'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final String contents = await _repository.exportBackupJson();
+      final DateTime now = DateTime.now();
+      final String stamp =
+          '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}_'
+          '${_twoDigits(now.hour)}${_twoDigits(now.minute)}';
+      final String? savedPath = await FilePicker.saveFile(
+        dialogTitle: 'Simpan cadangan riwayat VoltStride',
+        fileName: 'VoltStride_Riwayat_$stamp.json',
+        bytes: Uint8List.fromList(utf8.encode(contents)),
+      );
+      if (!mounted) return;
+      _showSnackBar(
+        savedPath == null
+            ? 'Ekspor dibatalkan.'
+            : 'Cadangan riwayat berhasil dibuat. Simpan file di tempat aman.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar('Gagal membuat cadangan. Coba lagi. ($error)');
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      final FilePickerResult? picked = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: <String>['json'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty || !mounted) return;
+
+      final PlatformFile selected = picked.files.first;
+      List<int>? bytes = selected.bytes;
+      if (bytes == null && selected.path != null) {
+        bytes = await File(selected.path!).readAsBytes();
+      }
+      if (bytes == null) {
+        throw const FormatException('File cadangan tidak dapat dibaca.');
+      }
+      final String contents = utf8.decode(bytes);
+
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Pulihkan riwayat?'),
+            content: const Text(
+              'Data dari cadangan akan digabung dengan riwayat yang ada. '
+              'Riwayat lain tidak dihapus. Jika waktu mulai sesi sama, '
+              'data sesi dari cadangan akan menggantikan sesi tersebut.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Batal'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Pulihkan'),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !mounted) return;
+
+      final int importedCount = await _repository.importBackupJson(contents);
+      await reload();
+      if (!mounted) return;
+      _showSnackBar('$importedCount sesi berhasil dipulihkan atau digabungkan.');
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar('Cadangan gagal dipulihkan. Pastikan file VoltStride valid. ($error)');
+    }
+  }
+
+  Future<void> _showStorageDiagnostics() async {
+    try {
+      final Map<String, Object?> info = await _repository.diagnostics();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Info penyimpanan'),
+            content: SingleChildScrollView(
+              child: SelectableText(
+                'Jumlah sesi: ${info['sessionCount']}\n'
+                'File database ada: ${info['fileExists']}\n'
+                'Ukuran file: ${info['fileSizeBytes']} byte\n'
+                'Pemeriksaan SQLite: ${info['integrity']}\n'
+                'Versi SQLite: ${info['sqliteVersion']}\n\n'
+                'Lokasi database:\n${info['databasePath']}',
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Tutup'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar('Gagal membaca info penyimpanan. ($error)');
+    }
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _deleteSession(RunSession session) async {
@@ -71,6 +220,48 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             tooltip: 'Muat ulang',
             onPressed: reload,
             icon: const Icon(Icons.refresh),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Cadangan dan diagnostik',
+            onSelected: (String value) {
+              switch (value) {
+                case 'export':
+                  unawaited(_exportBackup());
+                  break;
+                case 'import':
+                  unawaited(_importBackup());
+                  break;
+                case 'diagnostics':
+                  unawaited(_showStorageDiagnostics());
+                  break;
+              }
+            },
+            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'export',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.download_outlined),
+                  title: Text('Ekspor cadangan'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'import',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.upload_file_outlined),
+                  title: Text('Pulihkan cadangan'),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'diagnostics',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.storage_outlined),
+                  title: Text('Info penyimpanan'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
