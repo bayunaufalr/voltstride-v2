@@ -2,12 +2,10 @@ name: voltstride
 description: "VoltStride - Running engine, local run history, AI running coach, race planning, workouts, and strength training."
 publish_to: 'none'
 
-# Constrain minimal 3.29 karena kode memakai CardThemeData dan
-# NavigationBarThemeData (Material 3 final API). Kalau Flutter kamu
-# lebih lama, turunkan ke 3.24 dan ganti CardThemeData menjadi CardTheme.
+# file_picker 12.3 membutuhkan Dart 3.10 / Flutter 3.38 atau lebih baru.
 environment:
-  sdk: '>=3.5.0 <4.0.0'
-  flutter: ">=3.29.0"
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: ">=3.38.0"
 
 dependencies:
   flutter:
@@ -30,7 +28,7 @@ dependencies:
   # Penyimpanan sesi lari lokal (SQLite).
   path: ^1.9.1
   sqflite: ^2.4.4+1
-  file_picker: ^11.0.3
+  file_picker: ^12.3.0
 
 dev_dependencies:
   flutter_test:

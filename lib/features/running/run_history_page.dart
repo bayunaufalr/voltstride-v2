@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -70,14 +69,15 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       final String stamp =
           '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}_'
           '${_twoDigits(now.hour)}${_twoDigits(now.minute)}';
-      final String? savedPath = await FilePicker.saveFile(
+      final Uri? savedUri = await FilePicker.saveFile(
         dialogTitle: 'Simpan cadangan riwayat VoltStride',
         fileName: 'VoltStride_Riwayat_$stamp.json',
         bytes: Uint8List.fromList(utf8.encode(contents)),
+        mimeType: 'application/json',
       );
       if (!mounted) return;
       _showSnackBar(
-        savedPath == null
+        savedUri == null
             ? 'Ekspor dibatalkan.'
             : 'Cadangan riwayat berhasil dibuat. Simpan file di tempat aman.',
       );
@@ -89,22 +89,13 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
   Future<void> _importBackup() async {
     try {
-      final FilePickerResult? picked = await FilePicker.pickFiles(
+      final PlatformFile? selected = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: <String>['json'],
-        allowMultiple: false,
-        withData: true,
       );
-      if (picked == null || picked.files.isEmpty || !mounted) return;
+      if (selected == null || !mounted) return;
 
-      final PlatformFile selected = picked.files.first;
-      List<int>? bytes = selected.bytes;
-      if (bytes == null && selected.path != null) {
-        bytes = await File(selected.path!).readAsBytes();
-      }
-      if (bytes == null) {
-        throw const FormatException('File cadangan tidak dapat dibaca.');
-      }
+      final Uint8List bytes = await selected.readAsBytes();
       final String contents = utf8.decode(bytes);
 
       final bool? confirmed = await showDialog<bool>(
