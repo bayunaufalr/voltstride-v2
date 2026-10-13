@@ -55,7 +55,7 @@ void main() {
       gpsAccuracyMeters: 5,
       acceptedPoints: 4,
       rejectedPoints: 0,
-      route: const <RunPoint>[
+      route: <RunPoint>[
         RunPoint(
           latitude: -7.8,
           longitude: 110.3,
