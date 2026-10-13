@@ -102,6 +102,10 @@ class RunningEngine extends ChangeNotifier {
   double? _filteredAccuracyMeters;
 
   double _lastSplitDistanceMeters = 0.0;
+  int _lastAcceptedElapsedMilliseconds = 0;
+  int _lastHundredMeterCrossingElapsedMilliseconds = 0;
+  double _nextHundredMeterMark = 100.0;
+  IntervalRunPlan? _intervalPlan;
 
   /// Setelah resume, titik GPS pertama hanya menjadi anchor baru.
   /// Titik tersebut tidak menghasilkan jarak terhadap posisi sebelum pause.
@@ -109,6 +113,7 @@ class RunningEngine extends ChangeNotifier {
 
   final List<RunPoint> _route = <RunPoint>[];
   final List<RunSplit> _splits = <RunSplit>[];
+  final List<RunLap100m> _hundredMeterLaps = <RunLap100m>[];
   final List<PaceSample> _paceSamples = <PaceSample>[];
 
   RunSession? _lastFinishedSession;
@@ -146,6 +151,9 @@ class RunningEngine extends ChangeNotifier {
 
   List<RunPoint> get route => List<RunPoint>.unmodifiable(_route);
   List<RunSplit> get splits => List<RunSplit>.unmodifiable(_splits);
+  List<RunLap100m> get hundredMeterLaps =>
+      List<RunLap100m>.unmodifiable(_hundredMeterLaps);
+  IntervalRunPlan? get intervalPlan => _intervalPlan;
 
   double get gpsCleanRatio {
     final int total = _acceptedPoints + _rejectedPoints;
@@ -154,10 +162,11 @@ class RunningEngine extends ChangeNotifier {
   }
 
   /// Memulai sesi lari baru.
-  Future<void> start() async {
+  Future<void> start({IntervalRunPlan? intervalPlan}) async {
     if (isActive) return;
 
     _resetSessionData();
+    _intervalPlan = intervalPlan;
     _errorMessage = null;
     _status = RunStatus.acquiringGps;
     notifyListeners();
@@ -302,9 +311,14 @@ class RunningEngine extends ChangeNotifier {
     _filteredLongitude = null;
     _filteredAccuracyMeters = null;
     _lastSplitDistanceMeters = 0.0;
+    _lastAcceptedElapsedMilliseconds = 0;
+    _lastHundredMeterCrossingElapsedMilliseconds = 0;
+    _nextHundredMeterMark = 100.0;
+    _intervalPlan = null;
     _awaitingResumeAnchor = false;
     _route.clear();
     _splits.clear();
+    _hundredMeterLaps.clear();
     _paceSamples.clear();
   }
 
@@ -329,6 +343,7 @@ class RunningEngine extends ChangeNotifier {
     _filteredLongitude = position.longitude;
     _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
+    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ?? 0;
     _acceptedPoints = 1;
     _paceSamples
       ..clear()
@@ -339,7 +354,15 @@ class RunningEngine extends ChangeNotifier {
         ),
       );
 
-    _route.add(_toRunPoint(position));
+    _route.add(
+      RunPoint(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        timestamp: position.timestamp,
+        accuracyMeters: position.accuracy,
+        startsNewSegment: true,
+      ),
+    );
   }
 
   void _onPosition(Position position) {
@@ -404,6 +427,10 @@ class RunningEngine extends ChangeNotifier {
       return;
     }
 
+    final double distanceBeforeUpdate = _distanceMeters;
+    final int elapsedBeforeUpdate = _lastAcceptedElapsedMilliseconds;
+    final int elapsedAfterUpdate = _stopwatch?.elapsedMilliseconds ??
+        elapsedBeforeUpdate;
     _acceptPosition(position);
 
     if (rawDistanceMeters >= minMovementMeters) {
@@ -416,6 +443,16 @@ class RunningEngine extends ChangeNotifier {
         _movingTime += segmentDuration;
       }
 
+      _recordHundredMeterLaps(
+        distanceBeforeMeters: distanceBeforeUpdate,
+        segmentDistanceMeters: rawDistanceMeters,
+        startLatitude: previousLatitude,
+        startLongitude: previousLongitude,
+        endLatitude: position.latitude,
+        endLongitude: position.longitude,
+        elapsedBeforeMilliseconds: elapsedBeforeUpdate,
+        elapsedAfterMilliseconds: elapsedAfterUpdate,
+      );
       _appendRoutePoint(position);
       _createCompletedSplits();
     }
@@ -434,6 +471,7 @@ class RunningEngine extends ChangeNotifier {
     _filteredLongitude = position.longitude;
     _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
+    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ?? 0;
     _acceptedPoints++;
     _awaitingResumeAnchor = false;
     _paceSamples
@@ -446,7 +484,15 @@ class RunningEngine extends ChangeNotifier {
       );
     _currentPaceSecondsPerKm = null;
 
-    _route.add(_toRunPoint(position));
+    _route.add(
+      RunPoint(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        timestamp: position.timestamp,
+        accuracyMeters: position.accuracy,
+        startsNewSegment: true,
+      ),
+    );
   }
 
   void _acceptPosition(Position position) {
@@ -454,7 +500,58 @@ class RunningEngine extends ChangeNotifier {
     _lastRawLongitude = position.longitude;
     _lastRawTimestamp = position.timestamp;
     _gpsAccuracyMeters = position.accuracy;
+    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ??
+        _lastAcceptedElapsedMilliseconds;
     _acceptedPoints++;
+  }
+
+  void _recordHundredMeterLaps({
+    required double distanceBeforeMeters,
+    required double segmentDistanceMeters,
+    required double? startLatitude,
+    required double? startLongitude,
+    required double endLatitude,
+    required double endLongitude,
+    required int elapsedBeforeMilliseconds,
+    required int elapsedAfterMilliseconds,
+  }) {
+    if (startLatitude == null || startLongitude == null ||
+        segmentDistanceMeters <= 0 ||
+        elapsedAfterMilliseconds < elapsedBeforeMilliseconds) {
+      return;
+    }
+
+    final int elapsedDelta =
+        elapsedAfterMilliseconds - elapsedBeforeMilliseconds;
+    while (_nextHundredMeterMark <=
+        distanceBeforeMeters + segmentDistanceMeters) {
+      final double fraction =
+          ((_nextHundredMeterMark - distanceBeforeMeters) /
+                  segmentDistanceMeters)
+              .clamp(0.0, 1.0);
+      final int crossingElapsedMilliseconds = elapsedBeforeMilliseconds +
+          (elapsedDelta * fraction).round();
+      final int lapDurationMilliseconds =
+          crossingElapsedMilliseconds -
+              _lastHundredMeterCrossingElapsedMilliseconds;
+
+      if (lapDurationMilliseconds > 0) {
+        _hundredMeterLaps.add(
+          RunLap100m(
+            distanceMeters: _nextHundredMeterMark,
+            durationMilliseconds: lapDurationMilliseconds,
+            latitude: startLatitude +
+                (endLatitude - startLatitude) * fraction,
+            longitude: startLongitude +
+                (endLongitude - startLongitude) * fraction,
+          ),
+        );
+      }
+
+      _lastHundredMeterCrossingElapsedMilliseconds =
+          crossingElapsedMilliseconds;
+      _nextHundredMeterMark += 100.0;
+    }
   }
 
   void _recordPaceSample(DateTime timestamp) {
@@ -595,15 +692,6 @@ class RunningEngine extends ChangeNotifier {
     }
   }
 
-  RunPoint _toRunPoint(Position position) {
-    return RunPoint(
-      latitude: position.latitude,
-      longitude: position.longitude,
-      timestamp: position.timestamp,
-      accuracyMeters: position.accuracy,
-    );
-  }
-
   RunSession _buildSession() {
     return RunSession(
       startedAt: _startedAt ?? DateTime.now(),
@@ -618,6 +706,8 @@ class RunningEngine extends ChangeNotifier {
       rejectedPoints: _rejectedPoints,
       route: List<RunPoint>.unmodifiable(_route),
       splits: List<RunSplit>.unmodifiable(_splits),
+      hundredMeterLaps: List<RunLap100m>.unmodifiable(_hundredMeterLaps),
+      intervalPlan: _intervalPlan,
     );
   }
 

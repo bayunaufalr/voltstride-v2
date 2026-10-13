@@ -3,53 +3,28 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// ============================================================
-/// LOKASI SERVICE
-/// ============================================================
-/// Lapisan paling bawah yang menyentuh paket `geolocator`.
-///
-/// Tanggung jawab file ini hanya satu: mengubah API platform menjadi
-/// `Stream<Position>` yang sudah dikonfigurasi untuk akurasi tinggi.
-/// Semua logika bisnis (filter, statistik) berada di file lain supaya
-/// mudah diuji tanpa perangkat.
+/// Sumber lokasi untuk pelacakan lari. Pada Android, stream GPS memakai
+/// foreground service + notifikasi persisten agar tetap berjalan saat layar
+/// terkunci atau aplikasi berpindah ke latar belakang.
 class LokasiService {
   LokasiService._();
 
-  /// Ambang akurasi yang diminta ke sistem, dalam meter.
   static const int ambangAkurasiDiminta = 10;
-
-  /// Filter jarak minimum antar titik, dalam meter.
-  ///
-  /// Nilai 0 dipakai agar titik tidak dibuang oleh plugin hanya karena
-  /// perpindahannya kecil. Penyaringan noise dilakukan di lapisan
-  /// `PelacakLari` menggunakan Kalman filter.
   static const int filterJarakMinimum = 0;
 
-  /// Meminta izin lokasi kepada pengguna.
-  ///
-  /// Mengembalikan true jika izin foreground sudah diberikan.
   static Future<bool> mintaIzin() async {
     LocationPermission status = await Geolocator.checkPermission();
-
     if (status == LocationPermission.denied) {
       status = await Geolocator.requestPermission();
     }
-
     return status == LocationPermission.whileInUse ||
         status == LocationPermission.always;
   }
 
-  /// Memastikan layanan lokasi perangkat dalam keadaan aktif.
-  static Future<bool> cekLayananAktif() async {
-    return Geolocator.isLocationServiceEnabled();
-  }
+  static Future<bool> cekLayananAktif() =>
+      Geolocator.isLocationServiceEnabled();
 
-  /// Membuat pengaturan lokasi sesuai platform.
-  ///
-  /// Geolocator versi modern menggunakan `AndroidSettings` secara
-  /// langsung pada Android dan `AppleSettings` secara langsung pada
-  /// iOS/macOS. `LocationSettings` dasar dipakai pada platform lain.
-  static LocationSettings _pengaturanLokasi() {
+  static LocationSettings _pengaturanLokasi({bool untukPelacakanAktif = false}) {
     if (kIsWeb) {
       return const LocationSettings(
         accuracy: LocationAccuracy.best,
@@ -64,18 +39,25 @@ class LokasiService {
           distanceFilter: filterJarakMinimum,
           intervalDuration: const Duration(seconds: 1),
           forceLocationManager: false,
+          foregroundNotificationConfig: untukPelacakanAktif
+              ? const ForegroundNotificationConfig(
+                  notificationTitle: 'VoltStride sedang merekam lari',
+                  notificationText: 'GPS tetap aktif saat layar terkunci. Buka VoltStride untuk kontrol sesi.',
+                  notificationChannelName: 'Pelacakan Lari',
+                  enableWakeLock: true,
+                  setOngoing: true,
+                )
+              : null,
         );
-
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
         return AppleSettings(
           accuracy: LocationAccuracy.best,
           activityType: ActivityType.fitness,
-          showBackgroundLocationIndicator: false,
+          showBackgroundLocationIndicator: true,
           pauseLocationUpdatesAutomatically: false,
           distanceFilter: filterJarakMinimum,
         );
-
       case TargetPlatform.windows:
       case TargetPlatform.linux:
       case TargetPlatform.fuchsia:
@@ -86,20 +68,12 @@ class LokasiService {
     }
   }
 
-  /// Membuat stream posisi GPS dengan pengaturan akurasi tinggi.
   static Stream<Position> pasangStream() {
-    final LocationSettings pengaturan = _pengaturanLokasi();
-
     return Geolocator.getPositionStream(
-      locationSettings: pengaturan,
+      locationSettings: _pengaturanLokasi(untukPelacakanAktif: true),
     );
   }
 
-  /// Mengambil satu titik posisi sekali pakai.
-  ///
-  /// Dipakai untuk mengambil titik awal (seed) atau koordinat pengguna
-  /// sebelum subscription stream dimulai, supaya Kalman filter punya
-  /// referensi posisi awal.
   static Future<Position?> ambilSatuTitik() async {
     try {
       return await Geolocator.getCurrentPosition(

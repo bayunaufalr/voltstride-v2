@@ -31,10 +31,14 @@ class RunningController extends ChangeNotifier {
   int get acceptedPoints => _engine.acceptedPoints;
   int get rejectedPoints => _engine.rejectedPoints;
   List<RunSplit> get splits => _engine.splits;
+  List<RunPoint> get route => _engine.route;
+  List<RunLap100m> get hundredMeterLaps => _engine.hundredMeterLaps;
+  IntervalRunPlan? get intervalPlan => _engine.intervalPlan;
   RunSession? get lastFinishedSession =>
       _engine.lastFinishedSession;
 
-  Future<void> startRun() => _engine.start();
+  Future<void> startRun({IntervalRunPlan? intervalPlan}) =>
+      _engine.start(intervalPlan: intervalPlan);
 
   void pauseRun() => _engine.pause();
 

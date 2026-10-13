@@ -18,11 +18,17 @@ class RunPoint {
   final DateTime timestamp;
   final double accuracyMeters;
 
+  /// True when this point starts a new uninterrupted GPS track segment, for
+  /// example after resuming a paused run. Map renderers must not connect the
+  /// previous point to this one with a straight line.
+  final bool startsNewSegment;
+
   const RunPoint({
     required this.latitude,
     required this.longitude,
     required this.timestamp,
     required this.accuracyMeters,
+    this.startsNewSegment = false,
   });
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -30,6 +36,7 @@ class RunPoint {
         'longitude': longitude,
         'timestamp': timestamp.toUtc().toIso8601String(),
         'accuracyMeters': accuracyMeters,
+        'startsNewSegment': startsNewSegment,
       };
 
   factory RunPoint.fromJson(Map<String, dynamic> json) {
@@ -38,6 +45,7 @@ class RunPoint {
       longitude: (json['longitude'] as num).toDouble(),
       timestamp: DateTime.parse(json['timestamp'] as String),
       accuracyMeters: (json['accuracyMeters'] as num).toDouble(),
+      startsNewSegment: json['startsNewSegment'] == true,
     );
   }
 }
@@ -79,10 +87,126 @@ class RunSplit {
   }
 }
 
+
+/// Satu segmen tepat 100 meter yang dihitung dari perpindahan GPS valid.
+/// Koordinat menunjukkan titik interpolasi ketika jarak kumulatif melewati
+/// kelipatan 100 m. Waktu segmen menggunakan waktu aktif stopwatch (pause
+/// dikecualikan), bukan waktu dinding yang mencakup jeda.
+class RunLap100m {
+  final double distanceMeters;
+  final int durationMilliseconds;
+  final double latitude;
+  final double longitude;
+
+  const RunLap100m({
+    required this.distanceMeters,
+    required this.durationMilliseconds,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  double get durationSeconds => durationMilliseconds / 1000.0;
+
+  double? get speedKmh {
+    if (durationMilliseconds <= 0) return null;
+    return 360000.0 / durationMilliseconds;
+  }
+
+  double? get paceSecondsPerKm {
+    if (durationMilliseconds <= 0) return null;
+    return durationMilliseconds / 100.0;
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'distanceMeters': distanceMeters,
+        'durationMilliseconds': durationMilliseconds,
+        'latitude': latitude,
+        'longitude': longitude,
+      };
+
+  factory RunLap100m.fromJson(Map<String, dynamic> json) => RunLap100m(
+        distanceMeters: (json['distanceMeters'] as num).toDouble(),
+        durationMilliseconds: (json['durationMilliseconds'] as num).toInt(),
+        latitude: (json['latitude'] as num).toDouble(),
+        longitude: (json['longitude'] as num).toDouble(),
+      );
+}
+
+enum IntervalStage { work, recovery, complete }
+
+class IntervalPhase {
+  final IntervalStage stage;
+  final int repetition;
+  final int secondsRemaining;
+
+  const IntervalPhase({
+    required this.stage,
+    required this.repetition,
+    required this.secondsRemaining,
+  });
+}
+
+/// Konfigurasi latihan interval lari yang dipilih pengguna.
+class IntervalRunPlan {
+  final int workSeconds;
+  final int recoverySeconds;
+  final int repetitions;
+
+  const IntervalRunPlan({
+    required this.workSeconds,
+    required this.recoverySeconds,
+    required this.repetitions,
+  });
+
+  int get cycleSeconds => workSeconds + recoverySeconds;
+
+  int get totalSeconds => cycleSeconds * repetitions;
+
+  IntervalPhase phaseAt(Duration elapsed) {
+    final int seconds = elapsed.inSeconds < 0 ? 0 : elapsed.inSeconds;
+    if (seconds >= totalSeconds) {
+      return IntervalPhase(
+        stage: IntervalStage.complete,
+        repetition: repetitions,
+        secondsRemaining: 0,
+      );
+    }
+
+    final int repetition = seconds ~/ cycleSeconds + 1;
+    final int cyclePosition = seconds % cycleSeconds;
+    if (cyclePosition < workSeconds) {
+      return IntervalPhase(
+        stage: IntervalStage.work,
+        repetition: repetition,
+        secondsRemaining: workSeconds - cyclePosition,
+      );
+    }
+
+    return IntervalPhase(
+      stage: IntervalStage.recovery,
+      repetition: repetition,
+      secondsRemaining: cycleSeconds - cyclePosition,
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'workSeconds': workSeconds,
+        'recoverySeconds': recoverySeconds,
+        'repetitions': repetitions,
+      };
+
+  factory IntervalRunPlan.fromJson(Map<String, dynamic> json) =>
+      IntervalRunPlan(
+        workSeconds: (json['workSeconds'] as num).toInt(),
+        recoverySeconds: (json['recoverySeconds'] as num).toInt(),
+        repetitions: (json['repetitions'] as num).toInt(),
+      );
+}
+
 /// Snapshot lengkap sesi lari.
 ///
 /// Model tidak bergantung pada UI, GPS, atau database. Semua data dapat
-/// diserialisasi untuk SQLite dan digunakan sebagai konteks AI Coach.
+/// diserialisasi untuk SQLite dan digunakan oleh evaluasi lari lokal.
 class RunSession {
   final DateTime startedAt;
   final DateTime? finishedAt;
@@ -96,6 +220,8 @@ class RunSession {
   final int rejectedPoints;
   final List<RunPoint> route;
   final List<RunSplit> splits;
+  final List<RunLap100m> hundredMeterLaps;
+  final IntervalRunPlan? intervalPlan;
 
   const RunSession({
     required this.startedAt,
@@ -110,6 +236,8 @@ class RunSession {
     required this.rejectedPoints,
     required this.route,
     required this.splits,
+    this.hundredMeterLaps = const <RunLap100m>[],
+    this.intervalPlan,
   });
 
   double get distanceKm => distanceMeters / 1000.0;
@@ -149,6 +277,12 @@ class RunSession {
       'splitsJson': jsonEncode(
         splits.map((RunSplit split) => split.toJson()).toList(),
       ),
+      'hundredMeterLapsJson': jsonEncode(
+        hundredMeterLaps.map((RunLap100m lap) => lap.toJson()).toList(),
+      ),
+      'intervalPlanJson': intervalPlan == null
+          ? null
+          : jsonEncode(intervalPlan!.toJson()),
     };
   }
 
@@ -158,6 +292,17 @@ class RunSession {
         jsonDecode(row['routeJson'] as String) as List<dynamic>;
     final List<dynamic> splitsJson =
         jsonDecode(row['splitsJson'] as String) as List<dynamic>;
+    final Object? lapsJsonValue = row['hundredMeterLapsJson'];
+    final List<dynamic> lapsJson = lapsJsonValue is String
+        ? jsonDecode(lapsJsonValue) as List<dynamic>
+        : <dynamic>[];
+    final Object? intervalJsonValue = row['intervalPlanJson'];
+    final IntervalRunPlan? plan = intervalJsonValue is String &&
+            intervalJsonValue.isNotEmpty
+        ? IntervalRunPlan.fromJson(
+            jsonDecode(intervalJsonValue) as Map<String, dynamic>,
+          )
+        : null;
 
     final Object? finishedAtValue = row['finishedAt'];
     final Object? averagePaceValue = row['averagePaceSecondsPerKm'];
@@ -201,6 +346,14 @@ class RunSession {
             ),
           )
           .toList(growable: false),
+      hundredMeterLaps: lapsJson
+          .map(
+            (dynamic item) => RunLap100m.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(growable: false),
+      intervalPlan: plan,
     );
   }
 
