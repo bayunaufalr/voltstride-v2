@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../../services/lokasi_service.dart';
 import '../models/run_session.dart';
 import 'pace_sample.dart';
+import 'running_notification_service.dart';
 
 /// Abstraksi sumber lokasi supaya RunningEngine dapat diuji tanpa perangkat.
 abstract class RunningLocationSource {
@@ -65,7 +66,7 @@ class RunningEngine extends ChangeNotifier {
   static const int paceWindowSeconds = 12;
   static const int minimumPaceWindowSeconds = 8;
   static const double minimumAveragePaceDistanceMeters = 100.0;
-  static const int updateIntervalMilliseconds = 250;
+  static const int updateIntervalMilliseconds = 1000;
 
   RunningEngine({RunningLocationSource? locationSource})
       : _locationSource =
@@ -75,6 +76,7 @@ class RunningEngine extends ChangeNotifier {
 
   StreamSubscription<Position>? _positionSubscription;
   Timer? _uiTimer;
+  Timer? _notificationTimer;
   Stopwatch? _stopwatch;
 
   RunStatus _status = RunStatus.idle;
@@ -95,6 +97,7 @@ class RunningEngine extends ChangeNotifier {
 
   double? _lastRawLatitude;
   double? _lastRawLongitude;
+  double? _lastRawAltitudeMeters;
   DateTime? _lastRawTimestamp;
 
   double? _filteredLatitude;
@@ -218,6 +221,7 @@ class RunningEngine extends ChangeNotifier {
       const Duration(milliseconds: updateIntervalMilliseconds),
       (_) => notifyListeners(),
     );
+    _startNotificationUpdates();
 
     notifyListeners();
   }
@@ -232,6 +236,7 @@ class RunningEngine extends ChangeNotifier {
     _stopwatch?.stop();
     _status = RunStatus.paused;
     _currentPaceSecondsPerKm = null;
+    unawaited(_updateRunNotificationSafely());
     notifyListeners();
   }
 
@@ -247,6 +252,7 @@ class RunningEngine extends ChangeNotifier {
     _awaitingResumeAnchor = true;
     _currentPaceSecondsPerKm = null;
     _status = RunStatus.running;
+    unawaited(_updateRunNotificationSafely());
     notifyListeners();
   }
 
@@ -261,6 +267,9 @@ class RunningEngine extends ChangeNotifier {
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
+    _notificationTimer?.cancel();
+    _notificationTimer = null;
+    unawaited(RunningNotificationService.stop());
 
     _status = RunStatus.finished;
     _currentPaceSecondsPerKm = null;
@@ -276,6 +285,9 @@ class RunningEngine extends ChangeNotifier {
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
+    _notificationTimer?.cancel();
+    _notificationTimer = null;
+    unawaited(RunningNotificationService.stop());
     _stopwatch?.stop();
 
     _status = RunStatus.idle;
@@ -289,6 +301,8 @@ class RunningEngine extends ChangeNotifier {
   void dispose() {
     _cancelPositionSubscription();
     _uiTimer?.cancel();
+    _notificationTimer?.cancel();
+    unawaited(RunningNotificationService.stop());
     _stopwatch?.stop();
     super.dispose();
   }
@@ -306,6 +320,7 @@ class RunningEngine extends ChangeNotifier {
     _rejectedPoints = 0;
     _lastRawLatitude = null;
     _lastRawLongitude = null;
+    _lastRawAltitudeMeters = null;
     _lastRawTimestamp = null;
     _filteredLatitude = null;
     _filteredLongitude = null;
@@ -337,6 +352,7 @@ class RunningEngine extends ChangeNotifier {
   void _seedPosition(Position position) {
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
+    _lastRawAltitudeMeters = _altitudeOf(position);
     _lastRawTimestamp = position.timestamp;
 
     _filteredLatitude = position.latitude;
@@ -360,6 +376,7 @@ class RunningEngine extends ChangeNotifier {
         longitude: position.longitude,
         timestamp: position.timestamp,
         accuracyMeters: position.accuracy,
+        altitudeMeters: _altitudeOf(position),
         startsNewSegment: true,
       ),
     );
@@ -379,6 +396,7 @@ class RunningEngine extends ChangeNotifier {
     final DateTime? previousTimestamp = _lastRawTimestamp;
     final double? previousLatitude = _lastRawLatitude;
     final double? previousLongitude = _lastRawLongitude;
+    final double? previousAltitudeMeters = _lastRawAltitudeMeters;
 
     if (previousTimestamp != null &&
         !position.timestamp.isAfter(previousTimestamp)) {
@@ -450,6 +468,8 @@ class RunningEngine extends ChangeNotifier {
         startLongitude: previousLongitude,
         endLatitude: position.latitude,
         endLongitude: position.longitude,
+        startAltitudeMeters: previousAltitudeMeters,
+        endAltitudeMeters: _altitudeOf(position),
         elapsedBeforeMilliseconds: elapsedBeforeUpdate,
         elapsedAfterMilliseconds: elapsedAfterUpdate,
       );
@@ -466,6 +486,7 @@ class RunningEngine extends ChangeNotifier {
   void _seedResumeAnchor(Position position) {
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
+    _lastRawAltitudeMeters = _altitudeOf(position);
     _lastRawTimestamp = position.timestamp;
     _filteredLatitude = position.latitude;
     _filteredLongitude = position.longitude;
@@ -490,6 +511,7 @@ class RunningEngine extends ChangeNotifier {
         longitude: position.longitude,
         timestamp: position.timestamp,
         accuracyMeters: position.accuracy,
+        altitudeMeters: _altitudeOf(position),
         startsNewSegment: true,
       ),
     );
@@ -498,6 +520,7 @@ class RunningEngine extends ChangeNotifier {
   void _acceptPosition(Position position) {
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
+    _lastRawAltitudeMeters = _altitudeOf(position);
     _lastRawTimestamp = position.timestamp;
     _gpsAccuracyMeters = position.accuracy;
     _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ??
@@ -512,6 +535,8 @@ class RunningEngine extends ChangeNotifier {
     required double? startLongitude,
     required double endLatitude,
     required double endLongitude,
+    required double? startAltitudeMeters,
+    required double? endAltitudeMeters,
     required int elapsedBeforeMilliseconds,
     required int elapsedAfterMilliseconds,
   }) {
@@ -544,6 +569,11 @@ class RunningEngine extends ChangeNotifier {
                 (endLatitude - startLatitude) * fraction,
             longitude: startLongitude +
                 (endLongitude - startLongitude) * fraction,
+            altitudeMeters: startAltitudeMeters != null &&
+                    endAltitudeMeters != null
+                ? startAltitudeMeters +
+                    (endAltitudeMeters - startAltitudeMeters) * fraction
+                : null,
           ),
         );
       }
@@ -633,8 +663,14 @@ class RunningEngine extends ChangeNotifier {
         longitude: filteredLongitude,
         timestamp: position.timestamp,
         accuracyMeters: position.accuracy,
+        altitudeMeters: _altitudeOf(position),
       ),
     );
+  }
+
+  double? _altitudeOf(Position position) {
+    final double altitude = position.altitude;
+    return altitude.isFinite ? altitude : null;
   }
 
   double _smoothCoordinate({
@@ -711,10 +747,40 @@ class RunningEngine extends ChangeNotifier {
     );
   }
 
+  void _startNotificationUpdates() {
+    _notificationTimer?.cancel();
+    unawaited(_updateRunNotificationSafely());
+    _notificationTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_updateRunNotificationSafely()),
+    );
+  }
+
+  Future<void> _updateRunNotificationSafely() async {
+    if (_status != RunStatus.running && _status != RunStatus.paused) return;
+    final double? pace =
+        _currentPaceSecondsPerKm ?? averagePaceSecondsPerKm;
+    final double? speedKmh = pace != null && pace > 0 ? 3600.0 / pace : null;
+    try {
+      await RunningNotificationService.showRunStats(
+        elapsed: elapsed,
+        distanceMeters: _distanceMeters,
+        speedKmh: speedKmh,
+        paceSecondsPerKm: pace,
+        paused: _status == RunStatus.paused,
+      );
+    } catch (_) {
+      // Kegagalan notifikasi tidak boleh menghentikan perekaman GPS.
+    }
+  }
+
   void _fail(String message) {
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
+    _notificationTimer?.cancel();
+    _notificationTimer = null;
+    unawaited(RunningNotificationService.stop());
     _stopwatch?.stop();
     _status = RunStatus.error;
     _errorMessage = message;

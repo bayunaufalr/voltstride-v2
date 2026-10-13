@@ -17,6 +17,9 @@ class RunPoint {
   final double longitude;
   final DateTime timestamp;
   final double accuracyMeters;
+  /// Estimasi ketinggian dari GPS dalam meter di atas permukaan laut.
+  /// Null untuk data lama atau ketika nilai GPS tidak valid.
+  final double? altitudeMeters;
 
   /// True when this point starts a new uninterrupted GPS track segment, for
   /// example after resuming a paused run. Map renderers must not connect the
@@ -28,6 +31,7 @@ class RunPoint {
     required this.longitude,
     required this.timestamp,
     required this.accuracyMeters,
+    this.altitudeMeters,
     this.startsNewSegment = false,
   });
 
@@ -36,6 +40,7 @@ class RunPoint {
         'longitude': longitude,
         'timestamp': timestamp.toUtc().toIso8601String(),
         'accuracyMeters': accuracyMeters,
+        'altitudeMeters': altitudeMeters,
         'startsNewSegment': startsNewSegment,
       };
 
@@ -45,6 +50,9 @@ class RunPoint {
       longitude: (json['longitude'] as num).toDouble(),
       timestamp: DateTime.parse(json['timestamp'] as String),
       accuracyMeters: (json['accuracyMeters'] as num).toDouble(),
+      altitudeMeters: json['altitudeMeters'] == null
+          ? null
+          : (json['altitudeMeters'] as num).toDouble(),
       startsNewSegment: json['startsNewSegment'] == true,
     );
   }
@@ -97,12 +105,15 @@ class RunLap100m {
   final int durationMilliseconds;
   final double latitude;
   final double longitude;
+  /// Ketinggian GPS di lokasi penanda 100 m.
+  final double? altitudeMeters;
 
   const RunLap100m({
     required this.distanceMeters,
     required this.durationMilliseconds,
     required this.latitude,
     required this.longitude,
+    this.altitudeMeters,
   });
 
   double get durationSeconds => durationMilliseconds / 1000.0;
@@ -122,6 +133,7 @@ class RunLap100m {
         'durationMilliseconds': durationMilliseconds,
         'latitude': latitude,
         'longitude': longitude,
+        'altitudeMeters': altitudeMeters,
       };
 
   factory RunLap100m.fromJson(Map<String, dynamic> json) => RunLap100m(
@@ -129,6 +141,9 @@ class RunLap100m {
         durationMilliseconds: (json['durationMilliseconds'] as num).toInt(),
         latitude: (json['latitude'] as num).toDouble(),
         longitude: (json['longitude'] as num).toDouble(),
+        altitudeMeters: json['altitudeMeters'] == null
+            ? null
+            : (json['altitudeMeters'] as num).toDouble(),
       );
 }
 
@@ -203,6 +218,80 @@ class IntervalRunPlan {
       );
 }
 
+
+/// Ringkasan elevasi berbasis perubahan altitude GPS yang cukup besar.
+/// Perubahan di bawah ambang 3 m diabaikan untuk menekan noise GPS.
+class RunElevationStats {
+  final double totalAscentMeters;
+  final double totalDescentMeters;
+  final double netChangeMeters;
+  final double maxAboveStartMeters;
+  final bool hasAltitudeData;
+
+  const RunElevationStats({
+    required this.totalAscentMeters,
+    required this.totalDescentMeters,
+    required this.netChangeMeters,
+    required this.maxAboveStartMeters,
+    required this.hasAltitudeData,
+  });
+}
+
+RunElevationStats calculateRunElevation(List<RunPoint> route) {
+  const double noiseThresholdMeters = 3.0;
+  final List<RunPoint> valid = route
+      .where((RunPoint point) =>
+          point.altitudeMeters != null && point.altitudeMeters!.isFinite)
+      .toList(growable: false);
+  if (valid.isEmpty) {
+    return const RunElevationStats(
+      totalAscentMeters: 0,
+      totalDescentMeters: 0,
+      netChangeMeters: 0,
+      maxAboveStartMeters: 0,
+      hasAltitudeData: false,
+    );
+  }
+
+  final double startAltitude = valid.first.altitudeMeters!;
+  double referenceAltitude = startAltitude;
+  double ascent = 0;
+  double descent = 0;
+  double maximumAboveStart = 0;
+
+  for (final RunPoint point in valid.skip(1)) {
+    final double altitude = point.altitudeMeters!;
+    final double relativeToStart = altitude - startAltitude;
+    if (relativeToStart >= noiseThresholdMeters &&
+        relativeToStart > maximumAboveStart) {
+      maximumAboveStart = relativeToStart;
+    }
+
+    // Jangan menghubungkan elevasi antarsegmen GPS yang terpisah oleh jeda.
+    if (point.startsNewSegment) {
+      referenceAltitude = altitude;
+      continue;
+    }
+
+    final double delta = altitude - referenceAltitude;
+    if (delta >= noiseThresholdMeters) {
+      ascent += delta;
+      referenceAltitude = altitude;
+    } else if (delta <= -noiseThresholdMeters) {
+      descent += -delta;
+      referenceAltitude = altitude;
+    }
+  }
+
+  return RunElevationStats(
+    totalAscentMeters: ascent,
+    totalDescentMeters: descent,
+    netChangeMeters: ascent - descent,
+    maxAboveStartMeters: maximumAboveStart,
+    hasAltitudeData: true,
+  );
+}
+
 /// Snapshot lengkap sesi lari.
 ///
 /// Model tidak bergantung pada UI, GPS, atau database. Semua data dapat
@@ -257,6 +346,8 @@ class RunSession {
     if (accuracy == null || !accuracy.isFinite) return '--';
     return '${accuracy.toStringAsFixed(0)} m';
   }
+
+  RunElevationStats get elevationStats => calculateRunElevation(route);
 
   /// Mengubah sesi menjadi bentuk kolom SQLite.
   Map<String, Object?> toStorageMap() {

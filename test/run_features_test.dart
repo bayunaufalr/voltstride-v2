@@ -88,6 +88,59 @@ void main() {
     expect(restored.route.single.startsNewSegment, isTrue);
   });
 
+
+  test('calculates net elevation as total ascent minus descent', () {
+    final RunElevationStats stats = calculateRunElevation(<RunPoint>[
+      RunPoint(
+        latitude: -7.8,
+        longitude: 110.3,
+        timestamp: DateTime.utc(2026, 10, 13),
+        accuracyMeters: 5,
+        altitudeMeters: 100,
+        startsNewSegment: true,
+      ),
+      RunPoint(
+        latitude: -7.799,
+        longitude: 110.301,
+        timestamp: DateTime.utc(2026, 10, 13, 0, 1),
+        accuracyMeters: 5,
+        altitudeMeters: 110,
+      ),
+      RunPoint(
+        latitude: -7.798,
+        longitude: 110.302,
+        timestamp: DateTime.utc(2026, 10, 13, 0, 2),
+        accuracyMeters: 5,
+        altitudeMeters: 106,
+      ),
+    ]);
+
+    expect(stats.totalAscentMeters, closeTo(10, 0.001));
+    expect(stats.totalDescentMeters, closeTo(4, 0.001));
+    expect(stats.netChangeMeters, closeTo(6, 0.001));
+    expect(stats.maxAboveStartMeters, closeTo(10, 0.001));
+  });
+
+  test('elevation values in route points survive JSON storage', () {
+    final RunPoint point = RunPoint(
+      latitude: -7.8,
+      longitude: 110.3,
+      timestamp: DateTime.utc(2026, 10, 13),
+      accuracyMeters: 5,
+      altitudeMeters: 123.4,
+    );
+    final RunPoint restored = RunPoint.fromJson(point.toJson());
+    expect(restored.altitudeMeters, closeTo(123.4, 0.001));
+
+    final RunPoint oldPoint = RunPoint.fromJson(<String, dynamic>{
+      'latitude': -7.8,
+      'longitude': 110.3,
+      'timestamp': '2026-10-13T00:00:00.000Z',
+      'accuracyMeters': 5,
+    });
+    expect(oldPoint.altitudeMeters, isNull);
+  });
+
   test('evaluation does not invent pace from very short sessions', () {
     final RunSession session = RunSession(
       startedAt: DateTime.utc(2026, 10, 13),

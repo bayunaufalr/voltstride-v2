@@ -75,6 +75,23 @@ RunEvaluation evaluateRun(RunSession session) {
     observations.add('Belum cukup segmen 100 m untuk menilai kestabilan kecepatan.');
   }
 
+  final RunElevationStats elevation = session.elevationStats;
+  if (elevation.hasAltitudeData) {
+    observations.add(
+      'Elevasi bersih ${elevation.netChangeMeters >= 0 ? '+' : ''}'
+      '${elevation.netChangeMeters.toStringAsFixed(0)} m; total naik '
+      '${elevation.totalAscentMeters.toStringAsFixed(0)} m dan turun '
+      '${elevation.totalDescentMeters.toStringAsFixed(0)} m.',
+    );
+    observations.add(
+      'Kenaikan maksimum dari titik awal: '
+      '${elevation.maxAboveStartMeters.toStringAsFixed(0)} m.',
+    );
+    recommendations.add(
+      'Gunakan data elevasi sebagai perkiraan medan. GPS ponsel bisa berisik, jadi jangan menilai usaha hanya dari angka elevasi.',
+    );
+  }
+
   if (session.intervalPlan != null) {
     final IntervalRunPlan plan = session.intervalPlan!;
     observations.add('Mode interval: ${plan.workSeconds} detik kerja, ${plan.recoverySeconds} detik pemulihan, ${plan.repetitions} ulangan direncanakan.');

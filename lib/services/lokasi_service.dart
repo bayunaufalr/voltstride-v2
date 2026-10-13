@@ -41,8 +41,8 @@ class LokasiService {
           forceLocationManager: false,
           foregroundNotificationConfig: untukPelacakanAktif
               ? const ForegroundNotificationConfig(
-                  notificationTitle: 'VoltStride sedang merekam lari',
-                  notificationText: 'GPS tetap aktif saat layar terkunci. Buka VoltStride untuk kontrol sesi.',
+                  notificationTitle: 'VoltStride GPS aktif',
+                  notificationText: 'Pelacakan aktif. Waktu dan kecepatan ada di notifikasi statistik VoltStride.',
                   notificationChannelName: 'Pelacakan Lari',
                   enableWakeLock: true,
                   setOngoing: true,

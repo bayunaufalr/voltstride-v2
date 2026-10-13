@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'services/run_history_repository.dart';
+import 'run_detail_page.dart';
 
 /// Riwayat sesi yang disimpan lokal pada perangkat.
 class RunHistoryPage extends StatefulWidget {
@@ -318,7 +319,8 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         leading: const CircleAvatar(
           backgroundColor: VoltWarna.aksen,
           foregroundColor: VoltWarna.latar,
@@ -329,80 +331,24 @@ class RunHistoryPageState extends State<RunHistoryPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          '$dateText\n${session.elapsedText}  •  ${session.averagePaceText}/km',
+          '$dateText\nWaktu ${session.elapsedText} • Pace ${session.averagePaceText}/km',
         ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        expandedCrossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Divider(),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _smallMetric('Moving time', session.movingTimeText),
-              ),
-              Expanded(
-                child: _smallMetric('Akurasi GPS', session.gpsAccuracyText),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'SPLIT PER KM',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 6),
-          if (session.splits.isEmpty)
-            const Text(
-              'Belum mencapai satu kilometer penuh.',
-              style: TextStyle(color: VoltWarna.teksAbu),
-            )
-          else
-            ...session.splits.map(
-              (RunSplit split) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: <Widget>[
-                    SizedBox(width: 64, child: Text('KM ${split.kilometer}')),
-                    Expanded(child: Text('${split.durationSeconds} detik')),
-                    Text(
-                      split.paceText,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ],
-                ),
-              ),
+        isThreeLine: true,
+        trailing: IconButton(
+          tooltip: 'Hapus sesi',
+          onPressed: () => _deleteSession(session),
+          icon: const Icon(Icons.delete_outline),
+        ),
+        onTap: () async {
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) =>
+                  RunDetailPage(session: session),
             ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _deleteSession(session),
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Hapus sesi'),
-            ),
-          ),
-        ],
+          );
+          await reload();
+        },
       ),
-    );
-  }
-
-  Widget _smallMetric(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          label,
-          style: const TextStyle(
-            color: VoltWarna.teksAbu,
-            fontSize: 12,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ],
     );
   }
 

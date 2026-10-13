@@ -3,16 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'running_controller.dart';
 import 'services/run_history_repository.dart';
 import 'services/run_evaluation.dart';
+import 'run_route_map_view.dart';
 
 /// Halaman lari V2.
 ///
@@ -36,6 +34,7 @@ class _RunningPageState extends State<RunningPage> {
   final TextEditingController _repetitionsController =
       TextEditingController(text: '6');
   bool _intervalModeSelected = false;
+  bool _liveMapExpanded = true;
   IntervalRunPlan? _activeIntervalPlan;
   String? _lastIntervalPhaseKey;
   bool _isSavingSession = false;
@@ -120,6 +119,7 @@ class _RunningPageState extends State<RunningPage> {
 
     _activeIntervalPlan = plan;
     _lastIntervalPhaseKey = null;
+    _liveMapExpanded = true;
     await _controller.startRun(intervalPlan: plan);
     if (_controller.status == RunStatus.error) {
       _activeIntervalPlan = null;
@@ -288,6 +288,283 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _buildLiveRun({required bool paused}) {
+    if (_liveMapExpanded) {
+      return _buildLiveMapExperience(paused: paused);
+    }
+    return _buildLiveRunDetails(paused: paused);
+  }
+
+  /// Map-first live running layout, similar to dedicated running apps.
+  /// The top-left control closes the map; the collapsed details screen keeps
+  /// all existing metrics and offers a way to reopen it.
+  Widget _buildLiveMapExperience({required bool paused}) {
+    final double? pace = _controller.currentPaceSecondsPerKm ??
+        _controller.averagePaceSecondsPerKm;
+    final double? speedKmh = pace != null && pace > 0 ? 3600.0 / pace : null;
+    final RunElevationStats elevation = calculateRunElevation(_controller.route);
+    final String netElevation =
+        '${elevation.netChangeMeters > 0 ? '+' : ''}'
+        '${elevation.netChangeMeters.toStringAsFixed(0)} m';
+    final String gpsAccuracy = _formatAccuracy(_controller.gpsAccuracyMeters);
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          Positioned.fill(
+            child: RunRouteMapView(
+              key: const ValueKey<String>('live-run-route-map-fullscreen'),
+              route: _controller.route,
+              laps: _controller.hundredMeterLaps,
+              height: MediaQuery.sizeOf(context).height,
+              followLastPoint: !paused,
+            ),
+          ),
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  child: Row(
+                    children: <Widget>[
+                      Material(
+                        color: Colors.black.withValues(alpha: 0.84),
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: 'Tutup peta',
+                          onPressed: () => setState(() => _liveMapExpanded = false),
+                          icon: const Icon(
+                            Icons.keyboard_arrow_down,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.84),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Icon(
+                              paused ? Icons.pause_circle : Icons.gps_fixed,
+                              size: 16,
+                              color: paused ? Colors.orangeAccent : Colors.greenAccent,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              paused ? 'LARI DIJEDA' : 'GPS AKTIF • $gpsAccuracy',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xED101010),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Text(
+                          'BERLARI',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: <Widget>[
+                            _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
+                            _liveMapMetric('PACE', _formatPace(pace)),
+                            _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: <Widget>[
+                            const Icon(Icons.speed, color: VoltWarna.aksen, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
+                                  ? '${speedKmh.toStringAsFixed(1)} km/jam'
+                                  : '-- km/jam',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const Spacer(),
+                            const Icon(Icons.terrain, color: VoltWarna.aksen, size: 18),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                elevation.hasAltitudeData
+                                    ? 'Bersih $netElevation'
+                                    : 'Elevasi --',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (elevation.hasAltitudeData) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Naik ${elevation.totalAscentMeters.toStringAsFixed(0)} m'
+                              ' • Turun ${elevation.totalDescentMeters.toStringAsFixed(0)} m'
+                              ' • Puncak +${elevation.maxAboveStartMeters.toStringAsFixed(0)} m dari start',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    12,
+                    16,
+                    10,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF101010),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white38,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: paused
+                                  ? _controller.resumeRun
+                                  : _controller.pauseRun,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white30),
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                              ),
+                              icon: Icon(paused ? Icons.play_arrow : Icons.pause),
+                              label: Text(paused ? 'Lanjut' : 'Jeda'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _finishRun,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: VoltWarna.merah,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                              ),
+                              icon: const Icon(Icons.stop),
+                              label: const Text('Selesai'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Peta rute • ketuk penanda 100 m untuk detail kecepatan dan elevasi',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _liveMapMetric(String label, String value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 19,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveRunDetails({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
         title: Text(paused ? 'Lari Dijeda' : 'Lari Berlangsung'),
@@ -298,6 +575,8 @@ class _RunningPageState extends State<RunningPage> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: <Widget>[
             _statusBanner(paused),
+            const SizedBox(height: 10),
+            _liveMapSection(paused: paused),
             const SizedBox(height: 12),
             _heroMetricCard(),
             if (_activeIntervalPlan != null) ...<Widget>[
@@ -349,6 +628,8 @@ class _RunningPageState extends State<RunningPage> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            _elevationStatsCard(calculateRunElevation(_controller.route)),
             const SizedBox(height: 12),
             _splitCard(),
             const SizedBox(height: 20),
@@ -406,6 +687,8 @@ class _RunningPageState extends State<RunningPage> {
             _saveStatusCard(),
             const SizedBox(height: 12),
             _routeMapCard(session.route, session.hundredMeterLaps),
+            const SizedBox(height: 12),
+            _elevationStatsCard(session.elevationStats),
             const SizedBox(height: 12),
             _hundredMeterLapsCard(session),
             const SizedBox(height: 12),
@@ -667,28 +950,65 @@ class _RunningPageState extends State<RunningPage> {
               ),
             ),
             const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: VoltWarna.aksen.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Text(
-                'PACE  ${_formatPace(_controller.currentPaceSecondsPerKm)} / km',
-                style: const TextStyle(
-                  color: VoltWarna.aksen,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: VoltWarna.aksen.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    'PACE  ${_formatPace(_controller.currentPaceSecondsPerKm)} / km',
+                    style: const TextStyle(
+                      color: VoltWarna.aksen,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
-              ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: VoltWarna.hijau.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    'SPEED  ${_formatCurrentSpeed(_controller.currentPaceSecondsPerKm)} km/jam',
+                    style: const TextStyle(
+                      color: VoltWarna.hijau,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatCurrentSpeed(double? paceSecondsPerKm) {
+    if (paceSecondsPerKm == null ||
+        !paceSecondsPerKm.isFinite ||
+        paceSecondsPerKm <= 0 ||
+        paceSecondsPerKm > 3600) {
+      return '--';
+    }
+    final double speed = 3600 / paceSecondsPerKm;
+    if (!speed.isFinite || speed > 35) return '--';
+    return speed.toStringAsFixed(1);
   }
 
   Widget _statusBanner(bool paused) {
@@ -1053,80 +1373,6 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _routeMapCard(List<RunPoint> route, List<RunLap100m> laps) {
-    if (route.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Belum ada titik GPS untuk ditampilkan pada peta.'),
-        ),
-      );
-    }
-
-    final List<LatLng> allPoints = route
-        .map((RunPoint point) => LatLng(point.latitude, point.longitude))
-        .toList(growable: false);
-    final LatLng center = allPoints.last;
-    final List<List<LatLng>> groups = <List<LatLng>>[];
-    for (int i = 0; i < route.length; i++) {
-      final RunPoint point = route[i];
-      if (groups.isEmpty || point.startsNewSegment) {
-        groups.add(<LatLng>[]);
-      }
-      groups.last.add(allPoints[i]);
-    }
-    final List<Polyline> lines = groups
-        .where((List<LatLng> points) => points.length >= 2)
-        .map((List<LatLng> points) => Polyline(
-              points: points,
-              strokeWidth: 4.5,
-              color: VoltWarna.aksen,
-            ))
-        .toList(growable: false);
-
-    final List<Marker> markers = <Marker>[
-      Marker(
-        point: allPoints.first,
-        width: 30,
-        height: 30,
-        child: const Icon(Icons.flag_circle, color: Colors.green, size: 28),
-      ),
-      if (allPoints.length > 1)
-        Marker(
-          point: allPoints.last,
-          width: 30,
-          height: 30,
-          child: const Icon(Icons.location_on, color: Colors.red, size: 28),
-        ),
-      ...laps.map((RunLap100m lap) => Marker(
-            point: LatLng(lap.latitude, lap.longitude),
-            width: 28,
-            height: 28,
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: VoltWarna.kartu,
-                shape: BoxShape.circle,
-                border: Border.all(color: VoltWarna.aksen, width: 1.5),
-              ),
-              child: Text(
-                '${lap.distanceMeters.round()}',
-                style: const TextStyle(fontSize: 7, fontWeight: FontWeight.w900),
-              ),
-            ),
-          )),
-    ];
-
-    final MapOptions options = MapOptions(
-      initialCenter: center,
-      initialZoom: 16,
-      initialCameraFit: allPoints.length >= 2
-          ? CameraFit.bounds(
-              bounds: LatLngBounds.fromPoints(allPoints),
-              padding: const EdgeInsets.all(28),
-            )
-          : null,
-    );
-
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1134,43 +1380,139 @@ class _RunningPageState extends State<RunningPage> {
         children: <Widget>[
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('PETA RUTE LARI', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+            child: Text(
+              'PETA RUTE LARI',
+              style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8),
+            ),
           ),
-          SizedBox(
-            height: 260,
-            child: FlutterMap(
-              options: options,
-              children: <Widget>[
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.voltstride',
-                ),
-                if (lines.isNotEmpty) PolylineLayer(polylines: lines),
-                MarkerLayer(markers: markers),
-                const RichAttributionWidget(
-                  attributions: <SourceAttribution>[
-                    TextSourceAttribution('© OpenStreetMap contributors'),
-                  ],
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: RunRouteMapView(
+              route: route,
+              laps: laps,
+              height: 290,
             ),
           ),
           const Padding(
             padding: EdgeInsets.all(12),
             child: Text(
-              'Angka pada titik peta menunjukkan jarak kumulatif dalam meter. Peta dasar membutuhkan internet; rekaman koordinat tetap disimpan lokal.',
+              'Ketuk penanda 100 m untuk melihat kecepatan, pace, dan elevasi. Peta dasar membutuhkan internet; rute GPS tersimpan secara lokal.',
               style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
             ),
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => launchUrl(Uri.parse('https://www.openstreetmap.org/copyright')),
-              icon: const Icon(Icons.open_in_new, size: 16),
-              label: const Text('Kontributor peta'),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _liveMapSection({required bool paused}) {
+    final List<RunPoint> route = _controller.route;
+    final List<RunLap100m> laps = _controller.hundredMeterLaps;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: <Widget>[
+          ListTile(
+            leading: const Icon(Icons.map_outlined, color: VoltWarna.aksen),
+            title: const Text(
+              'PETA RUTE LIVE',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text(
+              paused
+                  ? 'Perekaman dijeda'
+                  : 'Rute dan titik kecepatan diperbarui saat GPS masuk',
+            ),
+            trailing: IconButton(
+              tooltip: _liveMapExpanded ? 'Tutup peta' : 'Buka peta',
+              onPressed: () => setState(() => _liveMapExpanded = !_liveMapExpanded),
+              icon: Icon(
+                _liveMapExpanded ? Icons.expand_less : Icons.expand_more,
+              ),
+            ),
+            onTap: () => setState(() => _liveMapExpanded = !_liveMapExpanded),
+          ),
+          if (_liveMapExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: RunRouteMapView(
+                key: const ValueKey<String>('live-run-route-map'),
+                route: route,
+                laps: laps,
+                height: 300,
+                followLastPoint: !paused,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _elevationStatsCard(RunElevationStats stats) {
+    String signed(double value) {
+      final String prefix = value > 0 ? '+' : '';
+      return '$prefix${value.toStringAsFixed(0)} m';
+    }
+
+    String format(double value) => '${value.toStringAsFixed(0)} m';
+
+    Widget metric(String label, String value, String detail) {
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(label, style: const TextStyle(fontSize: 11, color: VoltWarna.teksAbu)),
+              const SizedBox(height: 3),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+              Text(detail, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Row(
+              children: <Widget>[
+                Icon(Icons.terrain, color: VoltWarna.aksen),
+                SizedBox(width: 8),
+                Text('ELEVASI GPS', style: TextStyle(fontWeight: FontWeight.w900)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (!stats.hasAltitudeData)
+              const Text(
+                'Data ketinggian belum tersedia dari GPS.',
+                style: TextStyle(color: VoltWarna.teksAbu),
+              )
+            else ...<Widget>[
+              Row(
+                children: <Widget>[
+                  metric('NAIK TOTAL', format(stats.totalAscentMeters), 'Semua kenaikan'),
+                  metric('TURUN TOTAL', format(stats.totalDescentMeters), 'Semua penurunan'),
+                ],
+              ),
+              Row(
+                children: <Widget>[
+                  metric('ELEVASI BERSIH', signed(stats.netChangeMeters), 'Naik dikurangi turun'),
+                  metric('PUNCAK REL. START', signed(stats.maxAboveStartMeters), 'Titik tertinggi di atas start'),
+                ],
+              ),
+            ],
+            const SizedBox(height: 4),
+            const Text(
+              'Elevasi berasal dari GPS dan dapat berfluktuasi. Perubahan kecil diabaikan untuk mengurangi noise.',
+              style: TextStyle(fontSize: 10, color: VoltWarna.teksAbu),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1185,7 +1527,7 @@ class _RunningPageState extends State<RunningPage> {
           children: <Widget>[
             const Text('KECEPATAN SETIAP 100 METER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.6)),
             const SizedBox(height: 6),
-            const Text('Kecepatan adalah rata-rata per segmen 100 m, bukan kecepatan instan GPS.', style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu)),
+            const Text('Kecepatan adalah rata-rata per segmen 100 m, bukan instan. Kolom terakhir menunjukkan elevasi GPS di titik tersebut.', style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu)),
             const SizedBox(height: 12),
             if (laps.isEmpty)
               const Text('Belum ada segmen 100 m yang valid.')
@@ -1199,6 +1541,8 @@ class _RunningPageState extends State<RunningPage> {
                         SizedBox(width: 76, child: Text(lap.speedKmh == null ? '--' : '${lap.speedKmh!.toStringAsFixed(1)} km/h', textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900))),
                         const SizedBox(width: 10),
                         SizedBox(width: 55, child: Text(lap.paceSecondsPerKm == null ? '--' : _formatPace(lap.paceSecondsPerKm), textAlign: TextAlign.end, style: const TextStyle(color: VoltWarna.teksAbu))),
+                        const SizedBox(width: 6),
+                        SizedBox(width: 48, child: Text(lap.altitudeMeters == null ? '-- m' : '${lap.altitudeMeters!.round()} m', textAlign: TextAlign.end, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11))),
                       ],
                     ),
                   )),
