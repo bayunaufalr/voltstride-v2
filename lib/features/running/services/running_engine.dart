@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -58,7 +59,10 @@ class GeolocatorRunningLocationSource implements RunningLocationSource {
 class RunningEngine extends ChangeNotifier {
   static const double maxAccuracyMeters = 50.0;
   static const double maxSpeedKmh = 35.0;
-  static const double minMovementMeters = 2.5;
+  // Jangan membuang setiap langkah pelan. Ambang adaptif di bawah menjaga
+  // gerakan kecil tetap dihitung tanpa menjumlahkan jitter GPS yang sangat kecil.
+  static const double minMovementMeters = 0.7;
+  static const double maxMovementThresholdMeters = 1.25;
   static const double movingSpeedMps = 1.0;
   static const double minPaceSpeedMps = 0.7;
   static const double maxPaceSpeedMps = 8.0;
@@ -78,6 +82,7 @@ class RunningEngine extends ChangeNotifier {
   Timer? _uiTimer;
   Timer? _notificationTimer;
   Stopwatch? _stopwatch;
+  bool _notificationUpdateInProgress = false;
 
   RunStatus _status = RunStatus.idle;
   String? _errorMessage;
@@ -331,6 +336,7 @@ class RunningEngine extends ChangeNotifier {
     _nextHundredMeterMark = 100.0;
     _intervalPlan = null;
     _awaitingResumeAnchor = false;
+    _notificationUpdateInProgress = false;
     _route.clear();
     _splits.clear();
     _hundredMeterLaps.clear();
@@ -350,31 +356,30 @@ class RunningEngine extends ChangeNotifier {
   }
 
   void _seedPosition(Position position) {
+    final int activeElapsedMilliseconds =
+        _stopwatch?.elapsedMilliseconds ?? 0;
+    final DateTime timestamp = position.timestamp;
+
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
     _lastRawAltitudeMeters = _altitudeOf(position);
-    _lastRawTimestamp = position.timestamp;
+    _lastRawTimestamp = timestamp;
 
     _filteredLatitude = position.latitude;
     _filteredLongitude = position.longitude;
     _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
-    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ?? 0;
+    _lastAcceptedElapsedMilliseconds = activeElapsedMilliseconds;
     _acceptedPoints = 1;
     _paceSamples
       ..clear()
-      ..add(
-        PaceSample(
-          timestamp: position.timestamp,
-          distanceMeters: _distanceMeters,
-        ),
-      );
+      ..add(PaceSample(timestamp: timestamp, distanceMeters: _distanceMeters));
 
     _route.add(
       RunPoint(
         latitude: position.latitude,
         longitude: position.longitude,
-        timestamp: position.timestamp,
+        timestamp: timestamp,
         accuracyMeters: position.accuracy,
         altitudeMeters: _altitudeOf(position),
         startsNewSegment: true,
@@ -393,17 +398,10 @@ class RunningEngine extends ChangeNotifier {
       return;
     }
 
-    final DateTime? previousTimestamp = _lastRawTimestamp;
     final double? previousLatitude = _lastRawLatitude;
     final double? previousLongitude = _lastRawLongitude;
     final double? previousAltitudeMeters = _lastRawAltitudeMeters;
-
-    if (previousTimestamp != null &&
-        !position.timestamp.isAfter(previousTimestamp)) {
-      _rejectedPoints++;
-      notifyListeners();
-      return;
-    }
+    final DateTime? previousTimestamp = _lastRawTimestamp;
 
     if (_awaitingResumeAnchor) {
       _seedResumeAnchor(position);
@@ -419,6 +417,21 @@ class RunningEngine extends ChangeNotifier {
       return;
     }
 
+    final int elapsedBeforeUpdate = _lastAcceptedElapsedMilliseconds;
+    final int elapsedAfterUpdate =
+        _stopwatch?.elapsedMilliseconds ?? elapsedBeforeUpdate;
+    final int activeElapsedDelta = elapsedAfterUpdate - elapsedBeforeUpdate;
+
+    // GPS timestamp normally provides the best interval, including when the
+    // Android location provider delivers a delayed batch. If the timestamp is
+    // duplicated or moves backwards, repair it from the monotonic Stopwatch.
+    DateTime trackingTimestamp = position.timestamp;
+    if (!trackingTimestamp.isAfter(previousTimestamp)) {
+      trackingTimestamp = previousTimestamp.add(
+        Duration(milliseconds: activeElapsedDelta > 0 ? activeElapsedDelta : 1),
+      );
+    }
+
     final double rawDistanceMeters = distanceBetweenMeters(
       latitude1: previousLatitude,
       longitude1: previousLongitude,
@@ -427,11 +440,15 @@ class RunningEngine extends ChangeNotifier {
     );
 
     final double dtSeconds =
-        position.timestamp.difference(previousTimestamp).inMilliseconds /
-            1000.0;
+        trackingTimestamp.difference(previousTimestamp).inMilliseconds / 1000.0;
 
-    if (dtSeconds <= 0) {
+    if (dtSeconds <= 0 || !dtSeconds.isFinite) {
       _rejectedPoints++;
+      _reanchorAfterRejectedJump(
+        position,
+        timestamp: trackingTimestamp,
+        elapsedMilliseconds: elapsedAfterUpdate,
+      );
       notifyListeners();
       return;
     }
@@ -440,23 +457,37 @@ class RunningEngine extends ChangeNotifier {
     final double speedKmh = speedMps * 3.6;
 
     if (!speedKmh.isFinite || speedKmh > maxSpeedKmh) {
+      // Kode lama membuang lonjakan tanpa memperbarui titik acuan. Akibatnya,
+      // semua titik sesudahnya dibandingkan dengan koordinat lama dan GPS
+      // dapat terlihat macet sepanjang sesi. Re-anchor tanpa menambahkan jarak
+      // dan mulai segmen peta baru agar satu lonjakan tidak merusak sesi.
       _rejectedPoints++;
+      _reanchorAfterRejectedJump(
+        position,
+        timestamp: trackingTimestamp,
+        elapsedMilliseconds: elapsedAfterUpdate,
+      );
       notifyListeners();
       return;
     }
 
     final double distanceBeforeUpdate = _distanceMeters;
-    final int elapsedBeforeUpdate = _lastAcceptedElapsedMilliseconds;
-    final int elapsedAfterUpdate = _stopwatch?.elapsedMilliseconds ??
-        elapsedBeforeUpdate;
-    _acceptPosition(position);
+    final double movementThreshold = _movementThresholdFor(position);
+    _acceptPosition(
+      position,
+      timestamp: trackingTimestamp,
+      elapsedMilliseconds: elapsedAfterUpdate,
+    );
 
-    if (rawDistanceMeters >= minMovementMeters) {
+    // Titik GPS yang valid selalu masuk ke rute yang telah dihaluskan. Jarak
+    // hanya ditambah bila perpindahannya lebih besar daripada ambang noise.
+    // Ambang 2,5 m sebelumnya membuang hampir semua langkah pelan ketika GPS
+    // mengirim satu titik per detik.
+    if (rawDistanceMeters >= movementThreshold) {
       _distanceMeters += rawDistanceMeters;
 
       final Duration segmentDuration =
-          position.timestamp.difference(previousTimestamp);
-
+          trackingTimestamp.difference(previousTimestamp);
       if (speedMps >= movingSpeedMps) {
         _movingTime += segmentDuration;
       }
@@ -473,43 +504,52 @@ class RunningEngine extends ChangeNotifier {
         elapsedBeforeMilliseconds: elapsedBeforeUpdate,
         elapsedAfterMilliseconds: elapsedAfterUpdate,
       );
-      _appendRoutePoint(position);
       _createCompletedSplits();
     }
 
-    // Current pace dihitung dari jendela GPS beberapa detik, bukan dari satu
-    // segmen. Ini mencegah lompatan koordinat sesaat menampilkan pace palsu.
-    _recordPaceSample(position.timestamp);
+    _appendRoutePoint(position, timestamp: trackingTimestamp);
+    _recordPaceSample(trackingTimestamp);
     notifyListeners();
   }
 
+  double _movementThresholdFor(Position position) {
+    final double previousAccuracy =
+        _filteredAccuracyMeters ?? position.accuracy;
+    final double bestAccuracy = math
+        .min(position.accuracy, previousAccuracy)
+        .toDouble();
+    final double adaptiveThreshold = bestAccuracy * 0.15;
+    return adaptiveThreshold
+        .clamp(minMovementMeters, maxMovementThresholdMeters)
+        .toDouble();
+  }
+
   void _seedResumeAnchor(Position position) {
+    final int activeElapsedMilliseconds =
+        _stopwatch?.elapsedMilliseconds ?? _lastAcceptedElapsedMilliseconds;
+    final DateTime timestamp = position.timestamp;
+
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
     _lastRawAltitudeMeters = _altitudeOf(position);
-    _lastRawTimestamp = position.timestamp;
+    _lastRawTimestamp = timestamp;
     _filteredLatitude = position.latitude;
     _filteredLongitude = position.longitude;
     _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
-    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ?? 0;
+    _lastAcceptedElapsedMilliseconds = activeElapsedMilliseconds;
     _acceptedPoints++;
     _awaitingResumeAnchor = false;
     _paceSamples
       ..clear()
-      ..add(
-        PaceSample(
-          timestamp: position.timestamp,
-          distanceMeters: _distanceMeters,
-        ),
-      );
+      ..add(PaceSample(timestamp: timestamp, distanceMeters: _distanceMeters));
     _currentPaceSecondsPerKm = null;
 
     _route.add(
       RunPoint(
         latitude: position.latitude,
         longitude: position.longitude,
-        timestamp: position.timestamp,
+        timestamp: timestamp,
         accuracyMeters: position.accuracy,
         altitudeMeters: _altitudeOf(position),
         startsNewSegment: true,
@@ -517,15 +557,82 @@ class RunningEngine extends ChangeNotifier {
     );
   }
 
-  void _acceptPosition(Position position) {
+  void _reanchorAfterRejectedJump(
+    Position position, {
+    required DateTime timestamp,
+    required int elapsedMilliseconds,
+  }) {
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
     _lastRawAltitudeMeters = _altitudeOf(position);
-    _lastRawTimestamp = position.timestamp;
+    _lastRawTimestamp = timestamp;
+    _lastAcceptedElapsedMilliseconds = elapsedMilliseconds;
+    _filteredLatitude = position.latitude;
+    _filteredLongitude = position.longitude;
+    _filteredAccuracyMeters = position.accuracy;
     _gpsAccuracyMeters = position.accuracy;
-    _lastAcceptedElapsedMilliseconds = _stopwatch?.elapsedMilliseconds ??
-        _lastAcceptedElapsedMilliseconds;
+    _currentPaceSecondsPerKm = null;
+    _paceSamples
+      ..clear()
+      ..add(PaceSample(timestamp: timestamp, distanceMeters: _distanceMeters));
+
+    _route.add(
+      RunPoint(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        timestamp: timestamp,
+        accuracyMeters: position.accuracy,
+        altitudeMeters: _altitudeOf(position),
+        startsNewSegment: true,
+      ),
+    );
+  }
+
+  void _acceptPosition(
+    Position position, {
+    required DateTime timestamp,
+    required int elapsedMilliseconds,
+  }) {
+    _lastRawLatitude = position.latitude;
+    _lastRawLongitude = position.longitude;
+    _lastRawAltitudeMeters = _altitudeOf(position);
+    _lastRawTimestamp = timestamp;
+    _gpsAccuracyMeters = position.accuracy;
+    _lastAcceptedElapsedMilliseconds = elapsedMilliseconds;
     _acceptedPoints++;
+  }
+
+  void _appendRoutePoint(
+    Position position, {
+    required DateTime timestamp,
+  }) {
+    final double filteredLatitude = _smoothCoordinate(
+      previousValue: _filteredLatitude,
+      measurement: position.latitude,
+      previousAccuracy: _filteredAccuracyMeters,
+      measurementAccuracy: position.accuracy,
+    );
+
+    final double filteredLongitude = _smoothCoordinate(
+      previousValue: _filteredLongitude,
+      measurement: position.longitude,
+      previousAccuracy: _filteredAccuracyMeters,
+      measurementAccuracy: position.accuracy,
+    );
+
+    _filteredLatitude = filteredLatitude;
+    _filteredLongitude = filteredLongitude;
+    _filteredAccuracyMeters = position.accuracy;
+
+    _route.add(
+      RunPoint(
+        latitude: filteredLatitude,
+        longitude: filteredLongitude,
+        timestamp: timestamp,
+        accuracyMeters: position.accuracy,
+        altitudeMeters: _altitudeOf(position),
+      ),
+    );
   }
 
   void _recordHundredMeterLaps({
@@ -751,13 +858,16 @@ class RunningEngine extends ChangeNotifier {
     _notificationTimer?.cancel();
     unawaited(_updateRunNotificationSafely());
     _notificationTimer = Timer.periodic(
-      const Duration(seconds: 3),
+      const Duration(seconds: 1),
       (_) => unawaited(_updateRunNotificationSafely()),
     );
   }
 
   Future<void> _updateRunNotificationSafely() async {
     if (_status != RunStatus.running && _status != RunStatus.paused) return;
+    if (_notificationUpdateInProgress) return;
+    _notificationUpdateInProgress = true;
+
     final double? pace =
         _currentPaceSecondsPerKm ?? averagePaceSecondsPerKm;
     final double? speedKmh = pace != null && pace > 0 ? 3600.0 / pace : null;
@@ -771,6 +881,8 @@ class RunningEngine extends ChangeNotifier {
       );
     } catch (_) {
       // Kegagalan notifikasi tidak boleh menghentikan perekaman GPS.
+    } finally {
+      _notificationUpdateInProgress = false;
     }
   }
 
