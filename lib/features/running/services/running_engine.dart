@@ -745,36 +745,6 @@ class RunningEngine extends ChangeNotifier {
     _currentPaceSecondsPerKm = 1000.0 / speedMps;
   }
 
-  void _appendRoutePoint(Position position) {
-    final double filteredLatitude = _smoothCoordinate(
-      previousValue: _filteredLatitude,
-      measurement: position.latitude,
-      previousAccuracy: _filteredAccuracyMeters,
-      measurementAccuracy: position.accuracy,
-    );
-
-    final double filteredLongitude = _smoothCoordinate(
-      previousValue: _filteredLongitude,
-      measurement: position.longitude,
-      previousAccuracy: _filteredAccuracyMeters,
-      measurementAccuracy: position.accuracy,
-    );
-
-    _filteredLatitude = filteredLatitude;
-    _filteredLongitude = filteredLongitude;
-    _filteredAccuracyMeters = position.accuracy;
-
-    _route.add(
-      RunPoint(
-        latitude: filteredLatitude,
-        longitude: filteredLongitude,
-        timestamp: position.timestamp,
-        accuracyMeters: position.accuracy,
-        altitudeMeters: _altitudeOf(position),
-      ),
-    );
-  }
-
   double? _altitudeOf(Position position) {
     final double altitude = position.altitude;
     return altitude.isFinite ? altitude : null;
