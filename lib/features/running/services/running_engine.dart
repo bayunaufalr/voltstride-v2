@@ -114,6 +114,9 @@ class RunningEngine extends ChangeNotifier {
   int _lastHundredMeterCrossingElapsedMilliseconds = 0;
   double _nextHundredMeterMark = 100.0;
   IntervalRunPlan? _intervalPlan;
+  bool _useGps = true;
+  RunActivityType _activityType = RunActivityType.run;
+  RunEnvironment _environment = RunEnvironment.outdoor;
 
   /// Setelah resume, titik GPS pertama hanya menjadi anchor baru.
   /// Titik tersebut tidak menghasilkan jarak terhadap posisi sebelum pause.
@@ -170,14 +173,36 @@ class RunningEngine extends ChangeNotifier {
   }
 
   /// Memulai sesi lari baru.
-  Future<void> start({IntervalRunPlan? intervalPlan}) async {
+  Future<void> start({
+    IntervalRunPlan? intervalPlan,
+    bool useGps = true,
+    RunActivityType activityType = RunActivityType.run,
+    RunEnvironment environment = RunEnvironment.outdoor,
+  }) async {
     if (isActive) return;
 
     _resetSessionData();
     _intervalPlan = intervalPlan;
+    _useGps = useGps;
+    _activityType = activityType;
+    _environment = environment;
     _errorMessage = null;
     _status = RunStatus.acquiringGps;
     notifyListeners();
+
+    if (!useGps) {
+      _startedAt = DateTime.now();
+      _stopwatch = Stopwatch()..start();
+      _status = RunStatus.running;
+      _uiTimer?.cancel();
+      _uiTimer = Timer.periodic(
+        const Duration(milliseconds: updateIntervalMilliseconds),
+        (_) => notifyListeners(),
+      );
+      _startNotificationUpdates();
+      notifyListeners();
+      return;
+    }
 
     final bool serviceEnabled =
         await _locationSource.isServiceEnabled();
@@ -262,13 +287,18 @@ class RunningEngine extends ChangeNotifier {
   }
 
   /// Mengakhiri sesi dan menghasilkan snapshot final.
-  RunSession? finish() {
+  RunSession? finish({double? indoorDistanceMeters}) {
     if (!isActive) {
       return _lastFinishedSession;
     }
 
     _finishedAt = DateTime.now();
     _stopwatch?.stop();
+    if (!_useGps && indoorDistanceMeters != null &&
+        indoorDistanceMeters.isFinite && indoorDistanceMeters >= 0) {
+      _distanceMeters = indoorDistanceMeters;
+      _movingTime = elapsed;
+    }
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
@@ -821,6 +851,8 @@ class RunningEngine extends ChangeNotifier {
       splits: List<RunSplit>.unmodifiable(_splits),
       hundredMeterLaps: List<RunLap100m>.unmodifiable(_hundredMeterLaps),
       intervalPlan: _intervalPlan,
+      activityType: _activityType,
+      environment: _environment,
     );
   }
 
@@ -848,6 +880,7 @@ class RunningEngine extends ChangeNotifier {
         speedKmh: speedKmh,
         paceSecondsPerKm: pace,
         paused: _status == RunStatus.paused,
+        activityLabel: _intervalPlan == null ? _activityType.label : 'Lari interval',
       );
     } catch (_) {
       // Kegagalan notifikasi tidak boleh menghentikan perekaman GPS.

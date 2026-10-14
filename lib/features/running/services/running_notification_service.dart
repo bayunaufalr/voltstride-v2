@@ -26,6 +26,7 @@ class RunningNotificationService {
     required double? speedKmh,
     required double? paceSecondsPerKm,
     required bool paused,
+    String activityLabel = 'Aktivitas',
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _ensureInitialized();
@@ -38,8 +39,8 @@ class RunningNotificationService {
         : '-- km/jam';
     final String pace = _formatPace(paceSecondsPerKm);
     final String title = paused
-        ? 'VoltStride • Lari dijeda'
-        : 'VoltStride • Lari berlangsung';
+        ? 'VoltStride • $activityLabel dijeda'
+        : 'VoltStride • $activityLabel berlangsung';
     final String body = paused
         ? 'DIJEDA • Waktu $time • $distance km • $speed • $pace/km'
         : 'Waktu $time • $distance km • $speed • $pace/km';

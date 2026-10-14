@@ -11,6 +11,19 @@ enum RunStatus {
   error,
 }
 
+enum RunActivityType { run, walk }
+enum RunEnvironment { outdoor, indoor }
+
+extension RunActivityTypeLabel on RunActivityType {
+  String get label => this == RunActivityType.walk ? 'Berjalan' : 'Berlari';
+}
+
+extension RunEnvironmentLabel on RunEnvironment {
+  String get label => this == RunEnvironment.indoor
+      ? 'Dalam ruangan'
+      : 'Luar ruangan';
+}
+
 /// Titik rute yang sudah lolos penyaringan.
 class RunPoint {
   final double latitude;
@@ -311,6 +324,8 @@ class RunSession {
   final List<RunSplit> splits;
   final List<RunLap100m> hundredMeterLaps;
   final IntervalRunPlan? intervalPlan;
+  final RunActivityType activityType;
+  final RunEnvironment environment;
 
   const RunSession({
     required this.startedAt,
@@ -327,7 +342,12 @@ class RunSession {
     required this.splits,
     this.hundredMeterLaps = const <RunLap100m>[],
     this.intervalPlan,
+    this.activityType = RunActivityType.run,
+    this.environment = RunEnvironment.outdoor,
   });
+
+  String get displayLabel =>
+      intervalPlan == null ? activityType.label : 'Lari interval';
 
   double get distanceKm => distanceMeters / 1000.0;
 
@@ -374,6 +394,8 @@ class RunSession {
       'intervalPlanJson': intervalPlan == null
           ? null
           : jsonEncode(intervalPlan!.toJson()),
+      'activityType': activityType.name,
+      'environment': environment.name,
     };
   }
 
@@ -445,6 +467,14 @@ class RunSession {
           )
           .toList(growable: false),
       intervalPlan: plan,
+      activityType: RunActivityType.values.firstWhere(
+        (RunActivityType value) => value.name == row['activityType'],
+        orElse: () => RunActivityType.run,
+      ),
+      environment: RunEnvironment.values.firstWhere(
+        (RunEnvironment value) => value.name == row['environment'],
+        orElse: () => RunEnvironment.outdoor,
+      ),
     );
   }
 

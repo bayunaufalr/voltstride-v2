@@ -18,7 +18,7 @@ class RunDetailPage extends StatelessWidget {
     final RunEvaluation evaluation = evaluateRun(session);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detail Lari')),
+      appBar: AppBar(title: Text('Detail aktivitas')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
@@ -37,7 +37,7 @@ class RunDetailPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(_dateText(start), style: const TextStyle(color: VoltWarna.teksAbu)),
+                    Text('${session.environment.label} • ${_dateText(start)}', style: const TextStyle(color: VoltWarna.teksAbu)),
                     const SizedBox(height: 14),
                     Row(
                       children: <Widget>[
@@ -57,34 +57,56 @@ class RunDetailPage extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text('PETA DAN TITIK KECEPATAN', style: TextStyle(fontWeight: FontWeight.w900)),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: RunRouteMapView(
-                      route: session.route,
-                      laps: session.hundredMeterLaps,
-                      height: 300,
+            if (session.environment == RunEnvironment.outdoor) ...<Widget>[
+              const SizedBox(height: 12),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Text(
+                        'PETA DAN TITIK KECEPATAN',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      'Ketuk penanda 100 m di peta untuk membuka kecepatan, pace, dan elevasi titik tersebut. Peta dasar memerlukan internet.',
-                      style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: RunRouteMapView(
+                        route: session.route,
+                        laps: session.hundredMeterLaps,
+                        height: 300,
+                      ),
                     ),
-                  ),
-                ],
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'Ketuk penanda 100 m di peta untuk membuka kecepatan, pace, dan elevasi titik tersebut. Peta dasar memerlukan internet.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: VoltWarna.teksAbu,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ] else ...<Widget>[
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.directions_treadmill_rounded, color: VoltWarna.aksen),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('Sesi dalam ruangan. Jarak dicatat dari nilai yang dimasukkan saat selesai; peta dan elevasi GPS tidak tersedia.')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             _elevationCard(elevation),
             const SizedBox(height: 12),
@@ -92,6 +114,8 @@ class RunDetailPage extends StatelessWidget {
               title: 'DATA SESI',
               child: Column(
                 children: <Widget>[
+                  _dataRow('Jenis aktivitas', session.displayLabel),
+                  _dataRow('Lokasi', session.environment.label),
                   _dataRow('Jarak', '${session.distanceMeters.toStringAsFixed(0)} m'),
                   _dataRow('Waktu total', session.elapsedText),
                   _dataRow('Waktu bergerak', session.movingTimeText),

@@ -18,7 +18,7 @@ class RunHistoryRepository {
 
   static const String _databaseName = 'voltstride_runs.db';
   static const String _tableName = 'run_sessions';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
   static const String _backupFormat = 'voltstride-run-history';
   static const int _backupVersion = 1;
 
@@ -53,7 +53,9 @@ class RunHistoryRepository {
             routeJson TEXT NOT NULL,
             splitsJson TEXT NOT NULL,
             hundredMeterLapsJson TEXT NOT NULL DEFAULT '[]',
-            intervalPlanJson TEXT
+            intervalPlanJson TEXT,
+            activityType TEXT NOT NULL DEFAULT 'run',
+            environment TEXT NOT NULL DEFAULT 'outdoor'
           )
         ''');
       },
@@ -64,6 +66,14 @@ class RunHistoryRepository {
           );
           await db.execute(
             'ALTER TABLE $_tableName ADD COLUMN intervalPlanJson TEXT',
+          );
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            "ALTER TABLE $_tableName ADD COLUMN activityType TEXT NOT NULL DEFAULT 'run'",
+          );
+          await db.execute(
+            "ALTER TABLE $_tableName ADD COLUMN environment TEXT NOT NULL DEFAULT 'outdoor'",
           );
         }
       },

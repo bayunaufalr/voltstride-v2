@@ -148,14 +148,16 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
           options: mapOptions,
           children: <Widget>[
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate:
+                  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+              subdomains: const <String>['a', 'b', 'c', 'd'],
               userAgentPackageName: 'com.example.voltstride',
             ),
             if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
             MarkerLayer(markers: markers),
             const RichAttributionWidget(
               attributions: <SourceAttribution>[
-                TextSourceAttribution('© OpenStreetMap contributors'),
+                TextSourceAttribution('© OpenStreetMap contributors © CARTO'),
               ],
             ),
           ],

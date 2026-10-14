@@ -11,15 +11,24 @@ import 'running_controller.dart';
 import 'services/run_history_repository.dart';
 import 'services/run_evaluation.dart';
 import 'run_route_map_view.dart';
+import 'services/personal_records_service.dart';
 
-/// Halaman lari V2.
-///
-/// Untuk sprint pertama ini kita sengaja fokus pada satu hal:
-/// start -> dapat GPS -> live metrics -> pause/resume -> finish -> summary.
-/// Hasil yang selesai disimpan otomatis ke SQLite lokal. Peta rute masuk
-/// sprint berikutnya setelah engine dan riwayat stabil.
+/// Perekaman aktivitas dan ringkasan sesi pengguna.
 class RunningPage extends StatefulWidget {
-  const RunningPage({super.key});
+  const RunningPage({
+    super.key,
+    this.activityType = RunActivityType.run,
+    this.environment = RunEnvironment.outdoor,
+    this.initialIntervalPlan,
+    this.autoStart = false,
+    this.onExit,
+  });
+
+  final RunActivityType activityType;
+  final RunEnvironment environment;
+  final IntervalRunPlan? initialIntervalPlan;
+  final bool autoStart;
+  final VoidCallback? onExit;
 
   @override
   State<RunningPage> createState() => _RunningPageState();
@@ -39,12 +48,26 @@ class _RunningPageState extends State<RunningPage> {
   String? _lastIntervalPhaseKey;
   bool _isSavingSession = false;
   String? _saveError;
+  List<String> _personalRecordAchievements = <String>[];
 
   @override
   void initState() {
     super.initState();
     _controller = RunningController();
     _controller.addListener(_onControllerChanged);
+    if (widget.initialIntervalPlan != null) {
+      final IntervalRunPlan plan = widget.initialIntervalPlan!;
+      _intervalModeSelected = true;
+      _activeIntervalPlan = plan;
+      _workSecondsController.text = plan.workSeconds.toString();
+      _recoverySecondsController.text = plan.recoverySeconds.toString();
+      _repetitionsController.text = plan.repetitions.toString();
+    }
+    if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startRun();
+      });
+    }
   }
 
   @override
@@ -117,10 +140,17 @@ class _RunningPageState extends State<RunningPage> {
       }
     }
 
-    _activeIntervalPlan = plan;
+    final IntervalRunPlan? effectivePlan =
+        widget.initialIntervalPlan ?? plan;
+    _activeIntervalPlan = effectivePlan;
     _lastIntervalPhaseKey = null;
     _liveMapExpanded = true;
-    await _controller.startRun(intervalPlan: plan);
+    await _controller.startRun(
+      intervalPlan: effectivePlan,
+      useGps: widget.environment == RunEnvironment.outdoor,
+      activityType: widget.activityType,
+      environment: widget.environment,
+    );
     if (_controller.status == RunStatus.error) {
       _activeIntervalPlan = null;
     }
@@ -148,42 +178,31 @@ class _RunningPageState extends State<RunningPage> {
 
   Widget _buildIdle() {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('VoltStride Run'),
-      ),
+      appBar: AppBar(title: const Text('Rekam aktivitas')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           children: <Widget>[
-            _heroCard(),
-            const SizedBox(height: 16),
-            _buildIntervalSettings(),
-            const SizedBox(height: 16),
-            _infoCard(
-              icon: Icons.gps_fixed,
-              title: 'GPS real-time',
-              text:
-                  'VoltStride menyaring titik GPS yang buruk sebelum jarak dan pace dihitung.',
+            const Icon(Icons.directions_run_rounded, size: 54, color: VoltWarna.aksen),
+            const SizedBox(height: 14),
+            const Text(
+              'Siap untuk bergerak?',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
             ),
-            const SizedBox(height: 12),
-            _infoCard(
-              icon: Icons.speed,
-              title: 'Pace otomatis',
-              text:
-                  'Current pace dan average pace dihitung dari data gerak nyata, bukan timer buatan.',
+            const SizedBox(height: 8),
+            Text(
+              widget.environment == RunEnvironment.indoor
+                  ? 'Waktu direkam tanpa GPS. Jarak bisa dimasukkan saat sesi selesai.'
+                  : 'Pastikan izin lokasi aktif sebelum mulai di luar ruangan.',
+              style: const TextStyle(color: VoltWarna.teksAbu, height: 1.4),
             ),
-            const SizedBox(height: 12),
-            _infoCard(
-              icon: Icons.route,
-              title: 'Route data',
-              text:
-                  'Titik rute disiapkan sejak engine dimulai supaya nanti mudah dipetakan dan disinkronkan.',
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
+            if (widget.initialIntervalPlan == null) _buildIntervalSettings(),
+            const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: _startRun,
-              icon: const Icon(Icons.play_arrow),
-              label: Text(_intervalModeSelected ? 'MULAI LARI INTERVAL' : 'MULAI LARI'),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(_intervalModeSelected ? 'Mulai interval' : 'Mulai aktivitas'),
             ),
           ],
         ),
@@ -246,6 +265,9 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
+  String get _activityDisplayLabel =>
+      _activeIntervalPlan == null ? widget.activityType.label : 'Lari interval';
+
   Widget _buildAcquiringGps() {
     return Scaffold(
       appBar: AppBar(
@@ -288,10 +310,110 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _buildLiveRun({required bool paused}) {
+    if (widget.environment == RunEnvironment.indoor) {
+      return _buildIndoorLiveRun(paused: paused);
+    }
     if (_liveMapExpanded) {
       return _buildLiveMapExperience(paused: paused);
     }
     return _buildLiveRunDetails(paused: paused);
+  }
+
+  Widget _buildIndoorLiveRun({required bool paused}) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${_activityDisplayLabel} • Dalam ruangan'),
+        leading: IconButton(
+          tooltip: 'Keluar dari aktivitas',
+          onPressed: () => _confirmExitIndoor(paused: paused),
+          icon: const Icon(Icons.close_rounded),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: const LinearGradient(
+                      colors: <Color>[Color(0xFF18384A), Color(0xFF1E293B)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      const Icon(Icons.directions_treadmill_rounded, size: 48, color: VoltWarna.aksen),
+                      const SizedBox(height: 16),
+                      Text(_formatDuration(_controller.elapsed), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 8),
+                      Text(paused ? 'Dijeda' : 'Aktivitas berlangsung', style: const TextStyle(color: VoltWarna.teksAbu)),
+                      const SizedBox(height: 22),
+                      Text('${_controller.distanceKm.toStringAsFixed(2)} km', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 5),
+                      const Text('Jarak dimasukkan setelah selesai', style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+                      if (_activeIntervalPlan != null) ...<Widget>[
+                        const SizedBox(height: 20),
+                        _intervalPhaseCard(_activeIntervalPlan!, _controller.elapsed),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: paused ? _controller.resumeRun : _controller.pauseRun,
+                      icon: Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded),
+                      label: Text(paused ? 'Lanjutkan' : 'Jeda'),
+                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _finishRun,
+                      icon: const Icon(Icons.stop_rounded),
+                      label: const Text('Selesai'),
+                      style: FilledButton.styleFrom(backgroundColor: VoltWarna.merah),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmExitIndoor({required bool paused}) async {
+    final bool? exit = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Akhiri aktivitas?'),
+        content: const Text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Kembali')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Akhiri')),
+        ],
+      ),
+    );
+    if (exit == true && mounted) {
+      _controller.resetRun();
+      final VoidCallback? onExit = widget.onExit;
+      if (onExit != null) onExit();
+    } else if (paused && mounted) {
+      // Tetap dijeda sesuai pilihan terakhir.
+    }
   }
 
   /// Map-first live running layout, similar to dedicated running apps.
@@ -362,7 +484,7 @@ class _RunningPageState extends State<RunningPage> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              paused ? 'LARI DIJEDA' : 'GPS AKTIF • $gpsAccuracy',
+                              paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -390,8 +512,8 @@ class _RunningPageState extends State<RunningPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Text(
-                          'BERLARI',
+                        Text(
+                          _activityDisplayLabel.toUpperCase(),
                           style: TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
@@ -567,7 +689,7 @@ class _RunningPageState extends State<RunningPage> {
   Widget _buildLiveRunDetails({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(paused ? 'Lari Dijeda' : 'Lari Berlangsung'),
+        title: Text(paused ? '$_activityDisplayLabel dijeda' : '$_activityDisplayLabel berlangsung'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -668,14 +790,14 @@ class _RunningPageState extends State<RunningPage> {
   Widget _buildSummary(RunSession? session) {
     if (session == null) {
       return _buildErrorCard(
-        'Data hasil lari tidak tersedia.',
+        'Data aktivitas tidak tersedia.',
         allowReset: true,
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Hasil Lari'),
+        title: Text('Hasil aktivitas'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -683,10 +805,23 @@ class _RunningPageState extends State<RunningPage> {
           padding: const EdgeInsets.all(16),
           children: <Widget>[
             _heroResultCard(session),
+            if (_personalRecordAchievements.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 12),
+              _personalRecordCard(),
+            ],
             const SizedBox(height: 12),
             _saveStatusCard(),
-            const SizedBox(height: 12),
-            _routeMapCard(session.route, session.hundredMeterLaps),
+            if (session.environment == RunEnvironment.outdoor) ...<Widget>[
+              const SizedBox(height: 12),
+              _routeMapCard(session.route, session.hundredMeterLaps),
+            ] else ...<Widget>[
+              const SizedBox(height: 12),
+              _infoCard(
+                icon: Icons.directions_treadmill_rounded,
+                title: 'Aktivitas dalam ruangan',
+                text: 'Jarak dicatat dari nilai yang dimasukkan saat sesi selesai. Peta dan elevasi GPS tidak tersedia untuk sesi ini.',
+              ),
+            ],
             const SizedBox(height: 12),
             _elevationStatsCard(session.elevationStats),
             const SizedBox(height: 12),
@@ -713,8 +848,10 @@ class _RunningPageState extends State<RunningPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _gpsQualityCard(session),
+            if (session.environment == RunEnvironment.outdoor) ...<Widget>[
+              const SizedBox(height: 12),
+              _gpsQualityCard(session),
+            ],
             const SizedBox(height: 12),
             _summarySplitsCard(session),
             if (_saveError != null) ...<Widget>[
@@ -732,7 +869,9 @@ class _RunningPageState extends State<RunningPage> {
               onPressed: _isSavingSession ? null : _backToRun,
               icon: Icon(_isSavingSession ? Icons.sync : Icons.refresh),
               label: Text(
-                _isSavingSession ? 'MENYIMPAN HASIL...' : 'KEMBALI KE LARI',
+                _isSavingSession
+                    ? 'Menyimpan hasil...'
+                    : (widget.onExit == null ? 'Kembali ke aktivitas' : 'Kembali ke beranda'),
               ),
             ),
           ],
@@ -755,7 +894,7 @@ class _RunningPageState extends State<RunningPage> {
   }) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VoltStride Run'),
+        title: const Text('Rekam aktivitas'),
       ),
       body: Center(
         child: Padding(
@@ -770,7 +909,7 @@ class _RunningPageState extends State<RunningPage> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'LARI TIDAK DAPAT DIMULAI',
+                'AKTIVITAS TIDAK DAPAT DIMULAI',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
@@ -803,18 +942,121 @@ class _RunningPageState extends State<RunningPage> {
   Future<void> _finishRun() async {
     if (_isSavingSession) return;
 
+    double? indoorDistanceMeters;
+    bool shouldResumeOnCancel = _controller.status == RunStatus.running;
+    if (widget.environment == RunEnvironment.indoor) {
+      if (shouldResumeOnCancel) _controller.pauseRun();
+      final TextEditingController distanceController =
+          TextEditingController(text: '0.00');
+      final String? enteredKm = await showDialog<String>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Jarak aktivitas dalam ruangan'),
+          content: TextField(
+            controller: distanceController,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Jarak (km)',
+              hintText: 'Contoh: 3,50',
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Lanjutkan sesi'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext)
+                  .pop(distanceController.text.trim()),
+              child: const Text('Selesai'),
+            ),
+          ],
+        ),
+      );
+      distanceController.dispose();
+      if (enteredKm == null) {
+        if (shouldResumeOnCancel && mounted) _controller.resumeRun();
+        return;
+      }
+      final double? km = double.tryParse(enteredKm.replaceAll(',', '.'));
+      if (km == null || !km.isFinite || km < 0 || km > 300) {
+        if (shouldResumeOnCancel && mounted) _controller.resumeRun();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Masukkan jarak 0 sampai 300 km.')),
+          );
+        }
+        return;
+      }
+      indoorDistanceMeters = km * 1000;
+    }
+
     setState(() {
       _isSavingSession = true;
       _saveError = null;
+      _personalRecordAchievements = <String>[];
     });
 
-    final RunSession? session = _controller.finishRun();
+    final RunSession? session =
+        _controller.finishRun(indoorDistanceMeters: indoorDistanceMeters);
     if (session == null) {
       if (mounted) setState(() => _isSavingSession = false);
       return;
     }
 
+    try {
+      final List<RunSession> previous =
+          await RunHistoryRepository.instance.getAll();
+      final List<String> achievements =
+          PersonalRecordsService.achievementsFor(session, previous);
+      if (mounted) {
+        setState(() => _personalRecordAchievements = achievements);
+      }
+    } catch (_) {
+      // Sesi tetap disimpan bila pembacaan riwayat lama gagal.
+    }
     await _persistSession(session, alreadySaving: true);
+  }
+
+  Widget _personalRecordCard() {
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          colors: <Color>[Color(0xFF173B31), Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: VoltWarna.hijau.withValues(alpha: 0.65)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(Icons.emoji_events_rounded, color: VoltWarna.hijau, size: 25),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text('REKOR BARU!', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ..._personalRecordAchievements.map((String achievement) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
+                    Expanded(child: Text(achievement, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
   }
 
   Future<void> _persistSession(
@@ -835,7 +1077,7 @@ class _RunningPageState extends State<RunningPage> {
       if (mounted) {
         setState(() {
           _saveError =
-              'Hasil lari belum tersimpan. Periksa ruang penyimpanan lalu coba lagi.';
+              'Hasil aktivitas belum tersimpan. Periksa ruang penyimpanan lalu coba lagi.';
         });
       }
     } finally {
@@ -851,13 +1093,17 @@ class _RunningPageState extends State<RunningPage> {
       _lastIntervalPhaseKey = null;
     });
     _controller.resetRun();
+    final VoidCallback? exit = widget.onExit;
+    if (exit != null) {
+      exit();
+    }
   }
 
   Widget _saveStatusCard() {
     final bool hasError = _saveError != null;
     final String message = _isSavingSession
-        ? 'Menyimpan hasil lari ke perangkat...'
-        : _saveError ?? 'Hasil lari tersimpan lokal di perangkat ini.';
+        ? 'Menyimpan aktivitas ke perangkat...' 
+        : _saveError ?? 'Aktivitas tersimpan di perangkat ini.';
 
     return Card(
       child: Padding(
@@ -888,7 +1134,7 @@ class _RunningPageState extends State<RunningPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const Text(
-              'RUNNING ENGINE V2',
+              'VOLTSTRIDE',
               style: TextStyle(
                 color: VoltWarna.aksen,
                 fontWeight: FontWeight.w900,
@@ -897,7 +1143,7 @@ class _RunningPageState extends State<RunningPage> {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Lari menjadi pusat VoltStride.',
+              'Gerak hari ini, progres berikutnya.',
               style: TextStyle(
                 fontSize: 28,
                 height: 1.05,
@@ -906,7 +1152,7 @@ class _RunningPageState extends State<RunningPage> {
             ),
             const SizedBox(height: 10),
             const Text(
-              'GPS, distance, pace, moving time, dan kilometer split dihitung dari sesi lari nyata.',
+              'Rekam sesi, tinjau rute, dan pantau progres dari satu tempat.',
               style: TextStyle(
                 color: VoltWarna.teksAbu,
                 height: 1.45,
@@ -1038,8 +1284,8 @@ class _RunningPageState extends State<RunningPage> {
           Expanded(
             child: Text(
               paused
-                  ? 'Sesi dijeda. GPS tetap tersedia untuk dilanjutkan.'
-                  : 'GPS aktif. Data gerak sedang dihitung.',
+                  ? 'Aktivitas dijeda. Lanjutkan saat siap.'
+                  : 'Aktivitas sedang direkam.',
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
               ),
@@ -1228,8 +1474,8 @@ class _RunningPageState extends State<RunningPage> {
         padding: const EdgeInsets.all(22),
         child: Column(
           children: <Widget>[
-            const Text(
-              'RUN SELESAI',
+            Text(
+              '${session.displayLabel.toUpperCase()} SELESAI',
               style: TextStyle(
                 color: VoltWarna.hijau,
                 fontWeight: FontWeight.w900,

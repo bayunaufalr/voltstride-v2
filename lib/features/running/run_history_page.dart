@@ -9,6 +9,7 @@ import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'services/run_history_repository.dart';
 import 'run_detail_page.dart';
+import 'run_route_map_view.dart';
 
 /// Riwayat sesi yang disimpan lokal pada perangkat.
 class RunHistoryPage extends StatefulWidget {
@@ -179,7 +180,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Hapus riwayat lari?'),
+          title: const Text('Hapus aktivitas?'),
           content: Text(
             'Sesi ${session.distanceText} km akan dihapus dari perangkat ini.',
           ),
@@ -206,7 +207,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Riwayat Lari'),
+        title: const Text('Riwayat aktivitas'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Muat ulang',
@@ -288,7 +289,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
                 icon: Icons.directions_run,
                 title: 'Belum ada riwayat',
                 message:
-                    'Selesaikan satu sesi lari. Hasilnya akan otomatis disimpan di perangkat ini.',
+                    'Selesaikan satu aktivitas. Hasilnya akan otomatis disimpan di perangkat ini.',
               );
             }
 
@@ -319,35 +320,91 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-        leading: const CircleAvatar(
-          backgroundColor: VoltWarna.aksen,
-          foregroundColor: VoltWarna.latar,
-          child: Icon(Icons.directions_run),
-        ),
-        title: Text(
-          '${session.distanceText} km',
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        subtitle: Text(
-          '$dateText\nWaktu ${session.elapsedText} • Pace ${session.averagePaceText}/km',
-        ),
-        isThreeLine: true,
-        trailing: IconButton(
-          tooltip: 'Hapus sesi',
-          onPressed: () => _deleteSession(session),
-          icon: const Icon(Icons.delete_outline),
-        ),
+      child: InkWell(
         onTap: () async {
           await Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
-              builder: (BuildContext context) =>
-                  RunDetailPage(session: session),
+              builder: (BuildContext context) => RunDetailPage(session: session),
             ),
           );
           await reload();
         },
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    backgroundColor: VoltWarna.surface,
+                    foregroundColor: VoltWarna.aksen,
+                    child: Icon(session.activityType == RunActivityType.walk
+                        ? Icons.directions_walk_rounded
+                        : Icons.directions_run_rounded),
+                  ),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          '${session.displayLabel} • ${session.distanceText} km',
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(dateText, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Hapus sesi',
+                    onPressed: () => _deleteSession(session),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+                ],
+              ),
+              if (session.route.length > 1) ...<Widget>[
+                const SizedBox(height: 11),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: RunRouteMapView(
+                    key: ValueKey<String>('history-${session.startedAt.toIso8601String()}'),
+                    route: session.route,
+                    laps: const <RunLap100m>[],
+                    height: 145,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 11),
+              Row(
+                children: <Widget>[
+                  _compactMetric('Waktu', session.elapsedText),
+                  _compactMetric('Pace', '${session.averagePaceText}/km'),
+                  _compactMetric('Lokasi', session.environment.label),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: Text('Lihat detail →', style: TextStyle(color: VoltWarna.aksen, fontSize: 11, fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _compactMetric(String label, String value) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+        ],
       ),
     );
   }

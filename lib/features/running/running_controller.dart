@@ -37,14 +37,24 @@ class RunningController extends ChangeNotifier {
   RunSession? get lastFinishedSession =>
       _engine.lastFinishedSession;
 
-  Future<void> startRun({IntervalRunPlan? intervalPlan}) =>
-      _engine.start(intervalPlan: intervalPlan);
+  Future<void> startRun({
+    IntervalRunPlan? intervalPlan,
+    bool useGps = true,
+    RunActivityType activityType = RunActivityType.run,
+    RunEnvironment environment = RunEnvironment.outdoor,
+  }) => _engine.start(
+        intervalPlan: intervalPlan,
+        useGps: useGps,
+        activityType: activityType,
+        environment: environment,
+      );
 
   void pauseRun() => _engine.pause();
 
   void resumeRun() => _engine.resume();
 
-  RunSession? finishRun() => _engine.finish();
+  RunSession? finishRun({double? indoorDistanceMeters}) =>
+      _engine.finish(indoorDistanceMeters: indoorDistanceMeters);
 
   void resetRun() => _engine.reset();
 

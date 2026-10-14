@@ -4,30 +4,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'features/ai_coach/ai_coach_page.dart';
+import 'features/home/home_dashboard_page.dart';
+import 'features/progress/progress_page.dart';
+import 'features/running/activity_setup_page.dart';
+import 'features/running/models/run_session.dart';
 import 'features/running/run_history_page.dart';
 import 'features/running/running_page.dart';
 import 'screens/muscle_page.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
 
-/// Titik masuk aplikasi VoltStride.
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: VoltWarna.latar,
       statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: VoltWarna.kartu,
+      systemNavigationBarColor: VoltWarna.latar,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-
   runApp(const VoltStrideApp());
 }
 
@@ -45,11 +45,6 @@ class VoltStrideApp extends StatelessWidget {
   }
 }
 
-/// Navigasi sementara V2.
-///
-/// RunningPage menggantikan TrackerPage lama sebagai modul utama. Timer
-/// dan strength tetap dipertahankan supaya kita tidak kehilangan fitur yang
-/// sudah ada selama migrasi dilakukan bertahap.
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -60,74 +55,167 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
 
+  final GlobalKey<HomeDashboardPageState> _homeKey =
+      GlobalKey<HomeDashboardPageState>();
+  final GlobalKey<ActivitySetupPageState> _activityKey =
+      GlobalKey<ActivitySetupPageState>();
   final GlobalKey<RunHistoryPageState> _historyKey =
       GlobalKey<RunHistoryPageState>();
+  final GlobalKey<ProgressPageState> _progressKey =
+      GlobalKey<ProgressPageState>();
 
   List<Widget> get _pages => <Widget>[
-        const RunningPage(),
+        HomeDashboardPage(
+          key: _homeKey,
+          onRecord: () => _selectTab(1),
+          onHistory: () => _selectTab(2),
+          onProgress: () => _selectTab(3),
+        ),
+        ActivitySetupPage(
+          key: _activityKey,
+          onStart: _startActivity,
+        ),
         RunHistoryPage(key: _historyKey),
-        const TimerPage(),
-        const AiCoachPage(),
-        const MusclePage(),
+        ProgressPage(key: _progressKey),
+        MorePage(
+          onOpenTimer: () => _openPage(const TimerPage()),
+          onOpenCoach: () => _openPage(const AiCoachPage()),
+          onOpenStrength: () => _openPage(const MusclePage()),
+        ),
       ];
 
-  static const List<_NavigationItem> _items = <_NavigationItem>[
-    _NavigationItem(
-      label: 'Lari',
-      icon: Icons.directions_run,
+  static const List<NavigationDestination> _destinations =
+      <NavigationDestination>[
+    NavigationDestination(
+      icon: Icon(Icons.home_outlined),
+      selectedIcon: Icon(Icons.home_rounded),
+      label: 'Beranda',
     ),
-    _NavigationItem(
+    NavigationDestination(
+      icon: Icon(Icons.radio_button_unchecked_rounded),
+      selectedIcon: Icon(Icons.radio_button_checked_rounded),
+      label: 'Rekam',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.history_rounded),
+      selectedIcon: Icon(Icons.history_rounded),
       label: 'Riwayat',
-      icon: Icons.history,
     ),
-    _NavigationItem(
-      label: 'Timer',
-      icon: Icons.timer_outlined,
+    NavigationDestination(
+      icon: Icon(Icons.insights_outlined),
+      selectedIcon: Icon(Icons.insights_rounded),
+      label: 'Kemajuan',
     ),
-    _NavigationItem(
-      label: 'AI Coach',
-      icon: Icons.chat_bubble_outline,
-    ),
-    _NavigationItem(
-      label: 'Otot',
-      icon: Icons.fitness_center,
+    NavigationDestination(
+      icon: Icon(Icons.grid_view_rounded),
+      selectedIcon: Icon(Icons.grid_view_rounded),
+      label: 'Lainnya',
     ),
   ];
+
+  void _selectTab(int value) {
+    setState(() => _index = value);
+    switch (value) {
+      case 0:
+        unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
+        break;
+      case 1:
+        unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
+        break;
+      case 2:
+        unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
+        break;
+      case 3:
+        unawaited(_progressKey.currentState?.reload() ?? Future<void>.value());
+        break;
+    }
+  }
+
+  Future<void> _startActivity(ActivityStartConfig config) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext routeContext) => RunningPage(
+          activityType: config.activityType,
+          environment: config.environment,
+          initialIntervalPlan: config.intervalPlan,
+          autoStart: true,
+          onExit: () => Navigator.of(routeContext).pop(),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _index = 0);
+    unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
+    unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
+    unawaited(_progressKey.currentState?.reload() ?? Future<void>.value());
+  }
+
+  Future<void> _openPage(Widget page) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (BuildContext context) => page),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _index, children: _pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (int value) {
-          setState(() => _index = value);
-          if (value == 1) {
-            unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
-          }
-        },
-        destinations: _items
-            .map(
-              (_NavigationItem item) => NavigationDestination(
-                icon: Icon(item.icon),
-                label: item.label,
-              ),
-            )
-            .toList(),
+        onDestinationSelected: _selectTab,
+        destinations: _destinations,
       ),
     );
   }
 }
 
-class _NavigationItem {
-  final String label;
-  final IconData icon;
-
-  const _NavigationItem({
-    required this.label,
-    required this.icon,
+class MorePage extends StatelessWidget {
+  const MorePage({
+    super.key,
+    required this.onOpenTimer,
+    required this.onOpenCoach,
+    required this.onOpenStrength,
   });
+
+  final VoidCallback onOpenTimer;
+  final VoidCallback onOpenCoach;
+  final VoidCallback onOpenStrength;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Lainnya')),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: <Widget>[
+          const Text('Alat latihan', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          const Text('Perlengkapan tambahan untuk rutinitasmu.', style: TextStyle(color: VoltWarna.teksAbu)),
+          const SizedBox(height: 18),
+          _moreItem(Icons.timer_outlined, 'Timer latihan', 'Atur ronde dan waktu pemulihan.', onOpenTimer),
+          _moreItem(Icons.chat_bubble_outline_rounded, 'Coach', 'Evaluasi dan saran berdasarkan aktivitas tersimpan.', onOpenCoach),
+          _moreItem(Icons.fitness_center_rounded, 'Latihan kekuatan', 'Referensi kelompok otot dan gerakan.', onOpenStrength),
+        ],
+      ),
+    );
+  }
+
+  Widget _moreItem(IconData icon, String title, String subtitle, VoidCallback onTap) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(color: VoltWarna.surface, borderRadius: BorderRadius.circular(14)),
+          child: Icon(icon, color: VoltWarna.aksen),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: Text(subtitle, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: onTap,
+      ),
+    );
+  }
 }
