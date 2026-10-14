@@ -7,7 +7,6 @@ import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/progress/progress_page.dart';
 import 'features/running/activity_setup_page.dart';
-import 'features/running/models/run_session.dart';
 import 'features/running/run_history_page.dart';
 import 'features/running/running_page.dart';
 import 'screens/muscle_page.dart';

@@ -349,7 +349,7 @@ class _RunningPageState extends State<RunningPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      const Icon(Icons.directions_treadmill_rounded, size: 48, color: VoltWarna.aksen),
+                      const Icon(Icons.directions_run_rounded, size: 48, color: VoltWarna.aksen),
                       const SizedBox(height: 16),
                       Text(_formatDuration(_controller.elapsed), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
@@ -817,7 +817,7 @@ class _RunningPageState extends State<RunningPage> {
             ] else ...<Widget>[
               const SizedBox(height: 12),
               _infoCard(
-                icon: Icons.directions_treadmill_rounded,
+                icon: Icons.directions_run_rounded,
                 title: 'Aktivitas dalam ruangan',
                 text: 'Jarak dicatat dari nilai yang dimasukkan saat sesi selesai. Peta dan elevasi GPS tidak tersedia untuk sesi ini.',
               ),
@@ -1120,44 +1120,6 @@ class _RunningPageState extends State<RunningPage> {
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(message)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _heroCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Text(
-              'VOLTSTRIDE',
-              style: TextStyle(
-                color: VoltWarna.aksen,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Gerak hari ini, progres berikutnya.',
-              style: TextStyle(
-                fontSize: 28,
-                height: 1.05,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Rekam sesi, tinjau rute, dan pantau progres dari satu tempat.',
-              style: TextStyle(
-                color: VoltWarna.teksAbu,
-                height: 1.45,
-              ),
-            ),
           ],
         ),
       ),

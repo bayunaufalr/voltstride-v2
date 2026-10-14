@@ -99,7 +99,7 @@ class RunDetailPage extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: <Widget>[
-                      const Icon(Icons.directions_treadmill_rounded, color: VoltWarna.aksen),
+                      const Icon(Icons.directions_run_rounded, color: VoltWarna.aksen),
                       const SizedBox(width: 12),
                       Expanded(child: Text('Sesi dalam ruangan. Jarak dicatat dari nilai yang dimasukkan saat selesai; peta dan elevasi GPS tidak tersedia.')),
                     ],

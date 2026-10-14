@@ -239,7 +239,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          Icon(Icons.directions_treadmill_rounded, size: 48, color: VoltWarna.aksen),
+          Icon(Icons.directions_run_rounded, size: 48, color: VoltWarna.aksen),
           SizedBox(height: 12),
           Text('Mode dalam ruangan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           SizedBox(height: 5),
