@@ -148,16 +148,18 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
           options: mapOptions,
           children: <Widget>[
             TileLayer(
-              urlTemplate:
-                  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-              subdomains: const <String>['a', 'b', 'c', 'd'],
+              // OpenStreetMap public raster tiles do not require an API key.
+              // Use them for this personal prototype instead of CARTO tiles,
+              // which currently return an API KEY REQUIRED watermark.
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.voltstride',
+              maxNativeZoom: 19,
             ),
             if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
             MarkerLayer(markers: markers),
             const RichAttributionWidget(
               attributions: <SourceAttribution>[
-                TextSourceAttribution('© OpenStreetMap contributors © CARTO'),
+                TextSourceAttribution('© OpenStreetMap contributors'),
               ],
             ),
           ],
