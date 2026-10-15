@@ -83,6 +83,8 @@ class RunningEngine extends ChangeNotifier {
   Timer? _notificationTimer;
   Stopwatch? _stopwatch;
   bool _notificationUpdateInProgress = false;
+  bool _disposed = false;
+  int _startGeneration = 0;
 
   RunStatus _status = RunStatus.idle;
   String? _errorMessage;
@@ -159,6 +161,7 @@ class RunningEngine extends ChangeNotifier {
   int get acceptedPoints => _acceptedPoints;
   int get rejectedPoints => _rejectedPoints;
   int get splitCount => _splits.length;
+  int get routeLength => _route.length;
 
   List<RunPoint> get route => List<RunPoint>.unmodifiable(_route);
   List<RunSplit> get splits => List<RunSplit>.unmodifiable(_splits);
@@ -178,8 +181,10 @@ class RunningEngine extends ChangeNotifier {
     bool useGps = true,
     RunActivityType activityType = RunActivityType.run,
     RunEnvironment environment = RunEnvironment.outdoor,
+    Future<void> Function()? onGpsReady,
   }) async {
-    if (isActive) return;
+    if (_disposed || isActive) return;
+    final int generation = ++_startGeneration;
 
     _resetSessionData();
     _intervalPlan = intervalPlan;
@@ -188,38 +193,73 @@ class RunningEngine extends ChangeNotifier {
     _environment = environment;
     _errorMessage = null;
     _status = RunStatus.acquiringGps;
-    notifyListeners();
+    _notifyIfAlive();
 
     if (!useGps) {
+      try {
+        await onGpsReady?.call();
+      } catch (_) {
+        if (!_isStaleStart(generation)) {
+          _fail('Persiapan aktivitas gagal. Coba mulai lagi.');
+        }
+        return;
+      }
+      if (_isStaleStart(generation)) return;
       _startedAt = DateTime.now();
       _stopwatch = Stopwatch()..start();
       _status = RunStatus.running;
       _uiTimer?.cancel();
       _uiTimer = Timer.periodic(
         const Duration(milliseconds: updateIntervalMilliseconds),
-        (_) => notifyListeners(),
+        (_) => _notifyIfAlive(),
       );
       _startNotificationUpdates();
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
-    final bool serviceEnabled =
-        await _locationSource.isServiceEnabled();
+    bool serviceEnabled;
+    try {
+      serviceEnabled = await _locationSource.isServiceEnabled();
+    } catch (_) {
+      if (!_isStaleStart(generation)) {
+        _fail('Tidak dapat memeriksa layanan lokasi. Coba lagi.');
+      }
+      return;
+    }
+    if (_isStaleStart(generation)) return;
     if (!serviceEnabled) {
       _fail('Layanan lokasi perangkat sedang mati.');
       return;
     }
 
-    final bool permissionGranted =
-        await _locationSource.requestPermission();
+    bool permissionGranted;
+    try {
+      permissionGranted = await _locationSource.requestPermission();
+    } catch (_) {
+      if (!_isStaleStart(generation)) {
+        _fail('Tidak dapat meminta izin lokasi. Periksa pengaturan aplikasi.');
+      }
+      return;
+    }
+    if (_isStaleStart(generation)) return;
     if (!permissionGranted) {
       _fail('Izin lokasi belum diberikan.');
       return;
     }
 
-    final Position? firstPosition =
-        await _locationSource.getCurrentPosition();
+    Position? firstPosition;
+    try {
+      firstPosition = await _locationSource
+          .getCurrentPosition()
+          .timeout(const Duration(seconds: 25), onTimeout: () => null);
+    } catch (_) {
+      if (!_isStaleStart(generation)) {
+        _fail('Gagal membaca lokasi GPS. Periksa sinyal dan izin lokasi.');
+      }
+      return;
+    }
+    if (_isStaleStart(generation)) return;
 
     if (firstPosition == null) {
       _fail(
@@ -235,25 +275,40 @@ class RunningEngine extends ChangeNotifier {
       return;
     }
 
+    try {
+      await onGpsReady?.call();
+    } catch (_) {
+      if (!_isStaleStart(generation)) {
+        _fail('Persiapan sebelum mulai gagal. Coba mulai lagi.');
+      }
+      return;
+    }
+    if (_isStaleStart(generation)) return;
+
     _startedAt = DateTime.now();
     _stopwatch = Stopwatch()..start();
     _seedPosition(firstPosition);
     _status = RunStatus.running;
 
-    _positionSubscription = _locationSource.getPositionStream().listen(
-      _onPosition,
-      onError: _onPositionError,
-      cancelOnError: false,
-    );
+    try {
+      _positionSubscription = _locationSource.getPositionStream().listen(
+        _onPosition,
+        onError: _onPositionError,
+        cancelOnError: false,
+      );
+    } catch (_) {
+      _fail('Pelacakan GPS tidak dapat dimulai. Coba mulai aktivitas lagi.');
+      return;
+    }
 
     _uiTimer?.cancel();
     _uiTimer = Timer.periodic(
       const Duration(milliseconds: updateIntervalMilliseconds),
-      (_) => notifyListeners(),
+      (_) => _notifyIfAlive(),
     );
     _startNotificationUpdates();
 
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   /// Menjeda stopwatch dan membekukan akumulasi sesi.
@@ -267,7 +322,7 @@ class RunningEngine extends ChangeNotifier {
     _status = RunStatus.paused;
     _currentPaceSecondsPerKm = null;
     unawaited(_updateRunNotificationSafely());
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   /// Melanjutkan sesi tanpa menghitung perpindahan selama masa pause.
@@ -283,7 +338,7 @@ class RunningEngine extends ChangeNotifier {
     _currentPaceSecondsPerKm = null;
     _status = RunStatus.running;
     unawaited(_updateRunNotificationSafely());
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   /// Mengakhiri sesi dan menghasilkan snapshot final.
@@ -311,12 +366,14 @@ class RunningEngine extends ChangeNotifier {
 
     final RunSession session = _buildSession();
     _lastFinishedSession = session;
-    notifyListeners();
+    _notifyIfAlive();
     return session;
   }
 
   /// Menghapus hasil sesi dan kembali ke keadaan siap.
   void reset() {
+    if (_disposed) return;
+    _startGeneration++;
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
@@ -329,11 +386,14 @@ class RunningEngine extends ChangeNotifier {
     _errorMessage = null;
     _lastFinishedSession = null;
     _resetSessionData();
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _startGeneration++;
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _notificationTimer?.cancel();
@@ -388,7 +448,10 @@ class RunningEngine extends ChangeNotifier {
   void _seedPosition(Position position) {
     final int activeElapsedMilliseconds =
         _stopwatch?.elapsedMilliseconds ?? 0;
-    final DateTime timestamp = position.timestamp;
+    // The first fix is acquired before the 5-second countdown. Anchor it to
+    // the real start moment, not the old acquisition timestamp, so the first
+    // movement is not divided by the GPS wait + countdown duration.
+    final DateTime timestamp = DateTime.now();
 
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
@@ -418,13 +481,13 @@ class RunningEngine extends ChangeNotifier {
   }
 
   void _onPosition(Position position) {
-    if (_status != RunStatus.running) return;
+    if (_disposed || _status != RunStatus.running) return;
 
     _gpsAccuracyMeters = position.accuracy;
 
     if (!_isPositionUsable(position)) {
       _rejectedPoints++;
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
@@ -435,7 +498,7 @@ class RunningEngine extends ChangeNotifier {
 
     if (_awaitingResumeAnchor) {
       _seedResumeAnchor(position);
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
@@ -443,7 +506,7 @@ class RunningEngine extends ChangeNotifier {
         previousLatitude == null ||
         previousLongitude == null) {
       _seedResumeAnchor(position);
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
@@ -479,7 +542,7 @@ class RunningEngine extends ChangeNotifier {
         timestamp: trackingTimestamp,
         elapsedMilliseconds: elapsedAfterUpdate,
       );
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
@@ -497,7 +560,7 @@ class RunningEngine extends ChangeNotifier {
         timestamp: trackingTimestamp,
         elapsedMilliseconds: elapsedAfterUpdate,
       );
-      notifyListeners();
+      _notifyIfAlive();
       return;
     }
 
@@ -539,7 +602,7 @@ class RunningEngine extends ChangeNotifier {
 
     _appendRoutePoint(position, timestamp: trackingTimestamp);
     _recordPaceSample(trackingTimestamp);
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   double _movementThresholdFor(Position position) {
@@ -889,7 +952,15 @@ class RunningEngine extends ChangeNotifier {
     }
   }
 
+  bool _isStaleStart(int generation) =>
+      _disposed || generation != _startGeneration;
+
+  void _notifyIfAlive() {
+    if (!_disposed) notifyListeners();
+  }
+
   void _fail(String message) {
+    if (_disposed) return;
     _cancelPositionSubscription();
     _uiTimer?.cancel();
     _uiTimer = null;
@@ -899,15 +970,15 @@ class RunningEngine extends ChangeNotifier {
     _stopwatch?.stop();
     _status = RunStatus.error;
     _errorMessage = message;
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   void _onPositionError(Object error) {
-    if (_status != RunStatus.running) return;
+    if (_disposed || _status != RunStatus.running) return;
 
     _errorMessage = 'Stream GPS bermasalah: $error';
     _rejectedPoints++;
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   void _cancelPositionSubscription() {

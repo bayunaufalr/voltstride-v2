@@ -20,6 +20,8 @@ class RunningPage extends StatefulWidget {
     this.activityType = RunActivityType.run,
     this.environment = RunEnvironment.outdoor,
     this.initialIntervalPlan,
+    this.targetDistanceKm,
+    this.targetPaceSecondsPerKm,
     this.autoStart = false,
     this.onExit,
   });
@@ -27,6 +29,8 @@ class RunningPage extends StatefulWidget {
   final RunActivityType activityType;
   final RunEnvironment environment;
   final IntervalRunPlan? initialIntervalPlan;
+  final double? targetDistanceKm;
+  final double? targetPaceSecondsPerKm;
   final bool autoStart;
   final VoidCallback? onExit;
 
@@ -49,11 +53,22 @@ class _RunningPageState extends State<RunningPage> {
   bool _isSavingSession = false;
   String? _saveError;
   List<String> _personalRecordAchievements = <String>[];
+  final ValueNotifier<int> _liveMetricsRevision = ValueNotifier<int>(0);
+  final ValueNotifier<List<RunPoint>> _liveMapRoute =
+      ValueNotifier<List<RunPoint>>(const <RunPoint>[]);
+  final ValueNotifier<RunElevationStats> _liveElevationStats =
+      ValueNotifier<RunElevationStats>(calculateRunElevation(const <RunPoint>[]));
+  Timer? _mapRefreshTimer;
+  RunStatus? _lastObservedStatus;
+  int _lastObservedRouteLength = 0;
+  int? _countdownValue;
+  bool _isStarting = false;
 
   @override
   void initState() {
     super.initState();
     _controller = RunningController();
+    _lastObservedStatus = _controller.status;
     _controller.addListener(_onControllerChanged);
     if (widget.initialIntervalPlan != null) {
       final IntervalRunPlan plan = widget.initialIntervalPlan!;
@@ -73,6 +88,10 @@ class _RunningPageState extends State<RunningPage> {
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
+    _mapRefreshTimer?.cancel();
+    _liveMetricsRevision.dispose();
+    _liveMapRoute.dispose();
+    _liveElevationStats.dispose();
     _controller.dispose();
     _workSecondsController.dispose();
     _recoverySecondsController.dispose();
@@ -81,8 +100,12 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   void _onControllerChanged() {
+    final RunStatus currentStatus = _controller.status;
+    final bool statusChanged = currentStatus != _lastObservedStatus;
+    _lastObservedStatus = currentStatus;
+
     final IntervalRunPlan? plan = _activeIntervalPlan;
-    if (plan != null && _controller.status == RunStatus.running) {
+    if (plan != null && currentStatus == RunStatus.running) {
       final IntervalPhase phase = plan.phaseAt(_controller.elapsed);
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
@@ -91,17 +114,69 @@ class _RunningPageState extends State<RunningPage> {
       }
       _lastIntervalPhaseKey = phaseKey;
     }
-    if (_controller.status == RunStatus.idle ||
-        _controller.status == RunStatus.error) {
+
+    if (currentStatus == RunStatus.idle || currentStatus == RunStatus.error) {
       _lastIntervalPhaseKey = null;
       _activeIntervalPlan = null;
     }
-    if (mounted) {
-      setState(() {});
+
+    final int routeLength = _controller.routeLength;
+    if (routeLength != _lastObservedRouteLength) {
+      _lastObservedRouteLength = routeLength;
+      _scheduleMapRouteRefresh(immediate: statusChanged);
+    } else if (statusChanged &&
+        (currentStatus == RunStatus.running ||
+            currentStatus == RunStatus.paused ||
+            currentStatus == RunStatus.finished)) {
+      _scheduleMapRouteRefresh(immediate: true);
     }
+
+    // Jam/pace/angka statistik diperbarui lewat notifier kecil. Jangan setState
+    // seluruh halaman setiap detik karena itu ikut membangun ulang widget peta.
+    _liveMetricsRevision.value++;
+    if (statusChanged && mounted) setState(() {});
+  }
+
+  void _scheduleMapRouteRefresh({bool immediate = false}) {
+    if (!mounted) return;
+    if (immediate) {
+      _mapRefreshTimer?.cancel();
+      _mapRefreshTimer = null;
+      final List<RunPoint> latestRoute = _controller.route;
+      _liveMapRoute.value = latestRoute;
+      _liveElevationStats.value = calculateRunElevation(latestRoute);
+      return;
+    }
+    // Peta diperbarui berkala, bukan untuk setiap tick statistik. Rute penuh
+    // tetap disimpan oleh engine dan dipakai saat hasil sesi dibuat.
+    _mapRefreshTimer ??= Timer(const Duration(seconds: 2), () {
+      _mapRefreshTimer = null;
+      if (!mounted) return;
+      final List<RunPoint> latestRoute = _controller.route;
+      _liveMapRoute.value = latestRoute;
+      _liveElevationStats.value = calculateRunElevation(latestRoute);
+    });
+  }
+
+  Widget _liveMetricsBuilder(Widget Function() builder) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _liveMetricsRevision,
+      builder: (BuildContext context, int revision, Widget? child) => builder(),
+    );
+  }
+
+  Future<void> _runStartCountdown() async {
+    for (int value = 5; value >= 1; value--) {
+      if (!mounted) return;
+      setState(() => _countdownValue = value);
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    if (mounted) setState(() => _countdownValue = null);
   }
 
   Future<void> _startRun() async {
+    if (_isStarting) return;
+
     IntervalRunPlan? plan;
     if (_intervalModeSelected) {
       final int? work = int.tryParse(_workSecondsController.text.trim());
@@ -124,35 +199,55 @@ class _RunningPageState extends State<RunningPage> {
       );
     }
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        final PermissionStatus notificationStatus =
-            await Permission.notification.request();
-        if (!notificationStatus.isGranted && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Izin notifikasi ditolak. Pelacakan tetap dicoba, tetapi notifikasi mungkin tidak tampil di panel.'),
-            ),
-          );
+    setState(() => _isStarting = true);
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final PermissionStatus notificationStatus =
+              await Permission.notification.request();
+          if (!mounted) return;
+          if (!notificationStatus.isGranted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Izin notifikasi ditolak. Pelacakan tetap dicoba, tetapi notifikasi mungkin tidak tampil di panel.'),
+              ),
+            );
+          }
+        } catch (_) {
+          // GPS masih dapat dimulai jika dialog notifikasi tidak tersedia.
         }
-      } catch (_) {
-        // GPS masih dapat dimulai jika dialog notifikasi tidak tersedia.
       }
-    }
+      if (!mounted) return;
 
-    final IntervalRunPlan? effectivePlan =
-        widget.initialIntervalPlan ?? plan;
-    _activeIntervalPlan = effectivePlan;
-    _lastIntervalPhaseKey = null;
-    _liveMapExpanded = true;
-    await _controller.startRun(
-      intervalPlan: effectivePlan,
-      useGps: widget.environment == RunEnvironment.outdoor,
-      activityType: widget.activityType,
-      environment: widget.environment,
-    );
-    if (_controller.status == RunStatus.error) {
-      _activeIntervalPlan = null;
+      final IntervalRunPlan? effectivePlan =
+          widget.initialIntervalPlan ?? plan;
+      _activeIntervalPlan = effectivePlan;
+      _lastIntervalPhaseKey = null;
+      _liveMapExpanded = true;
+      _countdownValue = null;
+      await _controller.startRun(
+        intervalPlan: effectivePlan,
+        useGps: widget.environment == RunEnvironment.outdoor,
+        activityType: widget.activityType,
+        environment: widget.environment,
+        onGpsReady: _runStartCountdown,
+      );
+      if (!mounted) return;
+      if (_controller.status == RunStatus.error) {
+        _activeIntervalPlan = null;
+        _countdownValue = null;
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _countdownValue = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('VoltStride tidak dapat memulai aktivitas. Coba lagi setelah lokasi siap.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isStarting = false);
     }
   }
 
@@ -200,9 +295,13 @@ class _RunningPageState extends State<RunningPage> {
             if (widget.initialIntervalPlan == null) _buildIntervalSettings(),
             const SizedBox(height: 18),
             FilledButton.icon(
-              onPressed: _startRun,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(_intervalModeSelected ? 'Mulai interval' : 'Mulai aktivitas'),
+              onPressed: _isStarting ? null : _startRun,
+              icon: _isStarting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.play_arrow_rounded),
+              label: Text(_isStarting
+                  ? 'Menyiapkan aktivitas...'
+                  : (_intervalModeSelected ? 'Mulai interval' : 'Mulai aktivitas')),
             ),
           ],
         ),
@@ -269,9 +368,11 @@ class _RunningPageState extends State<RunningPage> {
       _activeIntervalPlan == null ? widget.activityType.label : 'Lari interval';
 
   Widget _buildAcquiringGps() {
+    final bool indoor = widget.environment == RunEnvironment.indoor;
+    final bool countingDown = _countdownValue != null;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mencari GPS'),
+        title: Text(countingDown ? 'Bersiap' : (indoor ? 'Menyiapkan aktivitas' : 'Mencari GPS')),
       ),
       body: Center(
         child: Padding(
@@ -279,15 +380,38 @@ class _RunningPageState extends State<RunningPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              const SizedBox(
-                width: 64,
-                height: 64,
-                child: CircularProgressIndicator(strokeWidth: 5),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: countingDown
+                    ? Container(
+                        key: ValueKey<int>(_countdownValue!),
+                        width: 160,
+                        height: 160,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: VoltWarna.aksen.withValues(alpha: 0.14),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: VoltWarna.aksen, width: 3),
+                        ),
+                        child: Text(
+                          '$_countdownValue',
+                          style: const TextStyle(fontSize: 92, fontWeight: FontWeight.w900),
+                        ),
+                      )
+                    : const SizedBox(
+                        key: ValueKey<String>('gps-search'),
+                        width: 64,
+                        height: 64,
+                        child: CircularProgressIndicator(strokeWidth: 5),
+                      ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'MENCARI SINYAL GPS',
-                style: TextStyle(
+              Text(
+                countingDown
+                    ? 'MULAI DALAM $_countdownValue'
+                    : (indoor ? 'MENYIAPKAN AKTIVITAS' : 'MENCARI SINYAL GPS'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.4,
@@ -296,12 +420,22 @@ class _RunningPageState extends State<RunningPage> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Tunggu sampai posisi cukup akurat sebelum timer lari dimulai.',
+                countingDown
+                    ? 'Posisi sudah siap. Bersiap dan mulai dengan nyaman.'
+                    : (indoor
+                        ? 'Timer akan dimulai setelah hitung mundur selesai.'
+                        : 'Pencarian GPS berjalan dulu. Begitu posisi cukup akurat, muncul hitung mundur 5–4–3–2–1 dan timer baru dimulai setelah hitung mundur selesai.'),
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: VoltWarna.teksAbu,
-                ),
+                style: const TextStyle(color: VoltWarna.teksAbu, height: 1.45),
               ),
+              if (!countingDown && !indoor) ...<Widget>[
+                const SizedBox(height: 18),
+                const Text(
+                  'Pastikan lokasi perangkat aktif dan izinkan akses lokasi.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+                ),
+              ],
             ],
           ),
         ),
@@ -336,7 +470,7 @@ class _RunningPageState extends State<RunningPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Expanded(
-                child: Container(
+                child: _liveMetricsBuilder(() => Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
@@ -364,7 +498,7 @@ class _RunningPageState extends State<RunningPage> {
                       ],
                     ],
                   ),
-                ),
+                )),
               ),
               const SizedBox(height: 14),
               Row(
@@ -420,27 +554,22 @@ class _RunningPageState extends State<RunningPage> {
   /// The top-left control closes the map; the collapsed details screen keeps
   /// all existing metrics and offers a way to reopen it.
   Widget _buildLiveMapExperience({required bool paused}) {
-    final double? pace = _controller.currentPaceSecondsPerKm ??
-        _controller.averagePaceSecondsPerKm;
-    final double? speedKmh = pace != null && pace > 0 ? 3600.0 / pace : null;
-    final RunElevationStats elevation = calculateRunElevation(_controller.route);
-    final String netElevation =
-        '${elevation.netChangeMeters > 0 ? '+' : ''}'
-        '${elevation.netChangeMeters.toStringAsFixed(0)} m';
-    final String gpsAccuracy = _formatAccuracy(_controller.gpsAccuracyMeters);
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
           Positioned.fill(
-            child: RunRouteMapView(
-              key: const ValueKey<String>('live-run-route-map-fullscreen'),
-              route: _controller.route,
-              laps: _controller.hundredMeterLaps,
-              height: MediaQuery.sizeOf(context).height,
-              followLastPoint: !paused,
+            child: ValueListenableBuilder<List<RunPoint>>(
+              valueListenable: _liveMapRoute,
+              builder: (BuildContext context, List<RunPoint> route, Widget? child) =>
+                  RunRouteMapView(
+                key: const ValueKey<String>('live-run-route-map-fullscreen'),
+                route: route,
+                laps: _controller.hundredMeterLaps,
+                height: MediaQuery.sizeOf(context).height,
+                followLastPoint: !paused,
+              ),
             ),
           ),
           SafeArea(
@@ -465,125 +594,148 @@ class _RunningPageState extends State<RunningPage> {
                         ),
                       ),
                       const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.84),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              paused ? Icons.pause_circle : Icons.gps_fixed,
-                              size: 16,
-                              color: paused ? Colors.orangeAccent : Colors.greenAccent,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 11,
+                      _liveMetricsBuilder(() {
+                        final String gpsAccuracy =
+                            _formatAccuracy(_controller.gpsAccuracyMeters);
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.84),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Icon(
+                                paused ? Icons.pause_circle : Icons.gps_fixed,
+                                size: 16,
+                                color: paused ? Colors.orangeAccent : Colors.greenAccent,
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
+                              const SizedBox(width: 6),
+                              Text(
+                                paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
                     ],
                   ),
                 ),
                 const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xED101010),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          _activityDisplayLabel.toUpperCase(),
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: <Widget>[
-                            _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
-                            _liveMapMetric('PACE', _formatPace(pace)),
-                            _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: <Widget>[
-                            const Icon(Icons.speed, color: VoltWarna.aksen, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
-                                  ? '${speedKmh.toStringAsFixed(1)} km/jam'
-                                  : '-- km/jam',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
+                _liveMetricsBuilder(() {
+                  final double? pace = _controller.currentPaceSecondsPerKm ??
+                      _controller.averagePaceSecondsPerKm;
+                  final double? speedKmh =
+                      pace != null && pace > 0 ? 3600.0 / pace : null;
+                  final RunElevationStats elevation = _liveElevationStats.value;
+                  final String netElevation =
+                      '${elevation.netChangeMeters > 0 ? '+' : ''}'
+                      '${elevation.netChangeMeters.toStringAsFixed(0)} m';
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xED101010),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: const <BoxShadow>[
+                          BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            _activityDisplayLabel.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
                             ),
-                            const Spacer(),
-                            const Icon(Icons.terrain, color: VoltWarna.aksen, size: 18),
-                            const SizedBox(width: 5),
-                            Flexible(
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: <Widget>[
+                              _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
+                              _liveMapMetric('PACE', _formatPace(pace)),
+                              _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: <Widget>[
+                              const Icon(Icons.speed, color: VoltWarna.aksen, size: 18),
+                              const SizedBox(width: 6),
+                              Text(
+                                speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
+                                    ? '${speedKmh.toStringAsFixed(1)} km/jam'
+                                    : '-- km/jam',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const Spacer(),
+                              const Icon(Icons.terrain, color: VoltWarna.aksen, size: 18),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  elevation.hasAltitudeData
+                                      ? 'Bersih $netElevation'
+                                      : 'Elevasi --',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (elevation.hasAltitudeData) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
                               child: Text(
-                                elevation.hasAltitudeData
-                                    ? 'Bersih $netElevation'
-                                    : 'Elevasi --',
+                                'Naik ${elevation.totalAscentMeters.toStringAsFixed(0)} m'
+                                ' • Turun ${elevation.totalDescentMeters.toStringAsFixed(0)} m'
+                                ' • Puncak +${elevation.maxAboveStartMeters.toStringAsFixed(0)} m dari start',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.white70,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 12,
                                 ),
                               ),
                             ),
                           ],
-                        ),
-                        if (elevation.hasAltitudeData) ...<Widget>[
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Naik ${elevation.totalAscentMeters.toStringAsFixed(0)} m'
-                              ' • Turun ${elevation.totalDescentMeters.toStringAsFixed(0)} m'
-                              ' • Puncak +${elevation.maxAboveStartMeters.toStringAsFixed(0)} m dari start',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
+                          if (widget.environment == RunEnvironment.outdoor &&
+                              widget.activityType == RunActivityType.run) ...<Widget>[
+                            const SizedBox(height: 10),
+                            _estimatedFinishCard(),
+                            if (widget.targetPaceSecondsPerKm != null) ...<Widget>[
+                              const SizedBox(height: 8),
+                              _targetPaceAdviceCard(),
+                            ],
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                }),
                 Container(
                   padding: EdgeInsets.fromLTRB(
                     16,
@@ -686,6 +838,151 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
+  double? _nextStandardTargetKm() {
+    final double distance = _controller.distanceKm;
+    const List<double> targets = <double>[5.0, 10.0, 21.0975, 42.195];
+    for (final double target in targets) {
+      if (distance < target) return target;
+    }
+    return null;
+  }
+
+  String _targetDistanceLabel(double distanceKm) {
+    if ((distanceKm - 21.0975).abs() < 0.02) return 'Half marathon · 21,1 km';
+    if ((distanceKm - 42.195).abs() < 0.02) return 'Full marathon · 42,2 km';
+    return '${distanceKm.toStringAsFixed(distanceKm % 1 == 0 ? 0 : 1)} km';
+  }
+
+  Widget _estimatedFinishCard() {
+    final double currentDistance = _controller.distanceKm;
+    final double? customTarget = widget.targetDistanceKm;
+    final double? goalDistance = customTarget ?? _nextStandardTargetKm();
+    if (goalDistance == null) return const SizedBox.shrink();
+
+    final bool custom = customTarget != null;
+    final bool achieved = currentDistance >= goalDistance;
+    final String title = custom
+        ? (achieved ? 'TARGET HARI INI TERCAPAI' : 'ESTIMASI TARGET HARI INI')
+        : 'ESTIMASI ${_targetDistanceLabel(goalDistance).toUpperCase()}';
+    final double currentPace = _controller.elapsed.inMilliseconds > 0 &&
+            currentDistance >= 0.3
+        ? _controller.elapsed.inMilliseconds / 1000.0 / currentDistance
+        : double.nan;
+
+    String estimateText = 'Mengumpulkan data jarak dan pace (minimal sekitar 300 m).';
+    if (currentPace.isFinite && currentPace > 0 && currentPace <= 3600) {
+      final int totalSeconds = (currentPace * goalDistance).round();
+      final double remainingKm = goalDistance > currentDistance
+          ? goalDistance - currentDistance
+          : 0.0;
+      final int remainingSeconds = (currentPace * remainingKm).round();
+      estimateText = achieved
+          ? 'Target jarak tercapai.'
+          : 'Total sekitar ${_formatDuration(Duration(seconds: totalSeconds))} '
+              '• sisa ${_formatDuration(Duration(seconds: remainingSeconds))}';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: achieved
+            ? VoltWarna.hijau.withValues(alpha: 0.13)
+            : const Color(0xFF202735),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: achieved ? VoltWarna.hijau : Colors.white12,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: TextStyle(
+              color: achieved ? VoltWarna.hijau : VoltWarna.aksen,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            estimateText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+          if (!custom && currentDistance >= 5.0 && currentDistance < 5.15)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                '5 km tercapai. Estimasi berikutnya beralih ke 10 km.',
+                style: TextStyle(color: Colors.white70, fontSize: 10),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _targetPaceAdviceCard() {
+    final double? targetPace = widget.targetPaceSecondsPerKm;
+    if (targetPace == null) return const SizedBox.shrink();
+
+    final double? currentPace = _controller.currentPaceSecondsPerKm ??
+        _controller.averagePaceSecondsPerKm;
+    final bool enoughData = currentPace != null &&
+        currentPace.isFinite &&
+        currentPace > 0 &&
+        currentPace <= 3600;
+    final bool onTarget = enoughData && currentPace! <= targetPace;
+    final Color statusColor = !enoughData
+        ? Colors.white70
+        : onTarget
+            ? VoltWarna.hijau
+            : VoltWarna.merah;
+    final String currentPaceText = enoughData ? _formatPace(currentPace) : '--:--';
+    final String advice = !enoughData
+        ? 'Mengumpulkan data pace. Saran akan muncul setelah bergerak cukup jauh.'
+        : onTarget
+            ? 'Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.'
+            : 'Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: statusColor.withValues(alpha: 0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            enoughData ? (onTarget ? 'PACE SESUAI TARGET' : 'PERHATIKAN PACE') : 'TARGET PACE',
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km',
+            style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          Text(advice, style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.35)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLiveRunDetails({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
@@ -700,13 +997,23 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 10),
             _liveMapSection(paused: paused),
             const SizedBox(height: 12),
-            _heroMetricCard(),
+            _liveMetricsBuilder(() => _heroMetricCard()),
             if (_activeIntervalPlan != null) ...<Widget>[
               const SizedBox(height: 12),
-              _intervalPhaseCard(_activeIntervalPlan!, _controller.elapsed),
+              _liveMetricsBuilder(() =>
+                  _intervalPhaseCard(_activeIntervalPlan!, _controller.elapsed)),
+            ],
+            if (widget.environment == RunEnvironment.outdoor &&
+                widget.activityType == RunActivityType.run) ...<Widget>[
+              const SizedBox(height: 10),
+              _liveMetricsBuilder(() => _estimatedFinishCard()),
+              if (widget.targetPaceSecondsPerKm != null) ...<Widget>[
+                const SizedBox(height: 8),
+                _liveMetricsBuilder(() => _targetPaceAdviceCard()),
+              ],
             ],
             const SizedBox(height: 12),
-            Row(
+            _liveMetricsBuilder(() => Row(
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
@@ -719,23 +1026,19 @@ class _RunningPageState extends State<RunningPage> {
                 Expanded(
                   child: _metricCard(
                     label: 'AVG PACE',
-                    value: _formatPace(
-                      _controller.averagePaceSecondsPerKm,
-                    ),
+                    value: _formatPace(_controller.averagePaceSecondsPerKm),
                     icon: Icons.speed,
                   ),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 10),
-            Row(
+            _liveMetricsBuilder(() => Row(
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
                     label: 'GPS',
-                    value: _formatAccuracy(
-                      _controller.gpsAccuracyMeters,
-                    ),
+                    value: _formatAccuracy(_controller.gpsAccuracyMeters),
                     icon: Icons.gps_fixed,
                   ),
                 ),
@@ -743,17 +1046,20 @@ class _RunningPageState extends State<RunningPage> {
                 Expanded(
                   child: _metricCard(
                     label: 'TITIK BERSIH',
-                    value:
-                        '${(_controller.gpsCleanRatio * 100).round()}%',
+                    value: '${(_controller.gpsCleanRatio * 100).round()}%',
                     icon: Icons.filter_alt,
                   ),
                 ),
               ],
-            ),
+            )),
             const SizedBox(height: 12),
-            _elevationStatsCard(calculateRunElevation(_controller.route)),
-            const SizedBox(height: 12),
-            _splitCard(),
+            _liveMetricsBuilder(() => Column(
+              children: <Widget>[
+                _elevationStatsCard(_liveElevationStats.value),
+                const SizedBox(height: 12),
+                _splitCard(),
+              ],
+            )),
             const SizedBox(height: 20),
             Row(
               children: <Widget>[
@@ -795,9 +1101,15 @@ class _RunningPageState extends State<RunningPage> {
       );
     }
 
+    final String routeActivityLabel = session.activityType == RunActivityType.walk
+        ? 'Berjalan'
+        : session.intervalPlan != null
+            ? 'Lari interval'
+            : 'Lari';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Hasil aktivitas'),
+        title: const Text('Hasil aktivitas'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -813,7 +1125,7 @@ class _RunningPageState extends State<RunningPage> {
             _saveStatusCard(),
             if (session.environment == RunEnvironment.outdoor) ...<Widget>[
               const SizedBox(height: 12),
-              _routeMapCard(session.route, session.hundredMeterLaps),
+              _routeMapCard(session.route, session.hundredMeterLaps, activityLabel: routeActivityLabel),
             ] else ...<Widget>[
               const SizedBox(height: 12),
               _infoCard(
@@ -1580,16 +1892,20 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  Widget _routeMapCard(List<RunPoint> route, List<RunLap100m> laps) {
+  Widget _routeMapCard(
+    List<RunPoint> route,
+    List<RunLap100m> laps, {
+    required String activityLabel,
+  }) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
-              'PETA RUTE LARI',
+              'PETA RUTE ${activityLabel.toUpperCase()}',
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8),
             ),
           ),
@@ -1614,16 +1930,14 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _liveMapSection({required bool paused}) {
-    final List<RunPoint> route = _controller.route;
-    final List<RunLap100m> laps = _controller.hundredMeterLaps;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: <Widget>[
           ListTile(
             leading: const Icon(Icons.map_outlined, color: VoltWarna.aksen),
-            title: const Text(
-              'PETA RUTE LIVE',
+            title: Text(
+              'PETA ${_activityDisplayLabel.toUpperCase()} • LIVE',
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
             subtitle: Text(
@@ -1643,12 +1957,16 @@ class _RunningPageState extends State<RunningPage> {
           if (_liveMapExpanded)
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: RunRouteMapView(
-                key: const ValueKey<String>('live-run-route-map'),
-                route: route,
-                laps: laps,
-                height: 300,
-                followLastPoint: !paused,
+              child: ValueListenableBuilder<List<RunPoint>>(
+                valueListenable: _liveMapRoute,
+                builder: (BuildContext context, List<RunPoint> route, Widget? child) =>
+                    RunRouteMapView(
+                  key: const ValueKey<String>('live-run-route-map'),
+                  route: route,
+                  laps: _controller.hundredMeterLaps,
+                  height: 300,
+                  followLastPoint: !paused,
+                ),
               ),
             ),
         ],

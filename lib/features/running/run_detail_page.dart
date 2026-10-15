@@ -16,6 +16,11 @@ class RunDetailPage extends StatelessWidget {
     final DateTime? finish = session.finishedAt?.toLocal();
     final RunElevationStats elevation = session.elevationStats;
     final RunEvaluation evaluation = evaluateRun(session);
+    final String routeActivityLabel = session.activityType == RunActivityType.walk
+        ? 'BERJALAN'
+        : session.intervalPlan != null
+            ? 'LARI INTERVAL'
+            : 'LARI';
 
     return Scaffold(
       appBar: AppBar(title: Text('Detail aktivitas')),
@@ -64,11 +69,11 @@ class RunDetailPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        'PETA DAN TITIK KECEPATAN',
-                        style: TextStyle(fontWeight: FontWeight.w900),
+                        'PETA RUTE $routeActivityLabel • TITIK KECEPATAN',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
                     Padding(

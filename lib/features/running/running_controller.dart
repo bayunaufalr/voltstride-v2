@@ -30,6 +30,7 @@ class RunningController extends ChangeNotifier {
   double get gpsCleanRatio => _engine.gpsCleanRatio;
   int get acceptedPoints => _engine.acceptedPoints;
   int get rejectedPoints => _engine.rejectedPoints;
+  int get routeLength => _engine.routeLength;
   List<RunSplit> get splits => _engine.splits;
   List<RunPoint> get route => _engine.route;
   List<RunLap100m> get hundredMeterLaps => _engine.hundredMeterLaps;
@@ -42,11 +43,13 @@ class RunningController extends ChangeNotifier {
     bool useGps = true,
     RunActivityType activityType = RunActivityType.run,
     RunEnvironment environment = RunEnvironment.outdoor,
+    Future<void> Function()? onGpsReady,
   }) => _engine.start(
         intervalPlan: intervalPlan,
         useGps: useGps,
         activityType: activityType,
         environment: environment,
+        onGpsReady: onGpsReady,
       );
 
   void pauseRun() => _engine.pause();

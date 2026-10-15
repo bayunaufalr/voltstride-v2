@@ -86,17 +86,29 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
       );
     }
 
-    final List<LatLng> coordinates = widget.route
+    // Keep the exact route in storage, but limit the number of vertices sent
+    // to FlutterMap. Very long sessions can contain many thousands of GPS
+    // points; drawing every point again every few seconds can make older or
+    // lower-memory phones stutter or show an ANR.
+    final List<RunPoint> displayRoute = _routeForRendering();
+    final LatLng startCoordinate = LatLng(
+      widget.route.first.latitude,
+      widget.route.first.longitude,
+    );
+    final LatLng center = LatLng(
+      widget.route.last.latitude,
+      widget.route.last.longitude,
+    );
+    final List<LatLng> displayCoordinates = displayRoute
         .map((RunPoint point) => LatLng(point.latitude, point.longitude))
         .toList(growable: false);
-    final LatLng center = coordinates.last;
     final List<List<LatLng>> groups = <List<LatLng>>[];
-    for (int i = 0; i < widget.route.length; i++) {
-      final RunPoint point = widget.route[i];
+    for (int i = 0; i < displayRoute.length; i++) {
+      final RunPoint point = displayRoute[i];
       if (groups.isEmpty || point.startsNewSegment) {
         groups.add(<LatLng>[]);
       }
-      groups.last.add(coordinates[i]);
+      groups.last.add(displayCoordinates[i]);
     }
     final List<Polyline> polylines = groups
         .where((List<LatLng> points) => points.length >= 2)
@@ -109,14 +121,14 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
 
     final List<Marker> markers = <Marker>[
       Marker(
-        point: coordinates.first,
+        point: startCoordinate,
         width: 30,
         height: 30,
         child: const Icon(Icons.flag_circle, color: Colors.green, size: 28),
       ),
-      if (coordinates.length > 1)
+      if (widget.route.length > 1)
         Marker(
-          point: coordinates.last,
+          point: center,
           width: 30,
           height: 30,
           child: const Icon(Icons.location_on, color: Colors.red, size: 28),
@@ -127,9 +139,9 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     final MapOptions mapOptions = MapOptions(
       initialCenter: center,
       initialZoom: 16,
-      initialCameraFit: !widget.followLastPoint && coordinates.length >= 2
+      initialCameraFit: !widget.followLastPoint && displayCoordinates.length >= 2
           ? CameraFit.bounds(
-              bounds: LatLngBounds.fromPoints(coordinates),
+              bounds: LatLngBounds.fromPoints(displayCoordinates),
               padding: const EdgeInsets.all(36),
             )
           : null,
@@ -166,6 +178,38 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         ),
       ),
     );
+  }
+
+
+  List<RunPoint> _routeForRendering() {
+    final List<RunPoint> route = widget.route;
+    const int maxRenderedPoints = 1200;
+    if (route.length <= maxRenderedPoints) return route;
+
+    final int stride = (route.length / maxRenderedPoints).ceil();
+    final List<RunPoint> result = <RunPoint>[];
+    int segmentStart = 0;
+
+    void appendSegment(int start, int end) {
+      if (start > end || start < 0 || end >= route.length) return;
+      result.add(route[start]);
+      for (int index = start + stride; index < end; index += stride) {
+        result.add(route[index]);
+      }
+      if (end > start) result.add(route[end]);
+    }
+
+    for (int index = 1; index <= route.length; index++) {
+      final bool isEnd = index == route.length;
+      final bool startsNewSegment =
+          !isEnd && route[index].startsNewSegment;
+      if (isEnd || startsNewSegment) {
+        appendSegment(segmentStart, index - 1);
+        segmentStart = index;
+      }
+    }
+
+    return result;
   }
 
   Marker _lapMarker(RunLap100m lap) {

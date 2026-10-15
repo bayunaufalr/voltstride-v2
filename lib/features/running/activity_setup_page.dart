@@ -11,11 +11,15 @@ class ActivityStartConfig {
   final RunActivityType activityType;
   final RunEnvironment environment;
   final IntervalRunPlan? intervalPlan;
+  final double? targetDistanceKm;
+  final double? targetPaceSecondsPerKm;
 
   const ActivityStartConfig({
     required this.activityType,
     required this.environment,
     required this.intervalPlan,
+    this.targetDistanceKm,
+    this.targetPaceSecondsPerKm,
   });
 }
 
@@ -40,12 +44,16 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   final TextEditingController _workSeconds = TextEditingController(text: '60');
   final TextEditingController _recoverySeconds = TextEditingController(text: '90');
   final TextEditingController _repetitions = TextEditingController(text: '6');
+  final TextEditingController _targetDistanceKm = TextEditingController();
+  final TextEditingController _targetPace = TextEditingController();
 
   @override
   void dispose() {
     _workSeconds.dispose();
     _recoverySeconds.dispose();
     _repetitions.dispose();
+    _targetDistanceKm.dispose();
+    _targetPace.dispose();
     super.dispose();
   }
 
@@ -187,6 +195,60 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
+            const SizedBox(height: 20),
+            _sectionTitle('Target aktivitas (opsional)'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: VoltWarna.kartu,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: VoltWarna.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text(
+                    'Isi keduanya jika ingin melihat estimasi waktu dan saran pace selama aktivitas.',
+                    style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: TextField(
+                          controller: _targetDistanceKm,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Jarak target (km)',
+                            hintText: '5,0',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _targetPace,
+                          keyboardType: TextInputType.text,
+                          inputFormatters: <TextInputFormatter>[
+                            FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Pace target (m:ss/km)',
+                            hintText: '6:00',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             if (_mode == _ActivityMode.interval) ...<Widget>[
               const SizedBox(height: 12),
               Container(
@@ -302,7 +364,42 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
 
   Widget _sectionTitle(String title) => Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16));
 
+  double? _parsePace(String raw) {
+    final Match? match = RegExp(r'^(\d{1,2}):([0-5]\d)$').firstMatch(raw.trim());
+    if (match == null) return null;
+    final int minutes = int.parse(match.group(1)!);
+    final int seconds = int.parse(match.group(2)!);
+    final int totalSeconds = minutes * 60 + seconds;
+    if (totalSeconds < 120 || totalSeconds > 3600) return null;
+    return totalSeconds.toDouble();
+  }
+
   void _start() {
+    double? targetDistanceKm;
+    double? targetPaceSecondsPerKm;
+    final String targetDistanceText = _targetDistanceKm.text.trim();
+    final String targetPaceText = _targetPace.text.trim();
+    if (targetDistanceText.isNotEmpty || targetPaceText.isNotEmpty) {
+      if (targetDistanceText.isEmpty || targetPaceText.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Isi jarak dan pace target, atau kosongkan keduanya.')),
+        );
+        return;
+      }
+      targetDistanceKm = double.tryParse(targetDistanceText.replaceAll(',', '.'));
+      targetPaceSecondsPerKm = _parsePace(targetPaceText);
+      if (targetDistanceKm == null ||
+          !targetDistanceKm.isFinite ||
+          targetDistanceKm < 0.1 ||
+          targetDistanceKm > 100 ||
+          targetPaceSecondsPerKm == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Jarak target harus 0,1–100 km dan pace gunakan format m:ss/km, misalnya 6:00.')),
+        );
+        return;
+      }
+    }
+
     IntervalRunPlan? plan;
     if (_mode == _ActivityMode.interval) {
       final int? work = int.tryParse(_workSeconds.text.trim());
@@ -318,6 +415,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       activityType: _mode == _ActivityMode.walk ? RunActivityType.walk : RunActivityType.run,
       environment: _environment,
       intervalPlan: plan,
+      targetDistanceKm: targetDistanceKm,
+      targetPaceSecondsPerKm: targetPaceSecondsPerKm,
     ));
   }
 

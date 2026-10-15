@@ -137,6 +137,8 @@ class _RootShellState extends State<RootShell> {
           activityType: config.activityType,
           environment: config.environment,
           initialIntervalPlan: config.intervalPlan,
+          targetDistanceKm: config.targetDistanceKm,
+          targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
           autoStart: true,
           onExit: () => Navigator.of(routeContext).pop(),
         ),
