@@ -107,6 +107,11 @@ class RunningEngine extends ChangeNotifier {
   double? _lastRawAltitudeMeters;
   DateTime? _lastRawTimestamp;
 
+  // Menyelaraskan timestamp GPS perangkat ke waktu saat sesi benar-benar mulai.
+  // Posisi pertama dapat diambil sebelum countdown; offset ini menjaga selisih
+  // antarposisi tetap benar tanpa memasukkan waktu mencari GPS ke perhitungan.
+  Duration? _gpsTimestampOffset;
+
   double? _filteredLatitude;
   double? _filteredLongitude;
   double? _filteredAccuracyMeters;
@@ -417,6 +422,7 @@ class RunningEngine extends ChangeNotifier {
     _lastRawLongitude = null;
     _lastRawAltitudeMeters = null;
     _lastRawTimestamp = null;
+    _gpsTimestampOffset = null;
     _filteredLatitude = null;
     _filteredLongitude = null;
     _filteredAccuracyMeters = null;
@@ -452,6 +458,7 @@ class RunningEngine extends ChangeNotifier {
     // the real start moment, not the old acquisition timestamp, so the first
     // movement is not divided by the GPS wait + countdown duration.
     final DateTime timestamp = DateTime.now();
+    _gpsTimestampOffset = timestamp.difference(position.timestamp);
 
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
@@ -518,7 +525,12 @@ class RunningEngine extends ChangeNotifier {
     // GPS timestamp normally provides the best interval, including when the
     // Android location provider delivers a delayed batch. If the timestamp is
     // duplicated or moves backwards, repair it from the monotonic Stopwatch.
-    DateTime trackingTimestamp = position.timestamp;
+    // Semua timestamp stream digeser dengan offset yang sama. Ini penting
+    // karena timestamp GPS pertama bisa jauh lebih awal daripada waktu sesi
+    // setelah layar menampilkan countdown. Jangan mengganti setiap titik yang
+    // terlihat "mundur" secara independen, karena itu membuat dt hanya 1 ms,
+    // lalu semua gerakan tampak seperti lonjakan kecepatan yang mustahil.
+    DateTime trackingTimestamp = _normalizeGpsTimestamp(position.timestamp);
     if (!trackingTimestamp.isAfter(previousTimestamp)) {
       trackingTimestamp = previousTimestamp.add(
         Duration(milliseconds: activeElapsedDelta > 0 ? activeElapsedDelta : 1),
@@ -617,10 +629,14 @@ class RunningEngine extends ChangeNotifier {
         .toDouble();
   }
 
+  DateTime _normalizeGpsTimestamp(DateTime timestamp) {
+    return timestamp.add(_gpsTimestampOffset ?? Duration.zero);
+  }
+
   void _seedResumeAnchor(Position position) {
     final int activeElapsedMilliseconds =
         _stopwatch?.elapsedMilliseconds ?? _lastAcceptedElapsedMilliseconds;
-    final DateTime timestamp = position.timestamp;
+    final DateTime timestamp = _normalizeGpsTimestamp(position.timestamp);
 
     _lastRawLatitude = position.latitude;
     _lastRawLongitude = position.longitude;
