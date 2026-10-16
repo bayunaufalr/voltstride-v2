@@ -368,11 +368,10 @@ class _RunningPageState extends State<RunningPage> {
       _activeIntervalPlan == null ? widget.activityType.label : 'Lari interval';
 
   Widget _buildAcquiringGps() {
-    final bool indoor = widget.environment == RunEnvironment.indoor;
     final bool countingDown = _countdownValue != null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(countingDown ? 'Bersiap' : (indoor ? 'Menyiapkan aktivitas' : 'Mencari GPS')),
+        title: Text(countingDown ? 'Mulai' : 'Bersiap'),
       ),
       body: Center(
         child: Padding(
@@ -391,15 +390,21 @@ class _RunningPageState extends State<RunningPage> {
                         decoration: BoxDecoration(
                           color: VoltWarna.aksen.withValues(alpha: 0.14),
                           shape: BoxShape.circle,
-                          border: Border.all(color: VoltWarna.aksen, width: 3),
+                          border: Border.all(
+                            color: VoltWarna.aksen,
+                            width: 3,
+                          ),
                         ),
                         child: Text(
                           '$_countdownValue',
-                          style: const TextStyle(fontSize: 92, fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            fontSize: 92,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       )
                     : const SizedBox(
-                        key: ValueKey<String>('gps-search'),
+                        key: ValueKey<String>('activity-preparing'),
                         width: 64,
                         height: 64,
                         child: CircularProgressIndicator(strokeWidth: 5),
@@ -407,9 +412,7 @@ class _RunningPageState extends State<RunningPage> {
               ),
               const SizedBox(height: 24),
               Text(
-                countingDown
-                    ? 'MULAI DALAM $_countdownValue'
-                    : (indoor ? 'MENYIAPKAN AKTIVITAS' : 'MENCARI SINYAL GPS'),
+                countingDown ? 'MULAI DALAM' : 'BERSIAP',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 18,
@@ -418,24 +421,6 @@ class _RunningPageState extends State<RunningPage> {
                   color: VoltWarna.teksPutih,
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                countingDown
-                    ? 'Posisi sudah siap. Bersiap dan mulai dengan nyaman.'
-                    : (indoor
-                        ? 'Timer akan dimulai setelah hitung mundur selesai.'
-                        : 'Pencarian GPS berjalan dulu. Begitu posisi cukup akurat, muncul hitung mundur 5–4–3–2–1 dan timer baru dimulai setelah hitung mundur selesai.'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: VoltWarna.teksAbu, height: 1.45),
-              ),
-              if (!countingDown && !indoor) ...<Widget>[
-                const SizedBox(height: 18),
-                const Text(
-                  'Pastikan lokasi perangkat aktif dan izinkan akses lokasi.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
-                ),
-              ],
             ],
           ),
         ),
@@ -868,18 +853,26 @@ class _RunningPageState extends State<RunningPage> {
             currentDistance >= 0.3
         ? _controller.elapsed.inMilliseconds / 1000.0 / currentDistance
         : double.nan;
+    final bool hasEstimate = currentPace.isFinite &&
+        currentPace > 0 &&
+        currentPace <= 3600;
 
-    String estimateText = 'Mengumpulkan data jarak dan pace (minimal sekitar 300 m).';
-    if (currentPace.isFinite && currentPace > 0 && currentPace <= 3600) {
+    // Hindari placeholder diagnostik saat data belum cukup. Estimasi muncul
+    // otomatis begitu jarak dan pace cukup stabil.
+    if (!hasEstimate && !achieved) return const SizedBox.shrink();
+
+    final String estimateText;
+    if (achieved) {
+      estimateText = 'Target jarak tercapai.';
+    } else {
       final int totalSeconds = (currentPace * goalDistance).round();
       final double remainingKm = goalDistance > currentDistance
           ? goalDistance - currentDistance
           : 0.0;
       final int remainingSeconds = (currentPace * remainingKm).round();
-      estimateText = achieved
-          ? 'Target jarak tercapai.'
-          : 'Total sekitar ${_formatDuration(Duration(seconds: totalSeconds))} '
-              '• sisa ${_formatDuration(Duration(seconds: remainingSeconds))}';
+      estimateText =
+          'Total sekitar ${_formatDuration(Duration(seconds: totalSeconds))} '
+          '• sisa ${_formatDuration(Duration(seconds: remainingSeconds))}';
     }
 
     return Container(
@@ -915,14 +908,6 @@ class _RunningPageState extends State<RunningPage> {
               fontSize: 12,
             ),
           ),
-          if (!custom && currentDistance >= 5.0 && currentDistance < 5.15)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text(
-                '5 km tercapai. Estimasi berikutnya beralih ke 10 km.',
-                style: TextStyle(color: Colors.white70, fontSize: 10),
-              ),
-            ),
         ],
       ),
     );
@@ -945,11 +930,9 @@ class _RunningPageState extends State<RunningPage> {
             ? VoltWarna.hijau
             : VoltWarna.merah;
     final String currentPaceText = enoughData ? _formatPace(currentPace) : '--:--';
-    final String advice = !enoughData
-        ? 'Mengumpulkan data pace. Saran akan muncul setelah bergerak cukup jauh.'
-        : onTarget
-            ? 'Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.'
-            : 'Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.';
+    final String advice = onTarget
+        ? 'Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.'
+        : 'Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.';
 
     return Container(
       width: double.infinity,
@@ -973,11 +956,26 @@ class _RunningPageState extends State<RunningPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km',
-            style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 13),
+            enoughData
+                ? 'Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km'
+                : 'Target ${_formatPace(targetPace)}/km',
+            style: TextStyle(
+              color: statusColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(advice, style: const TextStyle(color: Colors.white70, fontSize: 10, height: 1.35)),
+          if (enoughData) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              advice,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
       ),
     );
