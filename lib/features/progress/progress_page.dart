@@ -1,6 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
 import '../running/models/run_session.dart';
 import '../running/services/personal_records_service.dart';
 import '../running/services/run_history_repository.dart';
@@ -16,6 +17,7 @@ class ProgressPageState extends State<ProgressPage> {
   Future<List<RunSession>> _sessionsFuture =
       RunHistoryRepository.instance.getAll();
   int _selectedWeekIndex = 11;
+  _WeekChartMetric _chartMetric = _WeekChartMetric.distance;
 
   Future<void> reload() async {
     final Future<List<RunSession>> next = RunHistoryRepository.instance.getAll();
@@ -58,7 +60,6 @@ class ProgressPageState extends State<ProgressPage> {
               PersonalRecordsService.calculate(sessions);
           final RunSession? longest = _bestByDistance(sessions);
           final RunSession? mostClimb = _bestByAscent(sessions);
-          final RunSession? highestRelativePoint = _bestByPeak(sessions);
 
           return RefreshIndicator(
             onRefresh: reload,
@@ -66,6 +67,8 @@ class ProgressPageState extends State<ProgressPage> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               children: <Widget>[
                 _weeklyBars(weeks, selectedIndex),
+                const SizedBox(height: 16),
+                _predictionSection(sessions),
                 const SizedBox(height: 20),
                 _sectionTitle('Minggu ini'),
                 const SizedBox(height: 10),
@@ -94,16 +97,17 @@ class ProgressPageState extends State<ProgressPage> {
                   ],
                 ),
                 const SizedBox(height: 22),
-                _sectionTitle('Rekor pribadi'),
+                _sectionTitle('Pencapaian'),
                 const SizedBox(height: 10),
                 ...PersonalRecordsService.distances.map(
                   (DistanceRecordDefinition definition) => _recordTextRow(
-                    definition.label,
+                    definition,
                     records[definition.key],
+                    sessions,
                   ),
                 ),
                 const SizedBox(height: 16),
-                _sectionTitle('Rekor lain'),
+                _sectionTitle('Pencapaian lain'),
                 const SizedBox(height: 10),
                 _plainRecord(
                   'Lari terjauh',
@@ -114,28 +118,19 @@ class ProgressPageState extends State<ProgressPage> {
                 ),
                 const SizedBox(height: 8),
                 _plainRecord(
-                  'Kenaikan elevasi terbesar',
+                  'Elevasi total terbesar',
                   mostClimb == null
                       ? '--'
-                      : '${mostClimb.elevationStats.totalAscentMeters.round()} m naik',
+                      : '+${mostClimb.elevationStats.totalAscentMeters.round()} m',
                   mostClimb == null
                       ? 'Belum ada data elevasi'
                       : _dateText(mostClimb.startedAt),
                 ),
-                const SizedBox(height: 8),
-                _plainRecord(
-                  'Kenaikan titik tertinggi dari awal',
-                  highestRelativePoint == null
-                      ? '--'
-                      : '+${highestRelativePoint.elevationStats.maxAboveStartMeters.round()} m',
-                  highestRelativePoint == null
-                      ? 'Belum ada data elevasi'
-                      : _dateText(highestRelativePoint.startedAt),
-                ),
+
                 const SizedBox(height: 16),
                 Text(
                   '${sessions.length} aktivitas tersimpan.',
-                  style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+                  style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
                 ),
               ],
             ),
@@ -181,86 +176,95 @@ class ProgressPageState extends State<ProgressPage> {
 
   Widget _weeklyBars(List<_WeekData> weeks, int selectedIndex) {
     final _WeekData selected = weeks[selectedIndex];
-    final _WeekData? previous = selectedIndex > 0 ? weeks[selectedIndex - 1] : null;
-    final double maxDistance = weeks.fold<double>(
+    final _WeekData? previous =
+        selectedIndex > 0 ? weeks[selectedIndex - 1] : null;
+    final double maxValue = weeks.fold<double>(
       1,
-      (double maxValue, _WeekData week) =>
-          week.distanceKm > maxValue ? week.distanceKm : maxValue,
+      (double currentMax, _WeekData week) =>
+          _angkaGrafik(week, _chartMetric) > currentMax
+              ? _angkaGrafik(week, _chartMetric)
+              : currentMax,
     );
-    final double difference = selected.distanceKm - (previous?.distanceKm ?? 0);
+    final double currentValue = _angkaGrafik(selected, _chartMetric);
+    final double previousValue =
+        previous == null ? 0 : _angkaGrafik(previous, _chartMetric);
+    final double difference = currentValue - previousValue;
     final String comparison = previous == null
         ? ''
-        : previous.distanceKm <= 0
-            ? (selected.distanceKm > 0
-                ? 'Minggu sebelumnya: 0 km'
-                : 'Sama dengan minggu sebelumnya')
-            : '${difference >= 0 ? '+' : ''}${difference.toStringAsFixed(1)} km dari minggu sebelumnya';
+        : '${_formatSelisih(difference, _chartMetric)} dibanding minggu sebelumnya';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           const Text(
-            'Jarak 12 minggu terakhir',
+            '12 minggu terakhir',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              _pilihanGrafik('Jarak', _WeekChartMetric.distance),
+              _pilihanGrafik('Elevasi', _WeekChartMetric.elevation),
+              _pilihanGrafik('Waktu', _WeekChartMetric.time),
+              _pilihanGrafik('Aktivitas', _WeekChartMetric.activities),
+            ],
+          ),
+          const SizedBox(height: 12),
           Text(
             _dateRange(selected.start),
-            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              Text(
-                '${selected.distanceKm.toStringAsFixed(2)} km',
-                style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(width: 10),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  '${selected.activityCount} aktivitas',
-                  style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
-                ),
-              ),
-            ],
+            style: TextStyle(
+              color: Theme.of(context).hintColor,
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            '${_durationText(selected.movingTime)} waktu gerak'
-            '${selected.elevationGainMeters > 0 ? ' • ${selected.elevationGainMeters.round()} m naik' : ''}',
-            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+            _formatAngkaGrafik(currentValue, _chartMetric),
+            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
           ),
+          if (_chartMetric == _WeekChartMetric.distance ||
+              _chartMetric == _WeekChartMetric.elevation)
+            Text(
+              '${selected.activityCount} aktivitas · ${_durationText(selected.movingTime)} waktu gerak',
+              style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+            ),
           if (comparison.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 4),
+            const SizedBox(height: 5),
             Text(
               comparison,
-              style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+              style: TextStyle(
+                color: difference > 0
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Theme.of(context).hintColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           SizedBox(
-            height: 146,
+            height: 150,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List<Widget>.generate(weeks.length, (int index) {
                 final _WeekData week = weeks[index];
                 final bool active = index == selectedIndex;
-                final double fraction = week.distanceKm / maxDistance;
-                final double barHeight = week.distanceKm <= 0
-                    ? 3
-                    : (fraction * 93).clamp(5, 93).toDouble();
+                final double amount = _angkaGrafik(week, _chartMetric);
+                final double fraction = amount / maxValue;
+                final double barHeight =
+                    amount <= 0 ? 3 : (fraction * 96).clamp(5, 96).toDouble();
                 return Expanded(
                   child: Tooltip(
                     message:
-                        '${_dateRange(week.start)}\n${week.distanceKm.toStringAsFixed(2)} km',
+                        '${_dateRange(week.start)}\n${_formatAngkaGrafik(amount, _chartMetric)}',
                     child: InkWell(
                       onTap: () => setState(() => _selectedWeekIndex = index),
                       child: Padding(
@@ -268,16 +272,16 @@ class ProgressPageState extends State<ProgressPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: <Widget>[
-                            if (week.distanceKm > 0)
+                            if (amount > 0)
                               Text(
-                                week.distanceKm >= 10
-                                    ? week.distanceKm.toStringAsFixed(0)
-                                    : week.distanceKm.toStringAsFixed(1),
+                                _angkaRingkas(amount, _chartMetric),
                                 maxLines: 1,
                                 style: TextStyle(
                                   fontSize: 8,
-                                  color: active ? Colors.black : VoltWarna.teksAbu,
-                                  fontWeight: active ? FontWeight.w800 : FontWeight.w400,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                  fontWeight: active
+                                      ? FontWeight.w800
+                                      : FontWeight.w400,
                                 ),
                               )
                             else
@@ -289,10 +293,14 @@ class ProgressPageState extends State<ProgressPage> {
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: active
-                                    ? Colors.black
-                                    : const Color(0xFFD5D5D5),
+                                    ? Theme.of(context).colorScheme.onSurface
+                                    : Theme.of(context).dividerColor,
                                 border: active
-                                    ? Border.all(color: Colors.black, width: 1)
+                                    ? Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface,
+                                      )
                                     : null,
                               ),
                             ),
@@ -301,8 +309,9 @@ class ProgressPageState extends State<ProgressPage> {
                               '${week.start.day}',
                               style: TextStyle(
                                 fontSize: 9,
-                                color: active ? Colors.black : VoltWarna.teksAbu,
-                                fontWeight: active ? FontWeight.w800 : FontWeight.w400,
+                                color: Theme.of(context).hintColor,
+                                fontWeight:
+                                    active ? FontWeight.w800 : FontWeight.w400,
                               ),
                             ),
                           ],
@@ -315,13 +324,200 @@ class ProgressPageState extends State<ProgressPage> {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Ketuk batang untuk melihat rincian minggu tersebut.',
-            style: TextStyle(color: VoltWarna.teksAbu, fontSize: 11),
+          Text(
+            'Pilih batang untuk melihat nilai tiap minggu.',
+            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11),
           ),
         ],
       ),
     );
+  }
+
+  Widget _pilihanGrafik(String label, _WeekChartMetric metric) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _chartMetric == metric,
+      onSelected: (bool dipilih) {
+        if (!dipilih) return;
+        setState(() => _chartMetric = metric);
+      },
+      selectedColor: Theme.of(context).colorScheme.onSurface,
+      labelStyle: TextStyle(
+        color: _chartMetric == metric
+            ? Theme.of(context).colorScheme.surface
+            : Theme.of(context).colorScheme.onSurface,
+        fontSize: 12,
+      ),
+      side: BorderSide(color: Theme.of(context).dividerColor),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    );
+  }
+
+  double _angkaGrafik(_WeekData week, _WeekChartMetric metric) {
+    switch (metric) {
+      case _WeekChartMetric.distance:
+        return week.distanceKm;
+      case _WeekChartMetric.elevation:
+        return week.elevationGainMeters;
+      case _WeekChartMetric.time:
+        return week.movingTime.inMinutes.toDouble();
+      case _WeekChartMetric.activities:
+        return week.activityCount.toDouble();
+    }
+  }
+
+  String _formatSelisih(double value, _WeekChartMetric metric) {
+    final String tanda = value >= 0 ? '+' : '';
+    switch (metric) {
+      case _WeekChartMetric.distance:
+        return '$tanda${value.toStringAsFixed(1)} km';
+      case _WeekChartMetric.elevation:
+        return 'Elevasi $tanda${value.round()} m';
+      case _WeekChartMetric.time:
+        final int menit = value.round();
+        return '$tanda${_durationText(Duration(minutes: menit))}';
+      case _WeekChartMetric.activities:
+        return '$tanda${value.round()} aktivitas';
+    }
+  }
+
+  String _formatAngkaGrafik(double value, _WeekChartMetric metric) {
+    switch (metric) {
+      case _WeekChartMetric.distance:
+        return '${value.toStringAsFixed(1)} km';
+      case _WeekChartMetric.elevation:
+        return 'Elevasi +${value.round()} m';
+      case _WeekChartMetric.time:
+        return _durationText(Duration(minutes: value.round()));
+      case _WeekChartMetric.activities:
+        return '${value.round()} aktivitas';
+    }
+  }
+
+  String _angkaRingkas(double value, _WeekChartMetric metric) {
+    switch (metric) {
+      case _WeekChartMetric.distance:
+        return value >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+      case _WeekChartMetric.elevation:
+        return value >= 1000 ? '${(value / 1000).toStringAsFixed(1)}k' : value.round().toString();
+      case _WeekChartMetric.time:
+        return value >= 60 ? '${(value / 60).toStringAsFixed(0)}j' : value.round().toString();
+      case _WeekChartMetric.activities:
+        return value.round().toString();
+    }
+  }
+
+  Widget _predictionSection(List<RunSession> sessions) {
+    final List<_RacePrediction> predictions = _buatPrediksi(sessions);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Prediksi waktu lomba',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+          for (final _RacePrediction prediction in predictions) ...<Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    prediction.label,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  prediction.seconds == null
+                      ? 'Belum cukup data'
+                      : '~${_formatRaceTime(prediction.seconds!)}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            if (prediction.sourceDistanceKm != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 7),
+                child: Text(
+                  'Perkiraan dari lari ${prediction.sourceDistanceKm!.toStringAsFixed(1)} km',
+                  style: TextStyle(
+                    color: Theme.of(context).hintColor,
+                    fontSize: 10,
+                  ),
+                ),
+              )
+            else
+              const SizedBox(height: 7),
+            if (prediction != predictions.last)
+              Divider(color: Theme.of(context).dividerColor, height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<_RacePrediction> _buatPrediksi(List<RunSession> sessions) {
+    final DateTime batasBaru = DateTime.now().subtract(
+      const Duration(days: 180),
+    );
+    final List<RunSession> semuaLari = sessions
+        .where((RunSession s) =>
+            s.activityType == RunActivityType.run &&
+            s.distanceKm >= 3 &&
+            (s.movingTime > Duration.zero || s.elapsed > Duration.zero))
+        .toList(growable: false);
+    final List<RunSession> latihanTerbaru = semuaLari
+        .where((RunSession s) => !s.startedAt.isBefore(batasBaru))
+        .toList(growable: false);
+    final List<RunSession> sumber =
+        latihanTerbaru.isNotEmpty ? latihanTerbaru : semuaLari;
+
+    const List<({String label, double km, double minimalKm})> target =
+        <({String label, double km, double minimalKm})>[
+      (label: '5 km', km: 5, minimalKm: 3),
+      (label: '10 km', km: 10, minimalKm: 5),
+      (label: 'Half marathon', km: 21.0975, minimalKm: 10),
+      (label: 'Full marathon', km: 42.195, minimalKm: 15),
+    ];
+
+    return target.map((item) {
+      RunSession? sumberTerbaik;
+      double? waktuTerbaik;
+      for (final RunSession session in sumber) {
+        if (session.distanceKm < item.minimalKm) continue;
+        final Duration durasi = session.movingTime > Duration.zero
+            ? session.movingTime
+            : session.elapsed;
+        final double prediksi = (durasi.inSeconds *
+                math.pow(item.km / session.distanceKm, 1.06))
+            .toDouble();
+        if (!prediksi.isFinite || prediksi <= 0) continue;
+        if (waktuTerbaik == null || prediksi < waktuTerbaik) {
+          waktuTerbaik = prediksi;
+          sumberTerbaik = session;
+        }
+      }
+      return _RacePrediction(
+        label: item.label,
+        seconds: waktuTerbaik?.round(),
+        sourceDistanceKm: sumberTerbaik?.distanceKm,
+      );
+    }).toList(growable: false);
+  }
+
+  String _formatRaceTime(int seconds) {
+    final int hours = seconds ~/ 3600;
+    final int minutes = (seconds % 3600) ~/ 60;
+    final int remainder = seconds % 60;
+    if (hours > 0) {
+      return '${hours}j ${minutes.toString().padLeft(2, '0')}m';
+    }
+    return '${minutes}m ${remainder.toString().padLeft(2, '0')}d';
   }
 
   Widget _sectionTitle(String title) => Text(
@@ -333,8 +529,8 @@ class ProgressPageState extends State<ProgressPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,26 +544,54 @@ class ProgressPageState extends State<ProgressPage> {
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11),
+            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11),
           ),
         ],
       ),
     );
   }
 
-  Widget _recordTextRow(String label, PersonalRecord? record) {
+  Widget _recordTextRow(
+    DistanceRecordDefinition definition,
+    PersonalRecord? record,
+    List<RunSession> sessions,
+  ) {
+    final PersonalRecord? previous = record == null
+        ? null
+        : PersonalRecordsService.previousBestBefore(
+            sessions: sessions,
+            definition: definition,
+            currentRecord: record,
+          );
     final String time = record == null
         ? '--:--'
-        : '${record.estimated ? '~' : ''}${PersonalRecordsService.formatDuration(record.duration)}';
+        : '${record.estimated ? '~' : ''}'
+            '${PersonalRecordsService.formatDuration(record.duration)}';
     final String? pace = record == null
         ? null
         : PersonalRecordsService.formatPace(record.paceSecondsPerKm);
+
+    String? perubahan;
+    if (record != null && previous != null) {
+      final double deltaPace =
+          previous.paceSecondsPerKm - record.paceSecondsPerKm;
+      final double deltaPersen = previous.duration.inMilliseconds > 0
+          ? (previous.duration.inMilliseconds - record.duration.inMilliseconds) /
+              previous.duration.inMilliseconds *
+              100
+          : 0;
+      if (deltaPace > 0) {
+        perubahan = 'Δ −${PersonalRecordsService.formatPace(deltaPace)}/km'
+            ' · ${deltaPersen.toStringAsFixed(1)}% lebih cepat';
+      }
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         children: <Widget>[
@@ -375,19 +599,49 @@ class ProgressPageState extends State<ProgressPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(
+                  definition.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
                 if (pace != null) ...<Widget>[
                   const SizedBox(height: 3),
                   Text(
                     'Pace $pace/km',
-                    style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+                    style: TextStyle(
+                      color: Theme.of(context).hintColor,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                if (perubahan != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    perubahan,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(time, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Text(time, style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (record != null)
+                Text(
+                  _dateText(record.session.startedAt),
+                  style: TextStyle(
+                    color: Theme.of(context).hintColor,
+                    fontSize: 10,
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -397,8 +651,8 @@ class ProgressPageState extends State<ProgressPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         children: <Widget>[
@@ -408,7 +662,7 @@ class ProgressPageState extends State<ProgressPage> {
               children: <Widget>[
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(date, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11)),
+                Text(date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11)),
               ],
             ),
           ),
@@ -420,8 +674,11 @@ class ProgressPageState extends State<ProgressPage> {
   }
 
   RunSession? _bestByDistance(List<RunSession> sessions) {
-    if (sessions.isEmpty) return null;
-    return sessions.reduce(
+    final List<RunSession> lari = sessions
+        .where((RunSession sesi) => sesi.activityType == RunActivityType.run)
+        .toList(growable: false);
+    if (lari.isEmpty) return null;
+    return lari.reduce(
       (RunSession a, RunSession b) =>
           a.distanceMeters >= b.distanceMeters ? a : b,
     );
@@ -438,16 +695,6 @@ class ProgressPageState extends State<ProgressPage> {
             : b);
   }
 
-  RunSession? _bestByPeak(List<RunSession> sessions) {
-    final List<RunSession> valid = sessions
-        .where((RunSession s) => s.elevationStats.hasAltitudeData)
-        .toList();
-    if (valid.isEmpty) return null;
-    return valid.reduce((RunSession a, RunSession b) =>
-        a.elevationStats.maxAboveStartMeters >= b.elevationStats.maxAboveStartMeters
-            ? a
-            : b);
-  }
 
   String _dateText(DateTime value) {
     final DateTime local = value.toLocal();
@@ -472,6 +719,20 @@ class ProgressPageState extends State<ProgressPage> {
         'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
         'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
       ][month - 1];
+}
+
+enum _WeekChartMetric { distance, elevation, time, activities }
+
+class _RacePrediction {
+  const _RacePrediction({
+    required this.label,
+    required this.seconds,
+    required this.sourceDistanceKm,
+  });
+
+  final String label;
+  final int? seconds;
+  final double? sourceDistanceKm;
 }
 
 class _WeekData {

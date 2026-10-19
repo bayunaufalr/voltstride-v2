@@ -173,7 +173,7 @@ class _RunSharePageState extends State<RunSharePage> {
               _contentChip('Durasi', _showDuration, (bool v) => _showDuration = v),
               _contentChip('Pace', _showPace, (bool v) => _showPace = v),
               _contentChip('Peta rute', _showMap, (bool v) => _showMap = v),
-              _contentChip('Selisih elevasi', _showElevation, (bool v) => _showElevation = v),
+              _contentChip('Elevasi', _showElevation, (bool v) => _showElevation = v),
               _contentChip('Jumlah langkah', _showSteps, (bool v) => _showSteps = v),
               _contentChip('Cadence', _showCadence, (bool v) => _showCadence = v),
               _contentChip('Kalori', _showCalories, (bool v) => _showCalories = v),
@@ -240,7 +240,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showElevation) {
       metrics.add(_ShareMetric(
         'elevation',
-        'NAIK TOTAL',
+        'ELEVASI +',
         elevation.hasAltitudeData
             ? '${elevation.totalAscentMeters.round()} m'
             : '--',
@@ -641,7 +641,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showDuration) details.add(session.elapsedText);
     if (_showPace) details.add('pace ${session.averagePaceText}/km');
     if (_showElevation && session.elevationStats.hasAltitudeData) {
-      details.add('naik total ${session.elevationStats.totalAscentMeters.round()} m');
+      details.add('Elevasi +${session.elevationStats.totalAscentMeters.round()} m');
     }
     if (_showCalories) details.add('sekitar ${session.estimatedCalories.round()} kcal');
     return <String>['Aktivitas VoltStride', ...details].join(' • ');

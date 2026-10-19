@@ -10,12 +10,10 @@ class HomeDashboardPage extends StatefulWidget {
     super.key,
     required this.onRecord,
     required this.onHistory,
-    required this.onProgress,
   });
 
   final VoidCallback onRecord;
   final VoidCallback onHistory;
-  final VoidCallback onProgress;
 
   @override
   State<HomeDashboardPage> createState() => HomeDashboardPageState();
@@ -94,8 +92,6 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                     _emptyActivity()
                   else
                     ...sorted.take(3).map(_activityCard),
-                  const SizedBox(height: 18),
-                  _progressLink(),
                 ],
               ),
             );
@@ -106,19 +102,12 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   }
 
   Widget _header() {
-    return Row(
-      children: <Widget>[
-        const Expanded(
-          child: Text(
-            'Beranda',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-          ),
-        ),
-        TextButton(
-          onPressed: widget.onProgress,
-          child: const Text('Kemajuan'),
-        ),
-      ],
+    return const Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'Beranda',
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+      ),
     );
   }
 
@@ -133,9 +122,9 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: VoltWarna.kartu,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.border),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,7 +132,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
           Row(
             children: <Widget>[
               const Expanded(child: Text('Ritme minggu ini', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
-              Text('$activeDays/7 hari', style: const TextStyle(color: VoltWarna.aksen, fontWeight: FontWeight.w800)),
+              Text('$activeDays/7 hari', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w800)),
             ],
           ),
           const SizedBox(height: 16),
@@ -155,7 +144,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
               return Expanded(
                 child: Column(
                   children: <Widget>[
-                    Text(names[index], style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11)),
+                    Text(names[index], style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11)),
                     const SizedBox(height: 8),
                     Container(
                       width: 34,
@@ -163,11 +152,11 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: done ? VoltWarna.aksen : VoltWarna.surface,
+                        color: done ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.surfaceContainerHighest,
                         border: today ? Border.all(color: VoltWarna.teksPutih, width: 1.5) : null,
                       ),
                       child: done
-                          ? const Icon(Icons.check_rounded, color: VoltWarna.latar, size: 19)
+                          ? Icon(Icons.check_rounded, color: Theme.of(context).colorScheme.surface, size: 19)
                           : Text('${date.day}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                     ),
                   ],
@@ -180,7 +169,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
             activeDays == 0
                 ? 'Belum ada aktivitas minggu ini.'
                 : '$activeDays dari 7 hari memiliki aktivitas.',
-            style: const TextStyle(color: VoltWarna.teksAbu, height: 1.35, fontSize: 12),
+            style: TextStyle(color: Theme.of(context).hintColor, height: 1.35, fontSize: 12),
           ),
         ],
       ),
@@ -196,7 +185,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         const SizedBox(width: 8),
         Expanded(child: _metricCard('Waktu gerak', _shortDuration(duration))),
         const SizedBox(width: 8),
-        Expanded(child: _metricCard('Naik total', '${ascent.round()} m')),
+        Expanded(child: _metricCard('Elevasi', '+${ascent.round()} m')),
       ],
     );
   }
@@ -205,8 +194,8 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,7 +211,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 10),
+            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 10),
           ),
         ],
       ),
@@ -236,7 +225,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         minimumSize: const Size.fromHeight(64),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        side: const BorderSide(color: Colors.black, width: 1.2),
+        side: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 1.2),
       ),
       child: const Row(
         children: <Widget>[
@@ -267,9 +256,9 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: VoltWarna.kartu,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.border),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,7 +270,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text('${session.displayLabel} • ${session.environment.label}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text(date, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+                    Text(date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
                   ],
                 ),
               ),
@@ -306,7 +295,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
               _activityMetric(session.elapsedText, 'waktu'),
               _activityMetric(session.averagePaceText, 'pace/km'),
               if (session.elevationStats.hasAltitudeData)
-                _activityMetric('${session.elevationStats.totalAscentMeters.round()}', 'naik m'),
+                _activityMetric('+${session.elevationStats.totalAscentMeters.round()} m', 'Elevasi'),
             ],
           ),
         ],
@@ -320,7 +309,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
-          Text(label, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+          Text(label, style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor)),
         ],
       ),
     );
@@ -329,22 +318,28 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   Widget _emptyActivity() {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: VoltWarna.kartu, borderRadius: BorderRadius.zero, border: Border.all(color: VoltWarna.border)),
-      child: const Column(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.zero,
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
         children: <Widget>[
-          Text('Belum ada aktivitas.', style: TextStyle(fontWeight: FontWeight.w700)),
-          SizedBox(height: 5),
-          Text('Aktivitas selesai akan muncul di sini.', textAlign: TextAlign.center, style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+          const Text(
+            'Belum ada aktivitas.',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Aktivitas selesai akan muncul di sini.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Theme.of(context).hintColor,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
-    );
-  }
-
-  Widget _progressLink() {
-    return OutlinedButton(
-      onPressed: widget.onProgress,
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-      child: const Text('Lihat kemajuan'),
     );
   }
 

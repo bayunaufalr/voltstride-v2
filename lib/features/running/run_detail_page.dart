@@ -65,7 +65,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text('${session.environment.label} • ${_dateText(start)}', style: const TextStyle(color: VoltWarna.teksAbu)),
+                    Text('${session.environment.label} • ${_dateText(start)}', style: TextStyle(color: Theme.of(context).hintColor)),
                     const SizedBox(height: 14),
                     Row(
                       children: <Widget>[
@@ -78,7 +78,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       const SizedBox(height: 12),
                       Text(
                         'Selesai ${_dateText(finish)}',
-                        style: const TextStyle(fontSize: 12, color: VoltWarna.teksAbu),
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
                       ),
                     ],
                   ],
@@ -118,7 +118,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
                         style: TextStyle(
                           fontSize: 11,
-                          color: VoltWarna.teksAbu,
+                          color: Theme.of(context).hintColor,
                         ),
                       ),
                     ),
@@ -202,12 +202,10 @@ class _RunDetailPageState extends State<RunDetailPage> {
             ),
             const SizedBox(height: 12),
             _sectionCard(
-              title: 'EVALUASI AKHIR: ${evaluation.title.toUpperCase()}',
+              title: 'EVALUASI DAN SARAN',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(evaluation.overview),
-                  const SizedBox(height: 10),
                   const Text('PENGAMATAN', style: TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 5),
                   ...evaluation.observations.map((String item) => Padding(
@@ -252,7 +250,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                 child: Text(
                   'Panjang segmen',
                   style: TextStyle(
-                    color: VoltWarna.teksAbu,
+                    color: Theme.of(context).hintColor,
                     fontSize: 12,
                   ),
                 ),
@@ -328,9 +326,12 @@ class _RunDetailPageState extends State<RunDetailPage> {
               ),
             ),
           const SizedBox(height: 8),
-          const Text(
-            'Pengaturan ini digunakan bersama oleh peta dan tabel. Waktu dan pace adalah rata-rata segmen; elevasi merupakan perkiraan GPS.',
-            style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
+          Text(
+            'Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).hintColor,
+            ),
           ),
         ],
       ),
@@ -346,7 +347,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
     bool header = false,
   }) {
     final TextStyle style = TextStyle(
-      color: header ? VoltWarna.teksAbu : null,
+      color: header ? Theme.of(context).hintColor : null,
       fontSize: header ? 11 : 12,
       fontWeight: header ? FontWeight.w700 : FontWeight.w500,
     );
@@ -386,25 +387,20 @@ class _RunDetailPageState extends State<RunDetailPage> {
   }
 
   Widget _elevationCard(RunElevationStats stats) {
-    String signed(double value) => '${value > 0 ? '+' : ''}${value.toStringAsFixed(0)} m';
-    String metres(double value) => '${value.toStringAsFixed(0)} m';
     return _sectionCard(
       title: 'ELEVASI',
       child: !stats.hasAltitudeData
-          ? const Text('Data elevasi tidak tersimpan untuk sesi ini.')
-          : Column(
+          ? const Text('Data elevasi GPS tidak tersedia.')
+          : Row(
               children: <Widget>[
-                Row(children: <Widget>[
-                  _heroMetric('NAIK TOTAL', metres(stats.totalAscentMeters)),
-                  _heroMetric('TURUN TOTAL', metres(stats.totalDescentMeters)),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: <Widget>[
-                  _heroMetric('ELEVASI BERSIH', signed(stats.netChangeMeters)),
-                  _heroMetric('KENAIKAN MAX', signed(stats.maxAboveStartMeters)),
-                ]),
-                const SizedBox(height: 8),
-                const Text('Bersih = naik total dikurangi turun total. Kenaikan max adalah titik tertinggi relatif ke start. Nilai berasal dari GPS dan bersifat perkiraan.', style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu)),
+                _heroMetric(
+                  'ELEVASI +',
+                  '+${stats.totalAscentMeters.round()} m',
+                ),
+                _heroMetric(
+                  'ELEVASI −',
+                  '−${stats.totalDescentMeters.round()} m',
+                ),
               ],
             ),
     );
@@ -432,7 +428,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Expanded(child: Text(label, style: const TextStyle(color: VoltWarna.teksAbu))),
+          Expanded(child: Text(label, style: TextStyle(color: Theme.of(context).hintColor))),
           const SizedBox(width: 10),
           Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700))),
         ],
@@ -447,7 +443,13 @@ class _RunDetailPageState extends State<RunDetailPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(label, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: Theme.of(context).hintColor,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
           ],

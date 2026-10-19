@@ -392,7 +392,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           value: _activeIntervalMeters,
-                          dropdownColor: Colors.white,
+                          dropdownColor: const Color(0xFF222222),
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
                           iconEnabledColor: Colors.white,
                           isDense: true,
@@ -468,15 +468,12 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     final double? pace = split.paceSecondsPerKm;
     final Color paceColor = _paceColor(pace);
     final String paceText = pace == null ? '--:--' : _formatPace(pace);
-    final Color labelColor = isFastest
-        ? const Color(0xFF444444)
-        : paceColor;
-    final Color labelBackground = isFastest
-        ? const Color(0xEE3E3E3E)
-        : const Color(0xEE222222);
-    final Color borderColor = isFastest
-        ? const Color(0xFF222222)
-        : paceColor;
+    // Label terang di atas latar gelap membuat angka pace tetap terbaca
+    // pada peta yang penuh detail. Pace tercepat ditandai dengan inversi warna.
+    final Color labelColor = isFastest ? Colors.black : Colors.white;
+    final Color labelBackground =
+        isFastest ? const Color(0xFFF5F5F5) : const Color(0xEE202020);
+    final Color borderColor = isFastest ? Colors.black : paceColor;
 
     return Marker(
       point: LatLng(split.latitude, split.longitude),
@@ -562,8 +559,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
           'Durasi: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} detik\n'
           'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
           'Kecepatan rata-rata: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/jam\n'
-          'Perubahan elevasi dari awal: $altitude\n\n'
-          'Pace, kecepatan, dan perubahan elevasi merupakan perkiraan dari data perangkat.',
+          'Elevasi dari awal: $altitude',
         ),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tutup')),

@@ -6,10 +6,11 @@ VoltStride adalah aplikasi Flutter untuk merekam lari dan jalan kaki, melihat ru
 
 - Daftar akun dan masuk memakai email serta kata sandi melalui Firebase Authentication.
 - Link email untuk mengatur ulang kata sandi.
-- Foto profil dapat diganti atau dihapus kapan saja di tab **Anda**.
-- Tab **Lainnya** berisi perencana rute, timer, coach, dan latihan kekuatan.
-- Nama akun dan email ditampilkan di tab **Anda**.
+- Foto profil dapat dipotong, diganti, atau dihapus kapan saja di tab **Anda**.
+- Tab **Rute** membuka perencana rute multi-titik. Tab **Lainnya** berisi timer, coach, dan latihan kekuatan.
+- Kemajuan, pencapaian, pengaturan tema, dan profil tersedia melalui tab **Anda**. Tema mendukung terang, gelap, dan mengikuti perangkat.
 - Riwayat aktivitas, rute GPS, split, lap 100 meter, dan metrik lari disimpan pada ruang milik akun di Cloud Firestore.
+- Kemajuan menampilkan grafik 12 minggu, perubahan pencapaian sebelumnya, serta perkiraan waktu 5 km, 10 km, half marathon, dan full marathon berdasarkan aktivitas tersimpan.
 - Salinan lokal tetap digunakan agar riwayat bisa dibaca saat jaringan tidak tersedia.
 - Data setiap akun dipisahkan berdasarkan UID. Pengguna tidak bisa membaca riwayat pengguna lain jika aturan keamanan Firebase dipasang sesuai panduan.
 - Riwayat lama yang tersimpan sebelum fitur akun tersedia tidak otomatis dipindahkan. Pemilik perangkat dapat memilih untuk menggabungkannya ke akun secara manual.

@@ -32,12 +32,12 @@ RunEvaluation evaluateRun(RunSession session) {
   if (distanceKm < 0.3) {
     return const RunEvaluation(
       title: 'Data masih terbatas',
-      overview: 'Sesi ini terlalu singkat untuk memberi evaluasi performa yang dapat diandalkan.',
+      overview: 'Sesi terlalu singkat untuk mengevaluasi pace.',
       observations: <String>[
-        'Durasi dan jarak awal berhasil dicatat. Data yang ada belum cukup untuk menilai ritme secara andal.',
+        'Jarak terlalu pendek untuk membandingkan pace.',
       ],
       recommendations: <String>[
-        'Pada sesi berikutnya, mulai dengan pemanasan ringan lalu jaga ritme yang nyaman sebelum mengejar kecepatan.',
+        'Coba rekam sesi yang lebih panjang agar pace bisa dibandingkan.',
       ],
     );
   }
@@ -46,7 +46,7 @@ RunEvaluation evaluateRun(RunSession session) {
     'Kamu menempuh ${distanceKm.toStringAsFixed(2)} km dalam ${session.elapsedText}; waktu bergerak ${session.movingTimeText}.',
   );
   if (averagePace != null && averagePace.isFinite && averagePace > 0) {
-    observations.add('Pace rata-rata sesi ini ${session.averagePaceText}/km. Gunakan angka ini sebagai patokan pribadi, bukan target wajib pada setiap lari.');
+    observations.add('Pace rata-rata ${session.averagePaceText}/km.');
   }
 
   if (paces.length >= 3) {
@@ -66,11 +66,11 @@ RunEvaluation evaluateRun(RunSession session) {
         observations.add('Paruh akhir lebih lambat sekitar ${_formatDurationSeconds(drift.round())}/km dibanding paruh awal.');
         recommendations.add('Coba mulai 1–2 kilometer pertama sedikit lebih santai dan tingkatkan usaha bertahap agar tenaga tersisa di akhir.');
       } else if (drift < -30) {
-        observations.add('Pace pada bagian akhir lebih cepat daripada bagian awal; kamu menambah usaha menjelang selesai.');
-        recommendations.add('Pertahankan pola bertahap ini jika terasa nyaman, dan tetap sisakan tenaga untuk menyelesaikan sesi tanpa memaksakan diri.');
+        observations.add('Pace bagian akhir lebih cepat daripada bagian awal.');
+        recommendations.add('Pertahankan ritme bertahap jika terasa nyaman.');
       } else {
-        observations.add('Pace paruh awal dan akhir relatif seimbang berdasarkan split yang terekam.');
-        recommendations.add('Pertahankan awal yang terkendali dan gunakan split sebagai panduan ritme, bukan alasan untuk memaksa pace pada setiap kilometer.');
+        observations.add('Pace bagian awal dan akhir relatif seimbang.');
+        recommendations.add('Pertahankan ritme yang sama pada sesi serupa.');
       }
     }
   } else if (session.hundredMeterLaps.length >= 5) {
@@ -82,8 +82,8 @@ RunEvaluation evaluateRun(RunSession session) {
     if (shortPaces.length >= 5) {
       final double fastest = shortPaces.reduce((double a, double b) => a < b ? a : b);
       final double slowest = shortPaces.reduce((double a, double b) => a > b ? a : b);
-      observations.add('Pace segmen pendek bervariasi dari ${_formatPace(fastest)} sampai ${_formatPace(slowest)}/km; angka 100 m lebih mudah terpengaruh noise GPS daripada split panjang.');
-      recommendations.add('Jangan mengubah kecepatan karena satu segmen pendek. Periksa tren beberapa menit atau split kilometer.');
+      observations.add('Pace segmen 100 m berada di rentang ${_formatPace(fastest)}–${_formatPace(slowest)}/km.');
+      recommendations.add('Bandingkan beberapa segmen, jangan hanya satu segmen.');
     }
   } else {
     observations.add('Split yang tersedia belum cukup untuk menilai kestabilan ritme secara kuat.');
@@ -91,18 +91,18 @@ RunEvaluation evaluateRun(RunSession session) {
 
   final RunElevationStats elevation = session.elevationStats;
   if (elevation.hasAltitudeData && elevation.totalAscentMeters >= 15) {
-    observations.add('Rute memiliki perkiraan kenaikan ${elevation.totalAscentMeters.round()} m. Tanjakan dapat membuat pace melambat meski usaha terasa sama.');
-    recommendations.add('Pada rute menanjak, jaga usaha dan langkah tetap nyaman; jangan memaksa pace datar saat sedang menanjak.');
+    observations.add('Elevasi +${elevation.totalAscentMeters.round()} m.');
+    recommendations.add('Di rute menanjak, jaga usaha tetap stabil.');
   }
 
   if (session.averageCadenceSpm != null && session.averageCadenceSpm!.isFinite) {
-    observations.add('Cadence rata-rata perangkat sekitar ${session.averageCadenceSpm!.round()} langkah/menit. Angka ini hanya perkiraan sensor ponsel dan bukan standar yang wajib dikejar.');
+    observations.add('Cadence rata-rata ${session.averageCadenceSpm!.round()} langkah/menit.');
     if (session.cadenceSamples.length >= 4) {
       final List<double> cadence = session.cadenceSamples.map((RunCadenceSample sample) => sample.cadenceSpm).toList(growable: false);
       final double mean = cadence.reduce((double a, double b) => a + b) / cadence.length;
       final double spread = cadence.reduce((double a, double b) => a > b ? a : b) - cadence.reduce((double a, double b) => a < b ? a : b);
       if (mean > 0 && spread / mean > 0.25) {
-        recommendations.add('Perhatikan apakah langkah berubah karena lelah atau medan. Utamakan langkah yang rileks dan nyaman, bukan mengejar angka cadence tertentu.');
+        recommendations.add('Jaga langkah tetap rileks, terutama saat mulai lelah.');
       }
     }
   }
@@ -110,20 +110,20 @@ RunEvaluation evaluateRun(RunSession session) {
   if (session.intervalPlan != null) {
     final IntervalRunPlan plan = session.intervalPlan!;
     if (plan.measure == IntervalMeasure.time) {
-      observations.add('Kamu memakai interval berbasis waktu: ${plan.workSeconds} detik kerja dan ${plan.recoverySeconds} detik pemulihan selama ${plan.repetitions} ulangan yang direncanakan.');
+      observations.add('Interval waktu: ${plan.workSeconds} detik kerja, ${plan.recoverySeconds} detik pemulihan.');
     } else {
-      observations.add('Kamu memakai interval berbasis jarak: ${plan.workDistanceMeters.round()} m kerja dan ${plan.recoveryDistanceMeters.round()} m pemulihan selama ${plan.repetitions} ulangan yang direncanakan.');
+      observations.add('Interval jarak: ${plan.workDistanceMeters.round()} m kerja, ${plan.recoveryDistanceMeters.round()} m pemulihan.');
     }
-    recommendations.add('Pada sesi berikutnya, mulai repetisi pertama dengan kendali dan gunakan pemulihan untuk menurunkan usaha. Tambah beban secara bertahap, bukan sekaligus.');
+    recommendations.add('Mulai repetisi dengan terkendali dan tambah usaha bertahap.');
   }
 
   if (recommendations.isEmpty) {
-    recommendations.add('Catat beberapa sesi dengan kondisi serupa, bandingkan split, lalu ubah satu hal kecil dalam latihan. Beri tubuh waktu pulih di antara sesi.');
+    recommendations.add('Bandingkan split dengan sesi berikutnya dan beri tubuh waktu pulih.');
   }
 
   return RunEvaluation(
-    title: 'Yang bisa ditingkatkan',
-    overview: 'Gunakan hasil ini untuk memilih satu hal yang realistis diperbaiki pada sesi berikutnya. Pace yang nyaman dan pemulihan tetap lebih penting daripada mengejar angka setiap kali berlari.',
+    title: 'Evaluasi dan saran',
+    overview: 'Ringkasan sesi.',
     observations: observations,
     recommendations: recommendations,
   );

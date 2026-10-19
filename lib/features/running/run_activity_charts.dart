@@ -46,20 +46,24 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('elevation-chart'),
           title: 'Elevasi',
-          subtitle: 'Perubahan elevasi dari titik awal • meter',
+          subtitle: 'Elevasi relatif • meter',
           points: elevation,
-          emptyText: 'Data perubahan elevasi belum cukup untuk dibuat grafik.',
-          color: const Color(0xFF222222),
+          emptyText: 'Data elevasi belum cukup.',
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFFF0F0F0)
+              : const Color(0xFF222222),
           kind: _MetricKind.elevation,
         ),
         const SizedBox(height: 12),
         _InteractiveMetricChart(
           key: const ValueKey<String>('pace-chart'),
           title: 'Pace',
-          subtitle: 'Menit per kilometer • lebih rendah berarti lebih cepat',
+          subtitle: 'Menit per kilometer',
           points: pace,
           emptyText: 'Belum ada split 100 m yang lengkap.',
-          color: const Color(0xFF555555),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFFBDBDBD)
+              : const Color(0xFF555555),
           kind: _MetricKind.pace,
           invertVertical: true,
         ),
@@ -67,10 +71,12 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
           title: 'Cadence',
-          subtitle: 'Langkah per menit • bergantung data sensor',
+          subtitle: 'Langkah per menit',
           points: cadence,
-          emptyText: 'Cadence belum tersedia dari sensor perangkat.',
-          color: const Color(0xFF888888),
+          emptyText: 'Cadence belum tersedia.',
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF858585)
+              : const Color(0xFF888888),
           kind: _MetricKind.cadence,
         ),
       ],
@@ -219,7 +225,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
       case _MetricKind.pace:
         return 'Pace pada jarak ini';
       case _MetricKind.elevation:
-        return 'Perubahan elevasi dari titik awal';
+        return 'Elevasi relatif';
       case _MetricKind.cadence:
         return 'Cadence pada jarak ini';
     }
@@ -324,6 +330,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                         painter: _MetricChartPainter(
                           points: points,
                           color: widget.color,
+                          textColor: Theme.of(context).colorScheme.onSurface,
+                          gridColor: Theme.of(context).dividerColor,
                           kind: widget.kind,
                           invertVertical: widget.invertVertical,
                           selectedIndex: _selectedIndex,
@@ -403,6 +411,8 @@ class _MetricChartPainter extends CustomPainter {
   const _MetricChartPainter({
     required this.points,
     required this.color,
+    required this.textColor,
+    required this.gridColor,
     required this.kind,
     required this.invertVertical,
     required this.selectedIndex,
@@ -410,6 +420,8 @@ class _MetricChartPainter extends CustomPainter {
 
   final List<Offset> points;
   final Color color;
+  final Color textColor;
+  final Color gridColor;
   final _MetricKind kind;
   final bool invertVertical;
   final int selectedIndex;
@@ -453,7 +465,7 @@ class _MetricChartPainter extends CustomPainter {
     final double rangeY = maxY - minY;
 
     final Paint gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.12)
+      ..color = gridColor.withValues(alpha: 0.55)
       ..strokeWidth = 1;
     final Paint linePaint = Paint()
       ..color = color
@@ -568,7 +580,7 @@ class _MetricChartPainter extends CustomPainter {
     final TextPainter painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(color: Colors.white60, fontSize: fontSize),
+        style: TextStyle(color: textColor, fontSize: fontSize),
       ),
       textDirection: TextDirection.ltr,
       textAlign: align,
@@ -585,6 +597,8 @@ class _MetricChartPainter extends CustomPainter {
   bool shouldRepaint(covariant _MetricChartPainter oldDelegate) =>
       oldDelegate.points != points ||
       oldDelegate.color != color ||
+      oldDelegate.textColor != textColor ||
+      oldDelegate.gridColor != gridColor ||
       oldDelegate.kind != kind ||
       oldDelegate.invertVertical != invertVertical ||
       oldDelegate.selectedIndex != selectedIndex;

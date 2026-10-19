@@ -98,6 +98,41 @@ class PersonalRecordsService {
     return records;
   }
 
+
+  /// Mengambil pencapaian terbaik yang sudah ada sebelum tanggal pencapaian
+  /// sekarang, agar perubahan waktu/pace bisa dibandingkan dengan data lama.
+  static PersonalRecord? previousBestBefore({
+    required List<RunSession> sessions,
+    required DistanceRecordDefinition definition,
+    required PersonalRecord currentRecord,
+  }) {
+    PersonalRecord? bestBefore;
+    for (final RunSession session in sessions) {
+      if (session.activityType != RunActivityType.run) continue;
+      if (!session.startedAt.isBefore(currentRecord.session.startedAt)) {
+        continue;
+      }
+      if (session.distanceMeters < definition.distanceMeters) continue;
+
+      final _DistanceTime? result = _timeAtDistance(
+        session,
+        definition.distanceMeters,
+      );
+      if (result == null || result.duration.inMilliseconds <= 0) continue;
+
+      final PersonalRecord candidate = PersonalRecord(
+        definition: definition,
+        duration: result.duration,
+        session: session,
+        estimated: result.estimated,
+      );
+      if (bestBefore == null || candidate.duration < bestBefore.duration) {
+        bestBefore = candidate;
+      }
+    }
+    return bestBefore;
+  }
+
   static List<String> achievementsFor(
     RunSession current,
     List<RunSession> previousSessions,
@@ -115,7 +150,7 @@ class PersonalRecordsService {
         if (currentTime == null || currentTime.estimated) continue;
         final PersonalRecord? old = previous[definition.key];
         if (old == null || currentTime.duration < old.duration) {
-          achievements.add('${definition.label} tercepat kamu!');
+          achievements.add('Pencapaian ${definition.label}: ${formatDuration(currentTime.duration)}.');
         }
       }
     }
@@ -126,7 +161,7 @@ class PersonalRecordsService {
           math.max(value, session.distanceMeters),
     );
     if (current.activityType == RunActivityType.run && current.distanceMeters > oldLongest + 1) {
-      achievements.add('Rekor lari terjauh: ${current.distanceKm.toStringAsFixed(2)} km!');
+      achievements.add('Pencapaian jarak terjauh: ${current.distanceKm.toStringAsFixed(2)} km.');
     }
 
     final RunElevationStats currentElevation = current.elevationStats;
@@ -139,20 +174,10 @@ class PersonalRecordsService {
       );
       if (currentElevation.totalAscentMeters > previousAscent + 1) {
         achievements.add(
-          'Rekor tanjakan: naik total ${currentElevation.totalAscentMeters.round()} m!',
+          'Pencapaian elevasi: +${currentElevation.totalAscentMeters.round()} m.',
         );
       }
-      final double previousPeak = previousSessions.fold<double>(
-        0,
-        (double value, RunSession session) => session.elevationStats.hasAltitudeData
-            ? math.max(value, session.elevationStats.maxAboveStartMeters)
-            : value,
-      );
-      if (currentElevation.maxAboveStartMeters > previousPeak + 1) {
-        achievements.add(
-          'Puncak tertinggi dari titik start: +${currentElevation.maxAboveStartMeters.round()} m!',
-        );
-      }
+
     }
     return achievements;
   }

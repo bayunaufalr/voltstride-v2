@@ -24,6 +24,7 @@ import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await loadVoltThemeMode();
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -67,13 +68,38 @@ class VoltStrideApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VoltStride',
-      debugShowCheckedModeBanner: false,
-      theme: buildVoltTheme(),
-      home: firebaseReady
-          ? const AccountGate()
-          : FirebaseSetupPage(detailError: firebaseSetupError),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: voltThemeModeNotifier,
+      builder: (BuildContext context, ThemeMode mode, Widget? child) {
+        return MaterialApp(
+          title: 'VoltStride',
+          debugShowCheckedModeBanner: false,
+          theme: buildVoltTheme(),
+          darkTheme: buildVoltTheme(brightness: Brightness.dark),
+          themeMode: mode,
+          builder: (BuildContext context, Widget? child) {
+            final Brightness brightness = Theme.of(context).brightness;
+            SystemChrome.setSystemUIOverlayStyle(
+              SystemUiOverlayStyle(
+                statusBarColor: Theme.of(context).scaffoldBackgroundColor,
+                statusBarIconBrightness: brightness == Brightness.dark
+                    ? Brightness.light
+                    : Brightness.dark,
+                systemNavigationBarColor:
+                    Theme.of(context).scaffoldBackgroundColor,
+                systemNavigationBarIconBrightness:
+                    brightness == Brightness.dark
+                        ? Brightness.light
+                        : Brightness.dark,
+              ),
+            );
+            return child ?? const SizedBox.shrink();
+          },
+          home: firebaseReady
+              ? const AccountGate()
+              : FirebaseSetupPage(detailError: firebaseSetupError),
+        );
+      },
     );
   }
 }
@@ -129,8 +155,6 @@ class _RootShellState extends State<RootShell> {
       GlobalKey<ActivitySetupPageState>();
   final GlobalKey<RunHistoryPageState> _historyKey =
       GlobalKey<RunHistoryPageState>();
-  final GlobalKey<ProgressPageState> _progressKey =
-      GlobalKey<ProgressPageState>();
   final GlobalKey<AccountPageState> _accountKey = GlobalKey<AccountPageState>();
   final GlobalKey<MorePageState> _moreKey = GlobalKey<MorePageState>();
 
@@ -139,21 +163,22 @@ class _RootShellState extends State<RootShell> {
           key: _homeKey,
           onRecord: () => _selectTab(1),
           onHistory: () => _selectTab(2),
-          onProgress: () => _selectTab(3),
         ),
         ActivitySetupPage(
           key: _activityKey,
           onStart: _startActivity,
         ),
         RunHistoryPage(key: _historyKey),
-        ProgressPage(key: _progressKey),
-        AccountPage(key: _accountKey),
+        RoutePlannerPage(active: _index == 3),
+        AccountPage(
+          key: _accountKey,
+          onOpenProgress: () => _openPage(const ProgressPage()),
+        ),
         MorePage(
           key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
           onOpenCoach: () => _openPage(const AiCoachPage()),
           onOpenStrength: () => _openPage(const MusclePage()),
-          onOpenRoutePlanner: () => _openPage(const RoutePlannerPage()),
         ),
       ];
 
@@ -175,9 +200,9 @@ class _RootShellState extends State<RootShell> {
       label: 'Riwayat',
     ),
     NavigationDestination(
-      icon: Icon(Icons.bar_chart_rounded),
-      selectedIcon: Icon(Icons.bar_chart_rounded),
-      label: 'Kemajuan',
+      icon: Icon(Icons.route_outlined),
+      selectedIcon: Icon(Icons.route_rounded),
+      label: 'Rute',
     ),
     NavigationDestination(
       icon: Icon(Icons.person_outline_rounded),
@@ -204,7 +229,7 @@ class _RootShellState extends State<RootShell> {
         unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
         break;
       case 3:
-        unawaited(_progressKey.currentState?.reload() ?? Future<void>.value());
+        // RoutePlannerPage memulai GPS ketika tab ini diaktifkan.
         break;
       case 4:
         unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
@@ -233,7 +258,6 @@ class _RootShellState extends State<RootShell> {
     setState(() => _index = 0);
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_historyKey.currentState?.reload() ?? Future<void>.value());
-    unawaited(_progressKey.currentState?.reload() ?? Future<void>.value());
   }
 
   Future<void> _openPage(Widget page) async {

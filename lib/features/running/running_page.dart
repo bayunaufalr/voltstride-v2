@@ -781,9 +781,8 @@ class _RunningPageState extends State<RunningPage> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Naik ${elevation.totalAscentMeters.toStringAsFixed(0)} m'
-                                ' • Turun ${elevation.totalDescentMeters.toStringAsFixed(0)} m'
-                                ' • Puncak +${elevation.maxAboveStartMeters.toStringAsFixed(0)} m dari start',
+                                'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m'
+                                ' • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -2220,24 +2219,30 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _elevationStatsCard(RunElevationStats stats) {
-    String signed(double value) {
-      final String prefix = value > 0 ? '+' : '';
-      return '$prefix${value.toStringAsFixed(0)} m';
-    }
+    String signed(double value) => '${value > 0 ? '+' : ''}${value.round()} m';
 
-    String format(double value) => '${value.toStringAsFixed(0)} m';
-
-    Widget metric(String label, String value, String detail) {
+    Widget metric(String label, String value) {
       return Expanded(
         child: Padding(
           padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(label, style: const TextStyle(fontSize: 11, color: VoltWarna.teksAbu)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
               const SizedBox(height: 3),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-              Text(detail, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 17,
+                ),
+              ),
             ],
           ),
         ),
@@ -2250,32 +2255,23 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('SELISIH', style: TextStyle(fontWeight: FontWeight.w700)),
+            const Text('ELEVASI', style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             if (!stats.hasAltitudeData)
-              const Text(
-                'Data ketinggian belum tersedia dari GPS.',
-                style: TextStyle(color: VoltWarna.teksAbu),
+              Text(
+                'Data elevasi GPS tidak tersedia.',
+                style: TextStyle(color: Theme.of(context).hintColor),
               )
-            else ...<Widget>[
+            else
               Row(
                 children: <Widget>[
-                  metric('NAIK TOTAL', format(stats.totalAscentMeters), 'Semua kenaikan'),
-                  metric('TURUN TOTAL', format(stats.totalDescentMeters), 'Semua penurunan'),
+                  metric('ELEVASI +', signed(stats.totalAscentMeters)),
+                  metric(
+                    'ELEVASI −',
+                    '−${stats.totalDescentMeters.round()} m',
+                  ),
                 ],
               ),
-              Row(
-                children: <Widget>[
-                  metric('ELEVASI BERSIH', signed(stats.netChangeMeters), 'Naik dikurangi turun'),
-                  metric('TITIK TERTINGGI DARI AWAL', signed(stats.maxAboveStartMeters), 'Selisih dari titik awal'),
-                ],
-              ),
-            ],
-            const SizedBox(height: 4),
-            const Text(
-              'Nilai menunjukkan perubahan dari titik awal. Pembacaan GPS dapat bergeser, sehingga perubahan kecil diabaikan.',
-              style: TextStyle(fontSize: 10, color: VoltWarna.teksAbu),
-            ),
           ],
         ),
       ),
@@ -2297,9 +2293,15 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('KECEPATAN SETIAP 100 METER', style: TextStyle(fontWeight: FontWeight.w700)),
+            const Text(
+              'PACE TIAP 100 METER',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 6),
-            const Text('Kecepatan adalah rata-rata per segmen 100 m, bukan instan. Kolom terakhir menunjukkan perubahan elevasi dari titik awal.', style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu)),
+            const Text(
+              'Pace, kecepatan, elevasi tiap 100 m.',
+              style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu),
+            ),
             const SizedBox(height: 12),
             if (laps.isEmpty)
               const Text('Belum ada segmen 100 m yang valid.')
@@ -2336,12 +2338,10 @@ class _RunningPageState extends State<RunningPage> {
               children: <Widget>[
                 const Icon(Icons.insights, color: VoltWarna.aksen),
                 const SizedBox(width: 8),
-                Expanded(child: Text('EVALUASI AKHIR: ${evaluation.title.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.w900))),
+                Expanded(child: Text('EVALUASI DAN SARAN', style: const TextStyle(fontWeight: FontWeight.w900))),
               ],
             ),
             const SizedBox(height: 8),
-            Text(evaluation.overview, style: const TextStyle(color: VoltWarna.teksAbu, height: 1.4)),
-            const SizedBox(height: 12),
             const Text('PENGAMATAN', style: TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             ...evaluation.observations.map((String text) => Padding(

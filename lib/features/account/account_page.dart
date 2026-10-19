@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,7 +15,9 @@ import '../running/services/run_history_repository.dart';
 import 'account_service.dart';
 
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key});
+  const AccountPage({super.key, required this.onOpenProgress});
+
+  final VoidCallback onOpenProgress;
 
   @override
   State<AccountPage> createState() => AccountPageState();
@@ -64,10 +67,49 @@ class AccountPageState extends State<AccountPage> {
   }
 
   int _suggestedRestHours(RunSession session) {
-    if (session.activityType == RunActivityType.walk) return 12;
-    if (session.intervalPlan != null || session.distanceKm >= 10) return 36;
-    if (session.distanceKm >= 5) return 24;
-    return 18;
+    final double jarakKm = session.distanceKm;
+    final Duration durasiAktif = session.movingTime > Duration.zero
+        ? session.movingTime
+        : session.elapsed;
+    final double durasiJam = durasiAktif.inMinutes / 60.0;
+    final RunElevationStats dataElevasi = session.elevationStats;
+    final double elevasiNaik =
+        dataElevasi.hasAltitudeData ? dataElevasi.totalAscentMeters : 0;
+    final double elevasiTurun =
+        dataElevasi.hasAltitudeData ? dataElevasi.totalDescentMeters : 0;
+
+    // Perkiraan memakai jarak, waktu bergerak, elevasi, dan latihan interval.
+    // Tanpa denyut jantung, tidur, atau rasa lelah pengguna, hasilnya tetap
+    // perkiraan umum dan bukan ukuran pemulihan tubuh yang pasti.
+    double jamIstirahat;
+    if (session.activityType == RunActivityType.walk) {
+      jamIstirahat = 6 + (jarakKm * 0.55) + (durasiJam * 1.5);
+    } else {
+      jamIstirahat = 8 + (jarakKm * 0.9);
+      jamIstirahat += math.max(0, durasiJam - 0.5) * 2.0;
+      jamIstirahat += (elevasiNaik / 100) * 1.5;
+      jamIstirahat += (elevasiTurun / 150) * 0.75;
+
+      if (session.intervalPlan != null) jamIstirahat += 6;
+      if (jarakKm >= 21.097) {
+        jamIstirahat += 12;
+      } else if (jarakKm >= 10) {
+        jamIstirahat += 6;
+      } else if (jarakKm >= 5) {
+        jamIstirahat += 3;
+      }
+
+      if (jarakKm > 0) {
+        final double paceMenitPerKm = durasiAktif.inSeconds / 60 / jarakKm;
+        if (paceMenitPerKm < 5.25 && jarakKm >= 5) {
+          jamIstirahat += 3;
+        } else if (paceMenitPerKm < 6 && jarakKm >= 5) {
+          jamIstirahat += 1.5;
+        }
+      }
+    }
+
+    return jamIstirahat.round().clamp(6, 72).toInt();
   }
 
   @override
@@ -78,6 +120,14 @@ class AccountPageState extends State<AccountPage> {
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           _accountCard(),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: widget.onOpenProgress,
+            icon: const Icon(Icons.show_chart_rounded),
+            label: const Text('Kemajuan dan pencapaian'),
+          ),
+          const SizedBox(height: 12),
+          _themeCard(),
           if (_legacyHistoryCount > 0) ...<Widget>[
             const SizedBox(height: 14),
             _legacyHistoryCard(),
@@ -87,6 +137,54 @@ class AccountPageState extends State<AccountPage> {
             recommendedResumeAt: _recommendedResumeAt,
             loading: _loading,
             hasActivity: _latestSession != null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _themeCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Tampilan',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: voltThemeModeNotifier,
+            builder: (BuildContext context, ThemeMode mode, Widget? child) {
+              return DropdownButtonFormField<ThemeMode>(
+                value: mode,
+                decoration: const InputDecoration(labelText: 'Tema aplikasi'),
+                items: const <DropdownMenuItem<ThemeMode>>[
+                  DropdownMenuItem<ThemeMode>(
+                    value: ThemeMode.system,
+                    child: Text('Ikuti perangkat'),
+                  ),
+                  DropdownMenuItem<ThemeMode>(
+                    value: ThemeMode.light,
+                    child: Text('Terang'),
+                  ),
+                  DropdownMenuItem<ThemeMode>(
+                    value: ThemeMode.dark,
+                    child: Text('Gelap'),
+                  ),
+                ],
+                onChanged: (ThemeMode? pilihan) {
+                  if (pilihan != null) {
+                    unawaited(saveVoltThemeMode(pilihan));
+                  }
+                },
+              );
+            },
           ),
         ],
       ),
@@ -114,9 +212,9 @@ class AccountPageState extends State<AccountPage> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: VoltWarna.kartu,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.zero,
-            border: Border.all(color: VoltWarna.border),
+            border: Border.all(color: Theme.of(context).dividerColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -146,7 +244,7 @@ class AccountPageState extends State<AccountPage> {
                         const SizedBox(height: 4),
                         Text(
                           email,
-                          style: const TextStyle(color: VoltWarna.teksAbu),
+                          style: TextStyle(color: Theme.of(context).hintColor),
                         ),
                       ],
                     ),
@@ -193,40 +291,54 @@ class AccountPageState extends State<AccountPage> {
 
   Future<void> _memilihFotoProfil() async {
     try {
-      // file_picker versi 12 mengembalikan satu PlatformFile secara langsung.
-      // Jika pengguna membatalkan pemilihan, hasilnya bernilai null.
       final PlatformFile? hasil = await FilePicker.pickFile(
         type: FileType.image,
       );
       if (hasil == null) return;
 
-      // Baca isi gambar setelah pengguna memilih berkas.
       final Uint8List bytes = await hasil.readAsBytes();
       if (bytes.isEmpty) {
-        _tampilkanPesan('Foto tidak dapat dibaca. Coba pilih gambar lain.');
+        _tampilkanPesan('Foto tidak dapat dibaca. Pilih gambar lain.');
         return;
       }
 
-      final img.Image? gambarAsli = img.decodeImage(bytes);
+      img.Image? gambarAsli = img.decodeImage(bytes);
       if (gambarAsli == null) {
         _tampilkanPesan('File tersebut bukan gambar yang dapat dibuka.');
         return;
       }
 
-      final img.Image fotoKecil = img.copyResizeCropSquare(
-        gambarAsli,
-        size: 256,
+      // Perkecil gambar berukuran sangat besar sebelum membuka alat potong,
+      // agar penyuntingan tetap ringan di ponsel.
+      final int sisiTerbesar = math.max(gambarAsli.width, gambarAsli.height);
+      if (sisiTerbesar > 1200) {
+        final double skala = 1200 / sisiTerbesar;
+        gambarAsli = img.copyResize(
+          gambarAsli,
+          width: (gambarAsli.width * skala).round(),
+          height: (gambarAsli.height * skala).round(),
+        );
+      }
+
+      if (!mounted) return;
+      final Uint8List? fotoTerpotong = await showDialog<Uint8List>(
+        context: context,
+        builder: (BuildContext dialogContext) =>
+            _CropFotoDialog(gambarAsli: gambarAsli!),
       );
-      final List<int> fotoJpg = img.encodeJpg(fotoKecil, quality: 70);
-      if (fotoJpg.length > 650 * 1024) {
-        _tampilkanPesan('Ukuran foto masih terlalu besar. Pilih foto lain.');
+      if (fotoTerpotong == null) return;
+
+      if (fotoTerpotong.length > 650 * 1024) {
+        _tampilkanPesan('Ukuran foto terlalu besar. Pilih foto yang lebih kecil.');
         return;
       }
 
-      await AccountService.perbaruiFotoProfil(base64Encode(fotoJpg));
+      await AccountService.perbaruiFotoProfil(base64Encode(fotoTerpotong));
       _tampilkanPesan('Foto profil diperbarui.');
     } catch (_) {
-      _tampilkanPesan('Foto profil belum berhasil diperbarui. Periksa koneksi.');
+      _tampilkanPesan(
+        'Foto profil belum berhasil diperbarui. Coba pilih foto lain.',
+      );
     }
   }
 
@@ -250,9 +362,9 @@ class AccountPageState extends State<AccountPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: VoltWarna.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.border),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,7 +376,7 @@ class AccountPageState extends State<AccountPage> {
           const SizedBox(height: 6),
           Text(
             '$_legacyHistoryCount aktivitas masih perlu dikirim ke akun.',
-            style: const TextStyle(color: VoltWarna.teksAbu, height: 1.45),
+            style: TextStyle(color: Theme.of(context).hintColor, height: 1.45),
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
@@ -385,6 +497,117 @@ class AccountPageState extends State<AccountPage> {
 
 }
 
+/// Pemotong foto sederhana: pengguna dapat menggeser area kotak sebelum disimpan.
+class _CropFotoDialog extends StatefulWidget {
+  const _CropFotoDialog({required this.gambarAsli});
+
+  final img.Image gambarAsli;
+
+  @override
+  State<_CropFotoDialog> createState() => _CropFotoDialogState();
+}
+
+class _CropFotoDialogState extends State<_CropFotoDialog> {
+  late final int _sisiPotong;
+  late final int _maksKiri;
+  late final int _maksAtas;
+  late double _kiri;
+  late double _atas;
+
+  @override
+  void initState() {
+    super.initState();
+    _sisiPotong = math.min(
+      widget.gambarAsli.width,
+      widget.gambarAsli.height,
+    );
+    _maksKiri = widget.gambarAsli.width - _sisiPotong;
+    _maksAtas = widget.gambarAsli.height - _sisiPotong;
+    _kiri = _maksKiri / 2;
+    _atas = _maksAtas / 2;
+  }
+
+  Uint8List _hasilPotongan() {
+    final img.Image potongan = img.copyCrop(
+      widget.gambarAsli,
+      x: _kiri.round().clamp(0, _maksKiri).toInt(),
+      y: _atas.round().clamp(0, _maksAtas).toInt(),
+      width: _sisiPotong,
+      height: _sisiPotong,
+    );
+    final img.Image ukuranProfil = img.copyResize(
+      potongan,
+      width: 256,
+      height: 256,
+    );
+    return Uint8List.fromList(img.encodeJpg(ukuranProfil, quality: 78));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Uint8List preview = _hasilPotongan();
+    return AlertDialog(
+      title: const Text('Potong foto profil'),
+      content: SizedBox(
+        width: 320,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(128),
+                  child: Image.memory(
+                    preview,
+                    width: 210,
+                    height: 210,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_maksKiri > 0) ...<Widget>[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Geser area ke kiri atau kanan'),
+                ),
+                Slider(
+                  value: _kiri.clamp(0, _maksKiri).toDouble(),
+                  min: 0,
+                  max: _maksKiri.toDouble(),
+                  onChanged: (double value) => setState(() => _kiri = value),
+                ),
+              ],
+              if (_maksAtas > 0) ...<Widget>[
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Geser area ke atas atau bawah'),
+                ),
+                Slider(
+                  value: _atas.clamp(0, _maksAtas).toDouble(),
+                  min: 0,
+                  max: _maksAtas.toDouble(),
+                  onChanged: (double value) => setState(() => _atas = value),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_hasilPotongan()),
+          child: const Text('Gunakan foto'),
+        ),
+      ],
+    );
+  }
+}
+
 /// Countdown terpisah agar pembaruannya tidak membangun ulang seluruh halaman akun.
 class _RecoveryCountdownCard extends StatefulWidget {
   const _RecoveryCountdownCard({
@@ -479,9 +702,9 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: VoltWarna.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.border),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,10 +723,10 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Ini hanya perkiraan, bukan penilaian medis. Jika masih merasa lelah, tunda latihan.',
+          Text(
+            'Ini hanya perkiraan saja, bukan penilaian medis. Jika masih merasa lelah, tunda latihan.',
             style: TextStyle(
-              color: VoltWarna.teksAbu,
+              color: Theme.of(context).hintColor,
               fontSize: 11,
               height: 1.4,
             ),
