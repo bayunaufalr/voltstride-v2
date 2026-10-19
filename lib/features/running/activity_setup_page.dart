@@ -120,7 +120,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               _indoorMapCard()
             else ...<Widget>[
               ClipRRect(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.zero,
                 child: RunRouteMapView(
                   key: ValueKey<String>('activity-start-${_currentLocation?.timestamp.toIso8601String() ?? 'empty'}'),
                   route: _currentLocation == null ? const <RunPoint>[] : <RunPoint>[_currentLocation!],
@@ -207,7 +207,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
                 color: VoltWarna.kartu,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.zero,
                 border: Border.all(color: VoltWarna.border),
               ),
               child: Column(
@@ -260,7 +260,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
                   color: VoltWarna.kartu,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.zero,
                   border: Border.all(color: VoltWarna.border),
                 ),
                 child: Column(
@@ -342,8 +342,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       height: 210,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: const LinearGradient(colors: <Color>[Color(0xFF1D3240), Color(0xFF202943)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.zero,
+        color: VoltWarna.surface,
       ),
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -367,14 +367,14 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     bool horizontal = false,
   }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(17),
+      borderRadius: BorderRadius.zero,
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: selected ? VoltWarna.aksen.withValues(alpha: 0.12) : VoltWarna.kartu,
-          borderRadius: BorderRadius.circular(17),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: selected ? VoltWarna.aksen : VoltWarna.border, width: selected ? 1.6 : 1),
         ),
         child: horizontal

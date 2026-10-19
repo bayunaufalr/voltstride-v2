@@ -17,6 +17,49 @@ class AccountService {
   static CollectionReference<Map<String, dynamic>> get _profilAkun =>
       _database.collection('users');
 
+
+  /// Aliran perubahan profil pengguna yang sedang masuk.
+  static Stream<DocumentSnapshot<Map<String, dynamic>>> get perubahanProfil {
+    final User? pengguna = _auth.currentUser;
+    if (pengguna == null) return const Stream.empty();
+    return _profilAkun.doc(pengguna.uid).snapshots();
+  }
+
+  /// Menyimpan foto profil kecil sebagai teks Base64 di dokumen akun.
+  /// Dengan cara ini foto ikut tersinkron tanpa Firebase Storage berbayar.
+  static Future<void> perbaruiFotoProfil(String fotoBase64) async {
+    final User? pengguna = _auth.currentUser;
+    if (pengguna == null) {
+      throw StateError('Masuk ke akun sebelum mengubah foto profil.');
+    }
+    if (fotoBase64.isEmpty || fotoBase64.length > 700 * 1024) {
+      throw ArgumentError('Ukuran foto profil tidak sesuai.');
+    }
+
+    await _profilAkun.doc(pengguna.uid).set(
+      <String, dynamic>{
+        'fotoProfilBase64': fotoBase64,
+        'diperbaruiPada': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Mengembalikan avatar ke ikon orang bawaan.
+  static Future<void> hapusFotoProfil() async {
+    final User? pengguna = _auth.currentUser;
+    if (pengguna == null) {
+      throw StateError('Masuk ke akun sebelum mengubah foto profil.');
+    }
+    await _profilAkun.doc(pengguna.uid).set(
+      <String, dynamic>{
+        'fotoProfilBase64': FieldValue.delete(),
+        'diperbaruiPada': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
   /// Membuat akun baru dengan nama, email, dan kata sandi.
   static Future<UserCredential> daftarAkun({
     required String nama,

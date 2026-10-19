@@ -1,179 +1,152 @@
 import 'package:flutter/material.dart';
 
-/// ============================================================
-/// VOLTWARNA - Palet warna global aplikasi VoltStride
-/// ============================================================
-/// Tema gelap futuristik ala dashboard sport-tech:
-///   - Latar dasar biru-slate sangat gelap (#0f172a)
-///   - Aksen utama biru neon (#38bdf8) untuk tombol utama, indikator
-///     aktif, dan garis progres.
-///   - Warna status terpisah agar mudah dibaca sekilas:
-///       Hijau  = ronde aktif / target tercapai
-///       Kuning = jeda / istirahat
-///       Violet = selesai / sesi khatam
-///
-/// Semua warna dibuat `const` supaya Flutter tidak membangun ulang
-/// ThemeData pada setiap build, sehingga frame tetap ringan.
+/// Warna utama VoltStride. Tampilan dibuat netral, hitam dan putih,
+/// agar data latihan menjadi fokus dan mudah disesuaikan lagi.
 class VoltWarna {
-  VoltWarna._(); // constructor privat: kelas ini kumpulan konstanta saja
+  VoltWarna._();
 
-  // --- Warna dasar / latar -------------------------------------
-  /// Latar aplikasi paling belakang (di balik Scaffold).
-  static const Color latar = Color(0xFF0F172A);
+  static const Color latar = Color(0xFFFFFFFF);
+  static const Color kartu = Color(0xFFFFFFFF);
+  static const Color surface = Color(0xFFF5F5F5);
+  static const Color border = Color(0xFFD8D8D8);
 
-  /// Warna isi Card, sedikit lebih terang dari [latar] supaya
-  /// tidak perlu border tegas untuk memisahkan lapisan UI.
-  static const Color kartu = Color(0xFF1E293B);
+  static const Color aksen = Color(0xFF111111);
+  static const Color aksenGelap = Color(0xFF333333);
+  static const Color hijau = Color(0xFF555555);
+  static const Color kuning = Color(0xFF777777);
+  static const Color merah = Color(0xFF111111);
+  static const Color violet = Color(0xFF666666);
 
-  /// Warna lapisan ketiga: input field, chip, container dalam kartu.
-  static const Color surface = Color(0xFF283548);
-
-  /// Garis pemisah tipis antar kartu.
-  static const Color border = Color(0xFF334155);
-
-  // --- Aksen utama ---------------------------------------------
-  /// Biru neon: warna aksen aplikasi.
-  static const Color aksen = Color(0xFF38BDF8);
-
-  /// Versi lebih gelap dari [aksen], untuk gradient dan pressed state.
-  static const Color aksenGelap = Color(0xFF0EA5E9);
-
-  // --- Warna status --------------------------------------------
-  static const Color hijau = Color(0xFF22C55E);
-  static const Color kuning = Color(0xFFEAB308);
-  static const Color merah = Color(0xFFEF4444);
-  static const Color violet = Color(0xFFA855F7);
-
-  // --- Warna teks ----------------------------------------------
-  static const Color teksPutih = Color(0xFFF8FAFC);
-  static const Color teksAbu = Color(0xFF94A3B8);
-  static const Color teksRedup = Color(0xFF64748B);
+  static const Color teksPutih = Color(0xFF111111);
+  static const Color teksAbu = Color(0xFF666666);
+  static const Color teksRedup = Color(0xFF888888);
 }
 
-/// Membangun [ThemeData] gelap VoltStride untuk aplikasi.
-///
-/// Dipanggil sekali di `MaterialApp(theme: ...)`, bukan di setiap widget,
-/// supaya tidak ada alokasi objek berulang saat hot reload.
 ThemeData buildVoltTheme() {
-  // ColorScheme menentukan warna default komponen Material
-  // (AppBar, dialog, snackbar, dan lain-lain).
-  final ColorScheme skema = const ColorScheme.dark().copyWith(
-    primary: VoltWarna.aksen,
-    onPrimary: VoltWarna.latar,
-    secondary: VoltWarna.violet,
-    surface: VoltWarna.kartu,
-    onSurface: VoltWarna.teksPutih,
-    error: VoltWarna.merah,
+  const Color hitam = Color(0xFF111111);
+  const Color putih = Color(0xFFFFFFFF);
+  const Color abu = Color(0xFF666666);
+  const Color garis = Color(0xFFD8D8D8);
+
+  final ColorScheme skema = ColorScheme.fromSeed(
+    seedColor: hitam,
+    brightness: Brightness.light,
+  ).copyWith(
+    primary: hitam,
+    onPrimary: putih,
+    secondary: hitam,
+    onSecondary: putih,
+    surface: putih,
+    onSurface: hitam,
+    error: hitam,
+    onError: putih,
   );
 
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: Brightness.light,
     colorScheme: skema,
-    scaffoldBackgroundColor: VoltWarna.latar, // latar slate-dark
-
+    scaffoldBackgroundColor: putih,
     appBarTheme: const AppBarTheme(
-      backgroundColor: VoltWarna.latar, // menyatu dengan latar, kesan modern
-      surfaceTintColor: Colors.transparent, // hilangkan tint elevation M3
+      backgroundColor: putih,
+      foregroundColor: hitam,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
       titleTextStyle: TextStyle(
-        color: VoltWarna.teksPutih,
+        color: hitam,
         fontSize: 20,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.5,
+        fontWeight: FontWeight.w700,
       ),
     ),
-
-    // Gaya Card global supaya semua kartu seragam tanpa menulis ulang
-    // di tiap file halaman.
-    cardTheme: CardThemeData(
-      color: VoltWarna.kartu,
+    cardTheme: const CardThemeData(
+      color: putih,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: VoltWarna.border),
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: garis),
       ),
     ),
-
-    inputDecorationTheme: InputDecorationTheme(
+    textTheme: ThemeData.light().textTheme.apply(
+      bodyColor: hitam,
+      displayColor: hitam,
+    ),
+    inputDecorationTheme: const InputDecorationTheme(
       filled: true,
-      fillColor: VoltWarna.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      // Label mengambang (M3): menempel di atas input saat diisi.
+      fillColor: Color(0xFFF7F7F7),
+      contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       floatingLabelBehavior: FloatingLabelBehavior.auto,
-      labelStyle: const TextStyle(color: VoltWarna.teksAbu),
-      hintStyle: const TextStyle(color: VoltWarna.teksRedup),
+      labelStyle: TextStyle(color: abu),
+      hintStyle: TextStyle(color: Color(0xFF888888)),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: VoltWarna.border),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: garis),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: VoltWarna.border),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: garis),
       ),
-      // Border biru neon saat input aktif: feedback visual bahwa kolom
-      // ini sedang dipakai AI Coach.
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: VoltWarna.aksen, width: 2),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: hitam, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: VoltWarna.merah),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: hitam),
       ),
     ),
-
-    // Gaya tombol utama, dipakai untuk aksi penting seperti
-    // "Mulai Lari" dan "Rancang Latihan AI".
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: VoltWarna.aksen,
-        foregroundColor: VoltWarna.latar,
-        minimumSize: const Size.fromHeight(52), // tinggi sentuh >= 48dp
-        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        backgroundColor: hitam,
+        foregroundColor: putih,
+        minimumSize: const Size.fromHeight(48),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       ),
     ),
-
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: VoltWarna.aksen,
-        minimumSize: const Size.fromHeight(52),
-        side: const BorderSide(color: VoltWarna.aksen),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        foregroundColor: hitam,
+        minimumSize: const Size.fromHeight(48),
+        side: const BorderSide(color: hitam),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       ),
     ),
-
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: hitam),
+    ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: VoltWarna.kartu,
-      indicatorColor: VoltWarna.aksen.withOpacity(0.18),
+      backgroundColor: putih,
+      indicatorColor: const Color(0xFFEAEAEA),
+      indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      labelTextStyle: WidgetStateProperty.resolveWith(
-        (states) => TextStyle(
-          fontSize: 11,
+      labelTextStyle: WidgetStateProperty.resolveWith((states) {
+        return TextStyle(
+          fontSize: 10,
           fontWeight: states.contains(WidgetState.selected)
-              ? FontWeight.w800
-              : FontWeight.w500,
-          color: states.contains(WidgetState.selected)
-              ? VoltWarna.aksen
-              : VoltWarna.teksAbu,
-        ),
-      ),
-      iconTheme: WidgetStateProperty.resolveWith(
-        (states) => IconThemeData(
-          size: 24,
-          color: states.contains(WidgetState.selected)
-              ? VoltWarna.aksen
-              : VoltWarna.teksAbu,
-        ),
-      ),
+              ? FontWeight.w700
+              : FontWeight.w400,
+          color: states.contains(WidgetState.selected) ? hitam : abu,
+        );
+      }),
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        return IconThemeData(
+          size: 23,
+          color: states.contains(WidgetState.selected) ? hitam : abu,
+        );
+      }),
     ),
-
-    dividerTheme: const DividerThemeData(color: VoltWarna.border, thickness: 1),
+    dividerTheme: const DividerThemeData(color: garis, thickness: 1),
+    snackBarTheme: const SnackBarThemeData(
+      backgroundColor: hitam,
+      contentTextStyle: TextStyle(color: putih),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(color: hitam),
   );
 }

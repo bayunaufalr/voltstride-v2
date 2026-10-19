@@ -367,7 +367,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
               if (session.route.length > 1) ...<Widget>[
                 const SizedBox(height: 11),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.zero,
                   child: RunRouteMapView(
                     key: ValueKey<String>('history-${session.startedAt.toIso8601String()}'),
                     route: session.route,

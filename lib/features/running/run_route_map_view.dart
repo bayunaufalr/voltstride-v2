@@ -231,11 +231,11 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
   }
 
   Color _paceColor(double? pace) {
-    if (pace == null || !pace.isFinite || pace <= 0) return const Color(0xFF82909B);
-    if (pace <= 300) return const Color(0xFF70B69A); // cepat: hijau lembut
-    if (pace <= 420) return const Color(0xFF6DAFD1); // sedang: biru lembut
-    if (pace <= 600) return const Color(0xFFC6AD72); // santai: emas lembut
-    return const Color(0xFF9BA5B0); // pelan: abu lembut
+    if (pace == null || !pace.isFinite || pace <= 0) return const Color(0xFF888888);
+    if (pace <= 300) return const Color(0xFF111111); // cepat
+    if (pace <= 420) return const Color(0xFF444444); // sedang
+    if (pace <= 600) return const Color(0xFF777777); // santai
+    return const Color(0xFFBBBBBB); // pelan
   }
 
   List<Polyline> _coloredPolylines(List<_DisplayPoint> display, List<RunDistanceSegment> splits) {
@@ -275,7 +275,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
       }
     }
     if (currentPoints.length >= 2) {
-      result.add(Polyline(points: currentPoints, strokeWidth: 4.5, color: currentColor ?? const Color(0xFF6DAFD1)));
+      result.add(Polyline(points: currentPoints, strokeWidth: 4.5, color: currentColor ?? const Color(0xFF111111)));
     }
     return result;
   }
@@ -325,14 +325,14 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         point: startPoint,
         width: 22,
         height: 22,
-        child: const Icon(Icons.flag_circle_rounded, color: Color(0xFF70B69A), size: 21),
+        child: const Icon(Icons.flag_circle_rounded, color: Colors.black, size: 21),
       ),
       if (validRoute.length > 1)
         Marker(
           point: lastPoint,
           width: 22,
           height: 22,
-          child: const Icon(Icons.location_on_rounded, color: Color(0xFFD77D76), size: 21),
+          child: const Icon(Icons.location_on_rounded, color: Colors.black, size: 21),
         ),
       ..._splitMarkers(splits),
     ];
@@ -346,7 +346,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         return SizedBox(
           height: widget.height,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.zero,
             child: Stack(
               children: <Widget>[
                 FlutterMap(
@@ -385,14 +385,14 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: const Color(0xE91B2230),
-                        borderRadius: BorderRadius.circular(10),
+                        color: const Color(0xE9222222),
+                        borderRadius: BorderRadius.zero,
                         border: Border.all(color: Colors.white24),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<int>(
                           value: _activeIntervalMeters,
-                          dropdownColor: const Color(0xFF1B2230),
+                          dropdownColor: Colors.white,
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
                           iconEnabledColor: Colors.white,
                           isDense: true,
@@ -469,13 +469,13 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     final Color paceColor = _paceColor(pace);
     final String paceText = pace == null ? '--:--' : _formatPace(pace);
     final Color labelColor = isFastest
-        ? const Color(0xFFB7E3C9)
+        ? const Color(0xFF444444)
         : paceColor;
     final Color labelBackground = isFastest
-        ? const Color(0xEE254638)
-        : const Color(0xEE1B2230);
+        ? const Color(0xEE3E3E3E)
+        : const Color(0xEE222222);
     final Color borderColor = isFastest
-        ? const Color(0xFF9DD4B4)
+        ? const Color(0xFF222222)
         : paceColor;
 
     return Marker(
@@ -492,14 +492,14 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
             padding: const EdgeInsets.symmetric(horizontal: 3),
             decoration: BoxDecoration(
               color: labelBackground,
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.zero,
               border: Border.all(
                 color: borderColor,
                 width: isFastest ? 2.0 : 1.0,
               ),
               boxShadow: isFastest
                   ? const <BoxShadow>[
-                      BoxShadow(color: Color(0x553C9971), blurRadius: 5),
+                      BoxShadow(color: Color(0x55828282), blurRadius: 5),
                     ]
                   : null,
             ),
@@ -550,8 +550,8 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         ? '${(split.startMeters / 1000).toStringAsFixed(2)}–'
             '${(split.endMeters / 1000).toStringAsFixed(2)} km'
         : '${split.startMeters.round()}–${split.endMeters.round()} m';
-    final String altitude = split.altitudeMeters != null && split.altitudeMeters!.isFinite
-        ? '${split.altitudeMeters!.round()} m'
+    final String altitude = split.relativeElevationMeters != null && split.relativeElevationMeters!.isFinite
+        ? '${split.relativeElevationMeters! >= 0 ? '+' : ''}${split.relativeElevationMeters!.round()} m'
         : '--';
     await showDialog<void>(
       context: context,
@@ -562,8 +562,8 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
           'Durasi: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} detik\n'
           'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
           'Kecepatan rata-rata: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/jam\n'
-          'Elevasi titik akhir: $altitude\n\n'
-          'Pace, kecepatan, dan elevasi merupakan perkiraan dari data perangkat.',
+          'Perubahan elevasi dari awal: $altitude\n\n'
+          'Pace, kecepatan, dan perubahan elevasi merupakan perkiraan dari data perangkat.',
         ),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tutup')),

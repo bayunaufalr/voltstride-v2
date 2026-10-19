@@ -143,35 +143,6 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    Center(
-                      child: Container(
-                        width: 78,
-                        height: 78,
-                        decoration: BoxDecoration(
-                          color: VoltWarna.aksen.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: VoltWarna.aksen.withValues(alpha: 0.35),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.directions_run_rounded,
-                          color: VoltWarna.aksen,
-                          size: 43,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'VOLTSTRIDE',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: VoltWarna.aksen,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 3,
-                      ),
-                    ),
                     const SizedBox(height: 8),
                     Text(
                       _sedangDaftar ? 'Buat akunmu' : 'Selamat datang kembali',
@@ -185,7 +156,7 @@ class _LoginPageState extends State<LoginPage> {
                     Text(
                       _sedangDaftar
                           ? 'Simpan catatan latihan dan buka di perangkat lain dengan akun yang sama.'
-                          : 'Masuk untuk melanjutkan perjalanan latihanmu.',
+                          : 'Masuk untuk melanjutkan.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: VoltWarna.teksAbu,
@@ -279,7 +250,7 @@ class _LoginPageState extends State<LoginPage> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: VoltWarna.merah.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.zero,
                           border: Border.all(
                             color: VoltWarna.merah.withValues(alpha: 0.45),
                           ),
@@ -329,7 +300,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Gunakan email dan kata sandi milikmu sendiri. VoltStride tidak meminta kata sandi akun Google.',
+                      'Gunakan email dan kata sandi milikmu sendiri.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: VoltWarna.teksRedup,

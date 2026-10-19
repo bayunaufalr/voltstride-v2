@@ -21,10 +21,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
   final List<_ChatBubbleData> _visibleMessages = <_ChatBubbleData>[
     const _ChatBubbleData(
       role: 'assistant',
-      text:
-          'Saya VoltStride Coach lokal. Saya bisa membahas pace, split, konsistensi, '
-          'target lomba, dan latihan berdasarkan riwayat aktivitas dari akun serta perangkat. '
-          'Mode ini tidak membutuhkan internet atau API berbayar dan bukan pengganti tenaga kesehatan.',
+      text: 'Tanyakan pace, split, target lomba, atau latihan dari riwayat larimu.',
     ),
   ];
   final List<AiCoachMessage> _conversation = <AiCoachMessage>[];
@@ -106,7 +103,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VoltStride Coach'),
+        title: const Text('Coach'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Percakapan baru',
@@ -120,9 +117,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
                         ..add(
                           const _ChatBubbleData(
                             role: 'assistant',
-                            text:
-                                'Percakapan baru dimulai. Saya akan memakai '
-                                'ringkasan lari yang tersedia dari akun atau perangkat. Saya bekerja secara offline dengan aturan dan perhitungan, bukan model generatif seperti ChatGPT.',
+                            text: 'Tanyakan pace, split, target lomba, atau latihan dari riwayat larimu.',
                           ),
                         );
                     });
@@ -198,7 +193,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
                 hintText: 'Tanyakan soal latihan, pace, split, atau target lomba...',
                 filled: true,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.zero,
                   borderSide: BorderSide.none,
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -261,7 +256,7 @@ class _ChatBubble extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: background,
-              borderRadius: BorderRadius.circular(18).copyWith(
+              borderRadius: BorderRadius.zero.copyWith(
                 bottomRight: isUser ? const Radius.circular(4) : null,
                 bottomLeft: isUser ? null : const Radius.circular(4),
               ),

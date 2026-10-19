@@ -73,25 +73,126 @@ class RunHistoryRepository {
     );
   }
 
+  static const List<String> _kolomJsonUntukCloud = <String>[
+    'routeJson',
+    'splitsJson',
+    'hundredMeterLapsJson',
+    'intervalPlanJson',
+    'activityMetricsJson',
+  ];
+
+  /// Memampatkan data GPS sebelum dikirim agar dokumen Firestore tidak mudah
+  /// melewati batas ukuran. Salinan SQLite tetap memakai JSON biasa.
+  Map<String, dynamic> _buatDataCloud(RunSession session) {
+    final Map<String, Object?> data = session.toStorageMap();
+    for (final String kolom in _kolomJsonUntukCloud) {
+      final Object? nilai = data[kolom];
+      if (nilai is String && nilai.isNotEmpty) {
+        final List<int> hasilKompresi = gzip.encode(utf8.encode(nilai));
+        data[kolom] = 'gz1:${base64Encode(hasilKompresi)}';
+      }
+    }
+    data['versiKompresi'] = 1;
+
+    // Periksa ukuran sebelum menambahkan waktu dari server.
+    final Map<String, Object?> cekUkuran = Map<String, Object?>.from(data)
+      ..['diperbaruiPada'] = '';
+    final int ukuranBytes = utf8.encode(jsonEncode(cekUkuran)).length;
+    if (ukuranBytes > 850 * 1024) {
+      throw const RunSyncException(
+        'Data aktivitas terlalu besar untuk satu catatan akun. Data asli tetap aman di perangkat.',
+      );
+    }
+
+    data['diperbaruiPada'] = FieldValue.serverTimestamp();
+    return Map<String, dynamic>.from(data);
+  }
+
+  /// Membuka kembali data JSON terkompresi. Data lama yang belum dikompres
+  /// tetap dapat dibaca karena hanya nilai dengan awalan gz1: yang diproses.
+  Map<String, Object?> _bukaDataCloud(Map<String, dynamic> dataCloud) {
+    final Map<String, Object?> data = Map<String, Object?>.from(dataCloud);
+    for (final String kolom in _kolomJsonUntukCloud) {
+      final Object? nilai = data[kolom];
+      if (nilai is! String || !nilai.startsWith('gz1:')) continue;
+      try {
+        final List<int> bytes = base64Decode(nilai.substring(4));
+        data[kolom] = utf8.decode(gzip.decode(bytes));
+      } on FormatException {
+        throw const FormatException(
+          'Data aktivitas dari akun tidak dapat dibaca. Coba sinkronkan kembali.',
+        );
+      }
+    }
+    return data;
+  }
+
   Future<void> _unggahAktivitas(RunSession session, String uid) async {
     try {
       await _koleksiAktivitas(uid)
           .doc(_idDokumenAktivitas(session))
-          .set(<String, dynamic>{
-            ...session.toStorageMap(),
-            'diperbaruiPada': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true))
-          .timeout(const Duration(seconds: 10));
+          .set(_buatDataCloud(session), SetOptions(merge: true))
+          .timeout(const Duration(seconds: 15));
     } on TimeoutException {
       throw const RunSyncException(
-        'Aktivitas tersimpan di perangkat, tetapi sinkronisasi akun belum terkonfirmasi. Periksa internet lalu buka Riwayat untuk mencoba kembali.',
+        'Aktivitas tersimpan di perangkat, tetapi sinkronisasi belum terkonfirmasi. Periksa internet lalu coba sinkronkan lagi dari tab Anda.',
       );
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') {
+        throw const RunSyncException(
+          'Aktivitas tersimpan di perangkat, tetapi Firebase menolak akses. Periksa aturan Firestore pada users/{uid}/runSessions.',
+        );
+      }
+      if (error.code == 'resource-exhausted') {
+        throw const RunSyncException(
+          'Batas pemakaian Firebase tercapai. Aktivitas tetap tersimpan di perangkat.',
+        );
+      }
+      if (error.code == 'invalid-argument' || error.code == 'out-of-range') {
+        throw const RunSyncException(
+          'Firebase menolak ukuran atau format data aktivitas. Data asli tetap aman di perangkat.',
+        );
+      }
+      if (error.code == 'unavailable' || error.code == 'deadline-exceeded') {
+        throw const RunSyncException(
+          'Aktivitas tersimpan di perangkat, tetapi Firebase tidak dapat dijangkau. Periksa koneksi lalu coba lagi.',
+        );
+      }
+      throw RunSyncException(
+        'Aktivitas tersimpan di perangkat, tetapi belum tersinkron ke akun (kode ${error.code}).',
+      );
+    } on RunSyncException {
+      rethrow;
     } catch (error) {
-      if (error is RunSyncException) rethrow;
-      throw const RunSyncException(
-        'Aktivitas tersimpan di perangkat, tetapi belum berhasil disinkronkan ke akun. Periksa koneksi dan aturan keamanan Firebase.',
+      // Tampilkan penyebab tambahan agar masalah tidak selalu terlihat sebagai
+      // kegagalan internet, padahal bisa berasal dari format data atau layanan.
+      final String detail = error.toString();
+      final String detailRingkas = detail.length > 180
+          ? '${detail.substring(0, 180)}…'
+          : detail;
+      throw RunSyncException(
+        'Aktivitas tetap tersimpan di perangkat, tetapi belum tersinkron. '
+        'Rincian: $detailRingkas',
       );
     }
+  }
+
+  Future<void> _hapusAktivitasLokal(
+    Database db,
+    RunSession session, {
+    required String pemilik,
+    String? waktuMulaiDiDatabase,
+  }) async {
+    // Untuk baris guest, gunakan teks tanggal persis dari SQLite. Ini mencegah
+    // salinan lama tertinggal karena format tanggal berbeda saat dibaca ulang.
+    await db.delete(
+      _tableName,
+      where: 'startedAt = ? AND userId = ?',
+      whereArgs: <Object?>[
+        waktuMulaiDiDatabase ?? session.startedAt.toUtc().toIso8601String(),
+        pemilik,
+      ],
+    );
   }
 
   Future<List<RunSession>> _bacaAktivitasLokal(
@@ -279,7 +380,7 @@ class RunHistoryRepository {
           in hasil.docs) {
         try {
           final RunSession session = RunSession.fromStorageMap(
-            Map<String, Object?>.from(dokumen.data()),
+            _bukaDataCloud(dokumen.data()),
           );
           final String kunci = session.startedAt.toUtc().toIso8601String();
           semuaAktivitas[kunci] = session;
@@ -349,41 +450,169 @@ class RunHistoryRepository {
     );
   }
 
-  /// Jumlah riwayat lama yang belum ditautkan ke akun mana pun.
-  Future<int> legacySessionCount() async {
+  /// Menghitung catatan perangkat yang belum beres dipindahkan ke akun.
+  /// Catatan guest tetap dihitung meskipun sudah ada di cloud, karena salinan
+  /// perangkatnya masih perlu dipindahkan ke pemilik akun lalu dibersihkan.
+  Future<int> pendingSessionCount() async {
     final Database db = await _db;
-    final List<Map<String, Object?>> rows = await db.rawQuery(
-      "SELECT COUNT(*) AS total FROM $_tableName WHERE userId = 'guest'",
-    );
-    return Sqflite.firstIntValue(rows) ?? 0;
-  }
-
-  /// Memindahkan riwayat lama ke akun yang sedang masuk setelah pengguna
-  /// memilih tindakan ini secara sadar. Data lalu disinkronkan ke cloud.
-  Future<int> importLegacyHistoryToAccount() async {
     final String? uid = _akunAktifId;
-    if (uid == null) {
-      throw const RunSyncException('Masuk ke akun sebelum memindahkan riwayat lama.');
-    }
-
-    final Database db = await _db;
-    final List<Map<String, Object?>> rows = await db.query(
+    final List<Map<String, Object?>> guestRows = await db.query(
       _tableName,
       where: "userId = 'guest'",
       orderBy: 'startedAt ASC',
     );
-    final List<RunSession> aktivitasLama = rows
+    final List<RunSession> guestSessions = guestRows
         .map(RunSession.fromStorageMap)
         .toList(growable: false);
 
-    for (final RunSession session in aktivitasLama) {
-      // Baru ubah kepemilikan lokal setelah unggahan berhasil, agar data yang
-      // belum tersalin tetap muncul sebagai riwayat lama yang bisa dicoba lagi.
-      await _unggahAktivitas(session, uid);
-      await _tulisAktivitasLokal(db, session, uid);
+    if (uid == null) return guestSessions.length;
+
+    final List<RunSession> aktivitasAkun = await _bacaAktivitasLokal(
+      db,
+      pemilik: uid,
+    );
+
+    try {
+      final QuerySnapshot<Map<String, dynamic>> cloud =
+          await _koleksiAktivitas(uid).get().timeout(
+                const Duration(seconds: 10),
+              );
+      final Set<String> idCloud = cloud.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.id)
+          .toSet();
+      final Set<String> menunggu = <String>{
+        for (final RunSession session in guestSessions)
+          _idDokumenAktivitas(session),
+        for (final RunSession session in aktivitasAkun)
+          if (!idCloud.contains(_idDokumenAktivitas(session)))
+            _idDokumenAktivitas(session),
+      };
+      return menunggu.length;
+    } catch (_) {
+      // Bila cloud belum bisa diperiksa, jangan sembunyikan catatan lokal.
+      return <String>{
+        ...guestSessions.map(_idDokumenAktivitas),
+        ...aktivitasAkun.map(_idDokumenAktivitas),
+      }.length;
     }
-    return aktivitasLama.length;
   }
+
+  /// Nama lama tetap disediakan untuk kode yang masih memakainya.
+  Future<int> legacySessionCount() => pendingSessionCount();
+
+  /// Memindahkan aktivitas lama dari perangkat ke akun yang sedang dibuka.
+  /// Satu catatan yang gagal tidak menghentikan catatan lain yang bisa dipindah.
+  /// Data guest baru dihapus setelah unggahan atau pemeriksaan cloud berhasil.
+  Future<int> syncPendingSessionsToAccount() async {
+    final String? uid = _akunAktifId;
+    if (uid == null) {
+      throw const RunSyncException(
+        'Masuk ke akun sebelum memindahkan aktivitas.',
+      );
+    }
+
+    final Database db = await _db;
+    final List<Map<String, Object?>> guestRows = await db.query(
+      _tableName,
+      where: "userId = 'guest'",
+      orderBy: 'startedAt ASC',
+    );
+    final List<Map<String, Object?>> akunRows = await db.query(
+      _tableName,
+      where: 'userId = ?',
+      whereArgs: <Object?>[uid],
+      orderBy: 'startedAt ASC',
+    );
+
+    final Map<String, RunSession> sesiPerId = <String, RunSession>{};
+    final Map<String, String> waktuMulaiGuest = <String, String>{};
+    final Set<String> idGuest = <String>{};
+
+    // Utamakan data asli yang masih berlabel guest jika ada ID yang sama.
+    for (final Map<String, Object?> row in guestRows) {
+      final RunSession session = RunSession.fromStorageMap(row);
+      final String id = _idDokumenAktivitas(session);
+      sesiPerId[id] = session;
+      idGuest.add(id);
+      final Object? waktuMulai = row['startedAt'];
+      if (waktuMulai is String) waktuMulaiGuest[id] = waktuMulai;
+    }
+
+    // Aktivitas milik akun juga diproses jika ada di perangkat tetapi belum
+    // terkirim ke cloud. Jangan menimpa salinan guest yang mungkin lebih utuh.
+    for (final Map<String, Object?> row in akunRows) {
+      final RunSession session = RunSession.fromStorageMap(row);
+      sesiPerId.putIfAbsent(_idDokumenAktivitas(session), () => session);
+    }
+
+    Set<String> idCloud = <String>{};
+    bool pemeriksaanCloudBerhasil = false;
+    try {
+      final QuerySnapshot<Map<String, dynamic>> cloud =
+          await _koleksiAktivitas(uid).get().timeout(
+                const Duration(seconds: 10),
+              );
+      idCloud = cloud.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> doc) => doc.id)
+          .toSet();
+      pemeriksaanCloudBerhasil = true;
+    } catch (_) {
+      // Jika daftar cloud tidak bisa dibaca, coba kirim satu per satu. Data
+      // lokal tidak akan dihapus jika unggahannya gagal.
+    }
+
+    int jumlahBerhasil = 0;
+    int jumlahGagal = 0;
+    Object? kesalahanPertama;
+
+    for (final MapEntry<String, RunSession> entri in sesiPerId.entries) {
+      final String id = entri.key;
+      final RunSession session = entri.value;
+      final bool berasalDariGuest = idGuest.contains(id);
+      final bool sudahAdaDiCloud = pemeriksaanCloudBerhasil && idCloud.contains(id);
+      final bool perluDikirim = !sudahAdaDiCloud;
+
+      try {
+        // Jika data sudah ada di akun, cukup bereskan salinan guest di perangkat.
+        // Pengiriman ulang hanya dilakukan bila dokumen belum ada atau daftar
+        // cloud tidak berhasil dibaca.
+        if (perluDikirim) {
+          await _unggahAktivitas(session, uid);
+          idCloud.add(id);
+        }
+
+        await _tulisAktivitasLokal(db, session, uid);
+        if (berasalDariGuest) {
+          await _hapusAktivitasLokal(
+            db,
+            session,
+            pemilik: 'guest',
+            waktuMulaiDiDatabase: waktuMulaiGuest[id],
+          );
+        }
+        if (berasalDariGuest || perluDikirim) jumlahBerhasil++;
+      } catch (error) {
+        jumlahGagal++;
+        kesalahanPertama ??= error;
+        // Aktivitas ini tetap dipertahankan di perangkat dan tidak menghalangi
+        // aktivitas lain yang masih bisa disinkronkan.
+      }
+    }
+
+    if (jumlahGagal > 0) {
+      final String detail = kesalahanPertama?.toString() ?? 'Penyebab belum diketahui.';
+      throw RunSyncException(
+        '$jumlahBerhasil aktivitas berhasil dipindahkan. '
+        '$jumlahGagal aktivitas belum tersinkron dan tetap disimpan di perangkat. '
+        'Rincian: $detail',
+      );
+    }
+
+    return jumlahBerhasil;
+  }
+
+  /// Nama lama tetap didukung agar tombol pada versi terdahulu tidak rusak.
+  Future<int> importLegacyHistoryToAccount() => syncPendingSessionsToAccount();
 
   /// Membuat file cadangan JSON yang bisa disimpan di luar data aplikasi.
   /// Cadangan tidak mengandung API key atau data akun.

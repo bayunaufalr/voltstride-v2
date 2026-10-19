@@ -32,7 +32,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     try {
       await value;
     } catch (_) {
-      // FutureBuilder displays the error state.
+      // FutureBuilder menampilkan keadaan saat data belum bisa dibaca.
     }
   }
 
@@ -108,33 +108,15 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   Widget _header() {
     return Row(
       children: <Widget>[
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-              colors: <Color>[VoltWarna.aksen, VoltWarna.violet],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: const Icon(Icons.bolt_rounded, color: VoltWarna.latar, size: 29),
-        ),
-        const SizedBox(width: 12),
         const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text('VoltStride', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-              Text('Gerak hari ini, progres berikutnya.', style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
-            ],
+          child: Text(
+            'Beranda',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
           ),
         ),
-        IconButton(
-          tooltip: 'Kemajuan pribadi',
+        TextButton(
           onPressed: widget.onProgress,
-          icon: const Icon(Icons.insights_rounded),
+          child: const Text('Kemajuan'),
         ),
       ],
     );
@@ -152,7 +134,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: VoltWarna.kartu,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: VoltWarna.border),
       ),
       child: Column(
@@ -196,8 +178,8 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
           const SizedBox(height: 13),
           Text(
             activeDays == 0
-                ? 'Belum ada aktivitas minggu ini. Mulai dari sesi yang nyaman.'
-                : 'Konsistensi dibangun dari latihan yang bisa kamu ulangi.',
+                ? 'Belum ada aktivitas minggu ini.'
+                : '$activeDays dari 7 hari memiliki aktivitas.',
             style: const TextStyle(color: VoltWarna.teksAbu, height: 1.35, fontSize: 12),
           ),
         ],
@@ -208,70 +190,62 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   Widget _weeklySummary(double distanceKm, Duration duration, double ascent) {
     return Row(
       children: <Widget>[
-        Expanded(child: _metricCard('Jarak', '${distanceKm.toStringAsFixed(2)} km', Icons.route_rounded)),
-        const SizedBox(width: 10),
-        Expanded(child: _metricCard('Waktu gerak', _shortDuration(duration), Icons.timer_outlined)),
-        const SizedBox(width: 10),
-        Expanded(child: _metricCard('Naik', '${ascent.round()} m', Icons.trending_up_rounded)),
+        Expanded(
+          child: _metricCard('Jarak', '${distanceKm.toStringAsFixed(2)} km'),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: _metricCard('Waktu gerak', _shortDuration(duration))),
+        const SizedBox(width: 8),
+        Expanded(child: _metricCard('Naik total', '${ascent.round()} m')),
       ],
     );
   }
 
-  Widget _metricCard(String label, String value, IconData icon) {
+  Widget _metricCard(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: VoltWarna.kartu,
-        borderRadius: BorderRadius.circular(17),
+        color: Colors.white,
         border: Border.all(color: VoltWarna.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, color: VoltWarna.aksen, size: 18),
-          const SizedBox(height: 12),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
-          const SizedBox(height: 3),
-          Text(label, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 10)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 10),
+          ),
         ],
       ),
     );
   }
 
   Widget _recordButton() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
-      onTap: widget.onRecord,
-      child: Ink(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
-          gradient: const LinearGradient(
-            colors: <Color>[VoltWarna.aksen, Color(0xFF76D4FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(color: Color(0x3338BDF8), blurRadius: 22, offset: Offset(0, 8)),
-          ],
-        ),
-        child: const Row(
-          children: <Widget>[
-            Icon(Icons.radio_button_checked_rounded, color: VoltWarna.latar, size: 32),
-            SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text('Rekam aktivitas', style: TextStyle(color: VoltWarna.latar, fontSize: 18, fontWeight: FontWeight.w900)),
-                  SizedBox(height: 3),
-                  Text('Lari, interval, atau berjalan', style: TextStyle(color: VoltWarna.latar, fontSize: 12)),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_rounded, color: VoltWarna.latar),
-          ],
-        ),
+    return OutlinedButton(
+      onPressed: widget.onRecord,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(64),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        side: const BorderSide(color: Colors.black, width: 1.2),
+      ),
+      child: const Row(
+        children: <Widget>[
+          Icon(Icons.add_rounded, size: 27),
+          SizedBox(width: 10),
+          Text('Rekam aktivitas', style: TextStyle(fontSize: 16)),
+          Spacer(),
+          Icon(Icons.chevron_right),
+        ],
       ),
     );
   }
@@ -294,7 +268,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: VoltWarna.kartu,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: VoltWarna.border),
       ),
       child: Column(
@@ -302,13 +276,6 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(color: VoltWarna.surface, borderRadius: BorderRadius.circular(12)),
-                child: Icon(session.activityType == RunActivityType.walk ? Icons.directions_walk_rounded : Icons.directions_run_rounded, color: VoltWarna.aksen),
-              ),
-              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,13 +285,12 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: VoltWarna.teksAbu),
             ],
           ),
           if (session.route.length > 1) ...<Widget>[
             const SizedBox(height: 12),
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.zero,
               child: RunRouteMapView(
                 key: ValueKey<String>('home-map-${session.startedAt.toIso8601String()}'),
                 route: session.route,
@@ -363,25 +329,22 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   Widget _emptyActivity() {
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: VoltWarna.kartu, borderRadius: BorderRadius.circular(20), border: Border.all(color: VoltWarna.border)),
+      decoration: BoxDecoration(color: VoltWarna.kartu, borderRadius: BorderRadius.zero, border: Border.all(color: VoltWarna.border)),
       child: const Column(
         children: <Widget>[
-          Icon(Icons.route_outlined, size: 38, color: VoltWarna.teksAbu),
-          SizedBox(height: 10),
-          Text('Aktivitas pertama menunggu dimulai', style: TextStyle(fontWeight: FontWeight.w800)),
+          Text('Belum ada aktivitas.', style: TextStyle(fontWeight: FontWeight.w700)),
           SizedBox(height: 5),
-          Text('Selesai merekam sesi untuk melihat peta dan ringkasannya di sini.', textAlign: TextAlign.center, style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+          Text('Aktivitas selesai akan muncul di sini.', textAlign: TextAlign.center, style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
         ],
       ),
     );
   }
 
   Widget _progressLink() {
-    return OutlinedButton.icon(
+    return OutlinedButton(
       onPressed: widget.onProgress,
-      icon: const Icon(Icons.insights_rounded),
-      label: const Text('Lihat kemajuan dan rekor pribadi'),
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+      child: const Text('Lihat kemajuan'),
     );
   }
 

@@ -46,10 +46,10 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('elevation-chart'),
           title: 'Elevasi',
-          subtitle: 'Ketinggian GPS • meter',
+          subtitle: 'Perubahan elevasi dari titik awal • meter',
           points: elevation,
-          emptyText: 'Data elevasi GPS belum cukup untuk dibuat grafik.',
-          color: const Color(0xFF75B6A0),
+          emptyText: 'Data perubahan elevasi belum cukup untuk dibuat grafik.',
+          color: const Color(0xFF222222),
           kind: _MetricKind.elevation,
         ),
         const SizedBox(height: 12),
@@ -59,7 +59,7 @@ class RunActivityCharts extends StatelessWidget {
           subtitle: 'Menit per kilometer • lebih rendah berarti lebih cepat',
           points: pace,
           emptyText: 'Belum ada split 100 m yang lengkap.',
-          color: const Color(0xFF79B5D7),
+          color: const Color(0xFF555555),
           kind: _MetricKind.pace,
           invertVertical: true,
         ),
@@ -70,7 +70,7 @@ class RunActivityCharts extends StatelessWidget {
           subtitle: 'Langkah per menit • bergantung data sensor',
           points: cadence,
           emptyText: 'Cadence belum tersedia dari sensor perangkat.',
-          color: const Color(0xFFC6AD72),
+          color: const Color(0xFF888888),
           kind: _MetricKind.cadence,
         ),
       ],
@@ -80,6 +80,7 @@ class RunActivityCharts extends StatelessWidget {
   List<Offset> _elevationPoints(List<RunPoint> route) {
     final List<Offset> raw = <Offset>[];
     double distance = 0;
+    double? elevationAtStart;
     RunPoint? previous;
     for (final RunPoint point in route) {
       if (previous != null && !point.startsNewSegment) {
@@ -92,7 +93,8 @@ class RunActivityCharts extends StatelessWidget {
       }
       final double? altitude = point.altitudeMeters;
       if (altitude != null && altitude.isFinite) {
-        raw.add(Offset(distance / 1000, altitude));
+        elevationAtStart ??= altitude;
+        raw.add(Offset(distance / 1000, altitude - elevationAtStart));
       }
       previous = point;
     }
@@ -206,7 +208,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
         final int seconds = value.round();
         return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}/km';
       case _MetricKind.elevation:
-        return '${value.round()} m';
+        return '${value > 0 ? '+' : ''}${value.round()} m';
       case _MetricKind.cadence:
         return '${value.round()} spm';
     }
@@ -217,7 +219,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
       case _MetricKind.pace:
         return 'Pace pada jarak ini';
       case _MetricKind.elevation:
-        return 'Elevasi pada jarak ini';
+        return 'Perubahan elevasi dari titik awal';
       case _MetricKind.cadence:
         return 'Cadence pada jarak ini';
     }
@@ -231,7 +233,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
       case _MetricKind.pace:
         return 'Rentang ${_valueText(low)} – ${_valueText(high)}';
       case _MetricKind.elevation:
-        return 'Terendah ${low.round()} m • tertinggi ${high.round()} m';
+        return 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}';
       case _MetricKind.cadence:
         return 'Rentang ${low.round()}–${high.round()} spm';
     }
@@ -257,7 +259,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                   height: 25,
                   decoration: BoxDecoration(
                     color: widget.color,
-                    borderRadius: BorderRadius.circular(5),
+                    borderRadius: BorderRadius.zero,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -340,14 +342,14 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                 ),
                 decoration: BoxDecoration(
                   color: widget.color.withValues(alpha: 0.11),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                   border: Border.all(
                     color: widget.color.withValues(alpha: 0.38),
                   ),
                 ),
                 child: Row(
                   children: <Widget>[
-                    Icon(Icons.touch_app_rounded, color: widget.color, size: 19),
+                    Icon(Icons.straighten_rounded, color: widget.color, size: 19),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(

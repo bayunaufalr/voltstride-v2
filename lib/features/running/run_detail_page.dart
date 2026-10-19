@@ -261,7 +261,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                 child: DropdownButton<int>(
                   value: _selectedIntervalMeters,
                   isDense: true,
-                  dropdownColor: const Color(0xFF202A3A),
+                  dropdownColor: Colors.white,
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -304,7 +304,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       durationLabel: 'Waktu',
                       speedLabel: 'km/jam',
                       paceLabel: 'Pace',
-                      altitudeLabel: 'Elevasi',
+                      altitudeLabel: 'Elev. relatif',
                       header: true,
                     ),
                     const Divider(height: 14),
@@ -318,9 +318,9 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         paceLabel: segment.paceSecondsPerKm == null
                             ? '--:--'
                             : '${_formatPace(segment.paceSecondsPerKm!)}/km',
-                        altitudeLabel: segment.altitudeMeters == null
+                        altitudeLabel: segment.relativeElevationMeters == null
                             ? '--'
-                            : '${segment.altitudeMeters!.round()} m',
+                            : '${segment.relativeElevationMeters! >= 0 ? '+' : ''}${segment.relativeElevationMeters!.round()} m',
                       );
                     }),
                   ],
@@ -389,7 +389,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
     String signed(double value) => '${value > 0 ? '+' : ''}${value.toStringAsFixed(0)} m';
     String metres(double value) => '${value.toStringAsFixed(0)} m';
     return _sectionCard(
-      title: 'ELEVASI GPS',
+      title: 'ELEVASI',
       child: !stats.hasAltitudeData
           ? const Text('Data elevasi tidak tersimpan untuk sesi ini.')
           : Column(

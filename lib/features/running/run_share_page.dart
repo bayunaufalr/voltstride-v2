@@ -53,52 +53,28 @@ class _RunSharePageState extends State<RunSharePage> {
 
   static const List<_ShareTheme> _themes = <_ShareTheme>[
     _ShareTheme(
-      name: 'Midnight',
-      background: Color(0xFF101827),
-      card: Color(0xFF1C283A),
-      accent: Color(0xFF79B5D7),
-      text: Colors.white,
-      muted: Color(0xFFB7C2D1),
-    ),
-    _ShareTheme(
-      name: 'Volt',
-      background: Color(0xFF11110F),
-      card: Color(0xFF20201C),
-      accent: Color(0xFFB1CE8C),
-      text: Colors.white,
-      muted: Color(0xFFBDBDB5),
-    ),
-    _ShareTheme(
-      name: 'Paper',
-      background: Color(0xFFF2F0EA),
-      card: Color(0xFFFFFFFF),
-      accent: Color(0xFF3D7C70),
-      text: Color(0xFF1B252B),
-      muted: Color(0xFF657178),
-    ),
-    _ShareTheme(
-      name: 'Ember',
-      background: Color(0xFF211714),
-      card: Color(0xFF35231E),
-      accent: Color(0xFFD99A76),
-      text: Color(0xFFFFF6F0),
-      muted: Color(0xFFD8BEB2),
-    ),
-    _ShareTheme(
-      name: 'Ocean',
-      background: Color(0xFF0B2026),
-      card: Color(0xFF15343C),
-      accent: Color(0xFF79C7C2),
-      text: Color(0xFFF1FFFF),
-      muted: Color(0xFFA8D0D0),
-    ),
-    _ShareTheme(
-      name: 'Mono',
-      background: Color(0xFF171717),
+      name: 'Gelap',
+      background: Color(0xFF111111),
       card: Color(0xFF292929),
-      accent: Color(0xFFD7D7D7),
+      accent: Color(0xFFD0D0D0),
       text: Colors.white,
       muted: Color(0xFFB5B5B5),
+    ),
+    _ShareTheme(
+      name: 'Terang',
+      background: Color(0xFFFFFFFF),
+      card: Color(0xFFF2F2F2),
+      accent: Color(0xFF222222),
+      text: Color(0xFF111111),
+      muted: Color(0xFF666666),
+    ),
+    _ShareTheme(
+      name: 'Abu-abu',
+      background: Color(0xFFE5E5E5),
+      card: Color(0xFFFFFFFF),
+      accent: Color(0xFF444444),
+      text: Color(0xFF111111),
+      muted: Color(0xFF666666),
     ),
   ];
 
@@ -141,7 +117,7 @@ class _RunSharePageState extends State<RunSharePage> {
           ),
           const SizedBox(height: 20),
           const Text(
-            'Pilih template warna',
+            'Tampilan',
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
           ),
           const SizedBox(height: 10),
@@ -197,7 +173,7 @@ class _RunSharePageState extends State<RunSharePage> {
               _contentChip('Durasi', _showDuration, (bool v) => _showDuration = v),
               _contentChip('Pace', _showPace, (bool v) => _showPace = v),
               _contentChip('Peta rute', _showMap, (bool v) => _showMap = v),
-              _contentChip('Elevasi', _showElevation, (bool v) => _showElevation = v),
+              _contentChip('Selisih elevasi', _showElevation, (bool v) => _showElevation = v),
               _contentChip('Jumlah langkah', _showSteps, (bool v) => _showSteps = v),
               _contentChip('Cadence', _showCadence, (bool v) => _showCadence = v),
               _contentChip('Kalori', _showCalories, (bool v) => _showCalories = v),
@@ -264,7 +240,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showElevation) {
       metrics.add(_ShareMetric(
         'elevation',
-        'ELEVASI +',
+        'NAIK TOTAL',
         elevation.hasAltitudeData
             ? '${elevation.totalAscentMeters.round()} m'
             : '--',
@@ -310,7 +286,7 @@ class _RunSharePageState extends State<RunSharePage> {
       child: Container(
         decoration: BoxDecoration(
           color: theme.background,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.zero,
           border: Border.all(color: theme.accent.withValues(alpha: 0.45)),
         ),
         clipBehavior: Clip.antiAlias,
@@ -377,53 +353,18 @@ class _RunSharePageState extends State<RunSharePage> {
   }
 
   Widget _posterHeader(_ShareTheme theme, String activityLabel) {
-    return Row(
-      children: <Widget>[
-        Container(
-          width: 7,
-          height: 31,
-          decoration: BoxDecoration(
-            color: theme.accent,
-            borderRadius: BorderRadius.circular(8),
-          ),
+    // Header tanpa logo atau hiasan merek. Nama aktivitas menjadi judulnya.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        activityLabel,
+        maxLines: 1,
+        style: TextStyle(
+          color: theme.text,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
         ),
-        const SizedBox(width: 9),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'VOLTSTRIDE',
-                maxLines: 1,
-                style: TextStyle(
-                  color: theme.text,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.8,
-                  fontSize: 16,
-                ),
-              ),
-              Text(
-                activityLabel,
-                maxLines: 1,
-                style: TextStyle(
-                  color: theme.muted,
-                  fontSize: 9,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Icon(
-          _layout == _PosterLayout.splitFocus
-              ? Icons.bar_chart_rounded
-              : _layout == _PosterLayout.minimal
-                  ? Icons.bolt_rounded
-                  : Icons.route_rounded,
-          color: theme.accent,
-          size: 25,
-        ),
-      ],
+      ),
     );
   }
 
@@ -503,7 +444,7 @@ class _RunSharePageState extends State<RunSharePage> {
             ),
             decoration: BoxDecoration(
               color: theme.card,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.zero,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,7 +485,7 @@ class _RunSharePageState extends State<RunSharePage> {
       padding: const EdgeInsets.all(7),
       decoration: BoxDecoration(
         color: theme.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.zero,
       ),
       child: CustomPaint(
         painter: _PosterRoutePainter(
@@ -562,7 +503,7 @@ class _RunSharePageState extends State<RunSharePage> {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: theme.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.zero,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -595,7 +536,7 @@ class _RunSharePageState extends State<RunSharePage> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: theme.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.zero,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -626,7 +567,7 @@ class _RunSharePageState extends State<RunSharePage> {
                   ),
                   Expanded(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.zero,
                       child: LinearProgressIndicator(
                         value: ratio,
                         minHeight: 6,
@@ -700,7 +641,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showDuration) details.add(session.elapsedText);
     if (_showPace) details.add('pace ${session.averagePaceText}/km');
     if (_showElevation && session.elevationStats.hasAltitudeData) {
-      details.add('naik ${session.elevationStats.totalAscentMeters.round()} m');
+      details.add('naik total ${session.elevationStats.totalAscentMeters.round()} m');
     }
     if (_showCalories) details.add('sekitar ${session.estimatedCalories.round()} kcal');
     return <String>['Aktivitas VoltStride', ...details].join(' • ');
@@ -779,8 +720,8 @@ class _PosterRoutePainter extends CustomPainter {
       }
     }
     canvas.drawPath(path, line);
-    canvas.drawCircle(points.first, 5.5, Paint()..color = const Color(0xFF70B69A));
-    canvas.drawCircle(points.last, 5.5, Paint()..color = const Color(0xFFD77D76));
+    canvas.drawCircle(points.first, 5.5, Paint()..color = const Color(0xFFA5A5A5));
+    canvas.drawCircle(points.last, 5.5, Paint()..color = const Color(0xFF909090));
     canvas.restore();
   }
 

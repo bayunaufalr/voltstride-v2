@@ -30,7 +30,7 @@ class RunPoint {
   final double longitude;
   final DateTime timestamp;
   final double accuracyMeters;
-  /// Estimasi ketinggian dari GPS dalam meter di atas permukaan laut.
+  /// Nilai mentah altitude dari GPS; jangan tampilkan langsung di UI.
   /// Null untuk data lama atau ketika nilai GPS tidak valid.
   final double? altitudeMeters;
 
@@ -118,7 +118,7 @@ class RunLap100m {
   final int durationMilliseconds;
   final double latitude;
   final double longitude;
-  /// Ketinggian GPS di lokasi penanda 100 m.
+  /// Altitude GPS mentah pada penanda 100 m untuk menghitung perubahan relatif.
   final double? altitudeMeters;
 
   const RunLap100m({

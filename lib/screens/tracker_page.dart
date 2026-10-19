@@ -581,24 +581,11 @@ class _TrackerPageState extends State<TrackerPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // Judul besar dengan aksen neon.
         const Text(
-          'VOLTSTRIDE',
+          'Pelacakan lari',
           style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            color: VoltWarna.aksen,
-            letterSpacing: 2,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'AI Running Coach',
-          style: TextStyle(
-            fontSize: 15,
-            color: VoltWarna.teksAbu,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 3,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -703,7 +690,7 @@ class _TrackerPageState extends State<TrackerPage> {
               // --- Tombol rancang latihan AI ---
               FilledButton.icon(
                 onPressed: _memproses ? null : _jalankanAICoach,
-                icon: const Icon(Icons.auto_awesome),
+                icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('Rancang Latihan AI'),
               ),
             ],
@@ -819,7 +806,7 @@ class _TrackerPageState extends State<TrackerPage> {
                     color: _gpsAktif
                         ? VoltWarna.hijau.withOpacity(0.2)
                         : VoltWarna.surface,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
                     _gpsAktif ? 'REC' : 'IDLE',
@@ -901,7 +888,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
                   color: VoltWarna.merah.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: Text(
                   _pesanGps!,
@@ -951,7 +938,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
                   color: _warnaFase.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: Row(
                   children: <Widget>[
@@ -1003,7 +990,7 @@ class _TrackerPageState extends State<TrackerPage> {
 
             // Progress bar finish.
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.zero,
               child: LinearProgressIndicator(
                 value: _simulator.progres,
                 minHeight: 10,
@@ -1103,7 +1090,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: VoltWarna.violet.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
                     _rencanaOnline != null ? 'COACH' : 'AI',
@@ -1278,7 +1265,7 @@ class _TrackerPageState extends State<TrackerPage> {
         constraints: const BoxConstraints(maxWidth: 280),
         decoration: BoxDecoration(
           color: dariUser ? VoltWarna.aksen : VoltWarna.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.zero,
         ),
         child: Text(
           pesan['content'] ?? '',
@@ -1425,7 +1412,7 @@ class _TrackerPageState extends State<TrackerPage> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: VoltWarna.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

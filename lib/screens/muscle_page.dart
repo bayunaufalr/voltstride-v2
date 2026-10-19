@@ -222,14 +222,14 @@ class _MusclePageState extends State<MusclePage> {
       child: Card(
         // Border menyala biru neon ketika gerakan dipilih.
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.zero,
           side: BorderSide(
             color: terpilih ? VoltWarna.aksen : VoltWarna.border,
             width: terpilih ? 2 : 1,
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.zero,
           onTap: () => _pilihGerakan(gerak),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -320,7 +320,7 @@ class _KartuKategori extends StatelessWidget {
       // Ketukan memakai InkWell dengan borderRadius yang sama supaya
       // efek riwayatnya mengikuti bentuk kartu.
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.zero,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -370,7 +370,7 @@ class _ChipInfo extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: VoltWarna.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.zero,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -417,7 +417,7 @@ class _PlaceholderVideo extends StatelessWidget {
       margin: const EdgeInsets.only(top: 14),
       decoration: BoxDecoration(
         color: VoltWarna.latar,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.zero,
         border: Border.all(color: VoltWarna.border),
       ),
       child: Column(
@@ -456,7 +456,7 @@ class _PlaceholderVideo extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: VoltWarna.latar.withOpacity(0.85),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Text(
                       gerak.durasiTeks,
@@ -479,7 +479,7 @@ class _PlaceholderVideo extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: VoltWarna.aksen,
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Text(
                       '${gerak.set} x ${gerak.repetisi}',

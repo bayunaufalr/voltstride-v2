@@ -373,7 +373,7 @@ class _TimerPageState extends State<TimerPage> {
                   decoration: BoxDecoration(
                     color: _warnaFase,
                     borderRadius:
-                        BorderRadius.circular(24),
+                        BorderRadius.zero,
 
                     // Glow lembut saat timer aktif.
                     boxShadow: aktif
@@ -428,7 +428,7 @@ class _TimerPageState extends State<TimerPage> {
                           width: 200,
                           child: ClipRRect(
                             borderRadius:
-                                BorderRadius.circular(4),
+                                BorderRadius.zero,
                             child: LinearProgressIndicator(
                               value: _progresFase,
                               minHeight: 6,

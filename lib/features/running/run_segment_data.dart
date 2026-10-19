@@ -24,7 +24,7 @@ class RunDistanceSegment {
     required this.durationMilliseconds,
     required this.latitude,
     required this.longitude,
-    required this.altitudeMeters,
+    required this.relativeElevationMeters,
   });
 
   final double startMeters;
@@ -32,7 +32,7 @@ class RunDistanceSegment {
   final int durationMilliseconds;
   final double latitude;
   final double longitude;
-  final double? altitudeMeters;
+  final double? relativeElevationMeters;
 
   double get distanceMeters =>
       (endMeters - startMeters).clamp(0.0, double.infinity).toDouble();
@@ -79,6 +79,15 @@ List<RunDistanceSegment> buildRunDistanceSegments(
   }).toList(growable: false);
   if (valid.isEmpty) return const <RunDistanceSegment>[];
 
+  double? elevationAtStart;
+  for (final RunLap100m lap in valid) {
+    final double? elevation = lap.altitudeMeters;
+    if (elevation != null && elevation.isFinite) {
+      elevationAtStart = elevation;
+      break;
+    }
+  }
+
   final List<RunDistanceSegment> result = <RunDistanceSegment>[];
   for (int start = 0; start < valid.length; start += groupSize) {
     final int end = (start + groupSize).clamp(0, valid.length).toInt();
@@ -102,13 +111,21 @@ List<RunDistanceSegment> buildRunDistanceSegments(
       durationMilliseconds: duration,
       latitude: last.latitude,
       longitude: last.longitude,
-      altitudeMeters: _medianAltitudeAt(valid, end - 1),
+      relativeElevationMeters: _relativeElevationAt(
+        valid,
+        end - 1,
+        elevationAtStart,
+      ),
     ));
   }
   return result;
 }
 
-double? _medianAltitudeAt(List<RunLap100m> laps, int index) {
+double? _relativeElevationAt(
+  List<RunLap100m> laps,
+  int index,
+  double? elevationAtStart,
+) {
   final int first = (index - 2).clamp(0, laps.length - 1).toInt();
   final int last = (index + 2).clamp(0, laps.length - 1).toInt();
   final List<double> values = <double>[];
@@ -116,7 +133,7 @@ double? _medianAltitudeAt(List<RunLap100m> laps, int index) {
     final double? value = laps[i].altitudeMeters;
     if (value != null && value.isFinite) values.add(value);
   }
-  if (values.isEmpty) return null;
+  if (values.isEmpty || elevationAtStart == null) return null;
   values.sort();
-  return values[values.length ~/ 2];
+  return values[values.length ~/ 2] - elevationAtStart;
 }
