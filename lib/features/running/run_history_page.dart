@@ -182,7 +182,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         return AlertDialog(
           title: const Text('Hapus aktivitas?'),
           content: Text(
-            'Sesi ${session.distanceText} km akan dihapus dari perangkat ini.',
+            'Sesi ${session.distanceText} km akan dihapus dari akun dan perangkat ini.',
           ),
           actions: <Widget>[
             TextButton(
@@ -289,7 +289,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
                 icon: Icons.directions_run,
                 title: 'Belum ada riwayat',
                 message:
-                    'Selesaikan satu aktivitas. Hasilnya akan otomatis disimpan di perangkat ini.',
+                    'Selesaikan satu aktivitas. Hasilnya akan disimpan ke akun dan salinan perangkat ini.',
               );
             }
 

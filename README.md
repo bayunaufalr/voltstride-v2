@@ -1,60 +1,93 @@
 # VoltStride v2
 
-VoltStride adalah aplikasi sport-tech berbasis Flutter untuk merekam lari, melihat perkembangan latihan, mengatur interval, dan mempelajari hasil setiap sesi. Proyek ini memakai Dart untuk logika aplikasi dan Flutter untuk antarmukanya.
+VoltStride adalah aplikasi Flutter untuk merekam lari dan jalan kaki, melihat rute GPS, pace, split, lap 100 meter, kemajuan latihan, serta menggunakan coach latihan lokal.
 
-## Fitur yang terhubung ke navigasi utama
+## Yang baru pada sistem akun
 
-- **Beranda:** ringkasan jarak dan waktu bergerak minggu ini, elevasi, serta aktivitas terbaru.
-- **Rekam:** pengaturan aktivitas luar/dalam ruangan, lari atau jalan, pilihan interval, dan perekaman sesi.
-- **Riwayat:** daftar sesi yang tersimpan di SQLite, halaman detail, serta ekspor/impor cadangan JSON.
-- **Kemajuan:** ringkasan latihan, grafik mingguan, dan personal record.
-- **Akun/Lainnya:** akses ke timer interval, coach lokal, katalog latihan kekuatan, dan ringkasan pemulihan.
+- Daftar akun dan masuk memakai email serta kata sandi melalui Firebase Authentication.
+- Link email untuk mengatur ulang kata sandi.
+- Nama akun dan email ditampilkan di halaman **Akun**.
+- Riwayat aktivitas, rute GPS, split, lap 100 meter, dan metrik lari disimpan pada ruang milik akun di Cloud Firestore.
+- Salinan lokal tetap digunakan agar riwayat bisa dibaca saat jaringan tidak tersedia.
+- Data setiap akun dipisahkan berdasarkan UID. Pengguna tidak bisa membaca riwayat pengguna lain jika aturan keamanan Firebase dipasang sesuai panduan.
+- Riwayat lama yang tersimpan sebelum fitur akun tersedia tidak otomatis dipindahkan. Pemilik perangkat dapat memilih untuk menggabungkannya ke akun secara manual.
 
-Folder `lib/features/` berisi alur aplikasi yang aktif. Ada juga kode versi lama di `lib/logic/`, `lib/models/` tertentu, `lib/services/online_coach_service.dart`, `lib/services/strava_api_client.dart`, dan `lib/screens/tracker_page.dart`. Kode lama masih berguna sebagai referensi, tetapi tidak semuanya dipanggil oleh navigasi utama. Baca `PENJELASAN_KODE.md` sebelum memindahkan atau menghapus bagian-bagian tersebut.
+## Layanan Firebase yang digunakan
 
-## Menjalankan aplikasi
+1. **Firebase Authentication** untuk membuat akun, masuk, keluar, dan pemulihan kata sandi.
+2. **Cloud Firestore** untuk menyimpan profil dan riwayat aktivitas di cloud.
 
-Pastikan Flutter dan Android SDK sudah terpasang, lalu jalankan perintah berikut dari folder proyek:
+Penggunaan yang sesuai dapat dimulai dari paket Firebase Spark. Cloud Firestore mempunyai batas pemakaian gratis, sehingga pantau pemakaian jika aplikasi sudah digunakan banyak orang. Firebase tidak meminta metode pembayaran untuk memulai menggunakan produk gratis, tetapi kuota dan ketentuan produk tetap berlaku.
 
-```bash
-flutter pub get
-flutter analyze
-flutter test
-flutter run
-```
+## Menyiapkan Firebase satu kali
 
-Versi SDK yang dinyatakan proyek ada di `pubspec.yaml`: Dart `>=3.10.0 <4.0.0` dan Flutter `>=3.38.0`. Versi Flutter pada komputer pengembang tetap harus cocok dengan dependensi yang dipakai.
+### 1. Buat proyek dan aplikasi Android
 
-## Bagaimana perekaman GPS bekerja?
+1. Buka <https://console.firebase.google.com/> lalu buat proyek Firebase.
+2. Tambahkan aplikasi Android dengan ID aplikasi berikut, sesuai konfigurasi saat ini:
 
-Alur rekam aktif menggunakan `RunningPage` → `RunningController` → `RunningEngine`.
+   `com.example.voltstride`
 
-1. Aplikasi memeriksa apakah layanan lokasi menyala dan izin lokasi diberikan.
-2. Mesin menunggu satu posisi awal dengan akurasi yang memenuhi batas.
-3. Setelah hitung mundur selesai, stopwatch dimulai dan stream lokasi diikuti.
-4. Posisi dengan koordinat atau akurasi tidak valid ditolak. Perpindahan yang mengindikasikan kecepatan di atas 35 km/jam juga ditolak dan titik acuan diperbarui agar satu lonjakan GPS tidak membuat seluruh sesi macet.
-5. Jarak dihitung dari perpindahan koordinat mentah yang lolos pemeriksaan menggunakan rumus Haversine. Ambang gerak adaptif membantu menahan noise kecil. Koordinat rute dihaluskan khusus untuk tampilan peta, bukan untuk menambah jarak.
-6. `Stopwatch` menjadi sumber waktu sesi. Saat dijeda, penghitung berhenti; setelah dilanjutkan, titik GPS pertama hanya menjadi titik acuan baru.
-7. Mesin menghitung pace, split per kilometer, dan segmen 100 meter. Ketika sesi selesai, datanya dibungkus menjadi `RunSession` dan disimpan oleh `RunHistoryRepository`.
+3. Nama tampilan aplikasi boleh berbeda. Yang harus cocok adalah ID aplikasi Android.
 
-Penyaringan GPS mengurangi kesalahan, tetapi tidak dapat menjamin jarak benar-benar presisi. Hasil tetap dipengaruhi perangkat, kondisi langit, gedung, pepohonan, dan kualitas sinyal.
+### 2. Aktifkan daftar dan login
 
-## Coach: lokal dan online adalah dua hal berbeda
+1. Buka menu **Authentication** di Firebase Console.
+2. Pilih **Sign-in method**.
+3. Aktifkan **Email/Password** lalu simpan.
 
-Halaman coach yang terhubung ke menu utama memakai `AiCoachService` di `lib/features/ai_coach/ai_coach_service.dart`. Respons dibuat secara lokal dengan aturan dan pencocokan kata kunci, serta dapat membaca sesi yang tersimpan. Ini **bukan model bahasa generatif** dan tidak mengirim percakapan ke server AI.
+### 3. Buat database cloud
 
-`lib/services/online_coach_service.dart` adalah kerangka untuk menghubungi endpoint HTTP pada alur versi lama. Nilai endpoint dan API key di file tersebut bukan konfigurasi siap produksi. Jika fitur online akan diaktifkan, sediakan backend sendiri dan simpan rahasia di server. Jangan menaruh API key rahasia di aplikasi mobile karena isi APK dapat diperiksa.
+1. Buka **Firestore Database**.
+2. Buat database. Pilih **Production mode**.
+3. Buka tab **Rules**.
+4. Salin isi file `firestore.rules` dari folder proyek, tempelkan ke tab Rules, lalu klik **Publish**.
 
-## Integrasi Strava
+Aturan itu membatasi dokumen profil serta catatan lari hanya untuk akun dengan UID yang sama. Jangan menggantinya dengan aturan publik seperti `allow read, write: if true`.
 
-`lib/services/strava_api_client.dart` adalah kerangka kode lama untuk membuat URL otorisasi dan mengirim aktivitas. File tersebut belum otomatis berarti login Strava sudah terhubung ke alur aplikasi aktif. Implementasi produksi masih memerlukan konfigurasi aplikasi Strava, penanganan redirect/deep link, pertukaran authorization code dengan token melalui backend, penyimpanan token yang aman, serta pengujian izin dan payload API.
+### 4. Hubungkan Firebase ke GitHub Actions
 
-## Penyimpanan dan cadangan
+VoltStride ini disiapkan agar proses pemeriksaan dan pembuatan APK berjalan di GitHub Actions. Kamu tidak perlu menjalankan perintah Flutter dari terminal lokal.
 
-Riwayat disimpan di database SQLite lokal oleh `RunHistoryRepository`. Model `RunSession` mengubah data menjadi kolom database; beberapa kumpulan titik disimpan sebagai JSON di kolom terkait. Cadangan dapat diekspor dan diimpor melalui halaman Riwayat. File cadangan dapat berisi koordinat rute GPS, jadi jangan membagikannya secara publik.
+Ikuti panduan lengkap dalam file `PANDUAN_FIREBASE_GRATIS.md`. Intinya:
 
-## Pengujian
+1. Aktifkan **Email/Password** di Firebase Authentication.
+2. Buat Cloud Firestore dan terapkan aturan dari `firestore.rules`.
+3. Ambil empat nilai konfigurasi dari aplikasi Android Firebase yang memiliki ID `com.example.voltstride`.
+4. Tambahkan nilai itu ke **Settings → Secrets and variables → Actions** pada repository GitHub, dengan nama `VOLTSTRIDE_FIREBASE_API_KEY`, `VOLTSTRIDE_FIREBASE_APP_ID`, `VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID`, dan `VOLTSTRIDE_FIREBASE_PROJECT_ID`.
 
-Folder `test/` berisi pengujian untuk respons coach lokal, state machine mesin lari, penyaringan lonjakan GPS, penghitungan split 100 meter, personal record, elevasi, dan serialisasi sesi. Jalankan `flutter test` pada komputer yang sudah memiliki Flutter SDK untuk memverifikasi seluruh tes terhadap lingkunganmu.
+GitHub Actions membuat `lib/firebase_options.dart` saat proses build berlangsung. File hasil build itu tidak perlu dibuat menggunakan FlutterFire CLI di laptop.
 
-Untuk penjelasan fungsi, alur data, algoritma, dan daftar file satu per satu, baca **[PENJELASAN_KODE.md](PENJELASAN_KODE.md)**.
+### 5. Periksa dan buat APK melalui GitHub
+
+Setelah perubahan kode dikirim ke branch `main` atau `master`, buka tab **Actions**. Workflow **Build VoltStride APK** akan menjalankan `flutter pub get`, `flutter analyze`, `flutter test`, dan pembuatan APK secara otomatis. Kamu juga dapat menjalankannya dari tombol **Run workflow**.
+
+Jika seluruh tahap berhasil, unduh `voltstride-apk-release` pada bagian **Artifacts** dalam hasil workflow. Kalau secret Firebase belum lengkap atau pengujian gagal, periksa pesan error di tahap terkait sebelum mencoba build kembali.
+
+APK tetap bisa dibuat untuk pengujian tanpa keystore rilis. Dalam keadaan itu, workflow memakai debug key Android. Untuk publikasi ke Google Play, tambahkan secret signing key sesuai petunjuk pada `PANDUAN_FIREBASE_GRATIS.md`.
+
+## Di mana data disimpan?
+
+- **Firebase Authentication:** email akun dan informasi login yang dikelola Firebase. Kata sandi tidak disimpan dalam dokumen profil buatan aplikasi.
+- **Cloud Firestore:** `users/{uid}` menyimpan profil dan `users/{uid}/runSessions/{id}` menyimpan catatan aktivitas.
+- **Penyimpanan lokal SQLite:** salinan riwayat pada perangkat untuk pemakaian offline dan cadangan.
+
+Rute GPS dapat mengungkap lokasi yang sensitif. Data cloud dipisahkan dengan aturan keamanan, tetapi kamu tetap perlu menjaga akses ke akun dan tidak membagikan data lokasi secara publik.
+
+## Riwayat lama dari versi sebelumnya
+
+Data pada perangkat yang sudah ada sebelum fitur akun ditambahkan diberi label `guest`. Data itu tidak otomatis masuk ke akun pertama yang login. Pada tab **Akun**, gunakan pilihan **Pindahkan ke akun ini** hanya bila semua aktivitas lama tersebut memang milikmu. Tindakan ini menyalin riwayat beserta data rute GPS ke akun yang sedang aktif.
+
+## Catatan
+
+- Firebase harus dikonfigurasi dengan proyek milik pengguna sebelum daftar/login dan sinkronisasi cloud bekerja.
+- Riwayat lokal tetap dipakai sebagai salinan. Jika jaringan terputus atau aturan cloud belum benar, aplikasi memberi tahu ketika pengiriman aktivitas baru tidak berhasil.
+- Timer, daftar latihan kekuatan, dan sebagian pengaturan antarmuka belum dibuat sebagai data cloud terpisah; fitur cloud pada versi ini berfokus pada profil akun dan riwayat aktivitas.
+- Jangan pernah memublikasikan kata sandi, private key, `android/key.properties`, atau file keystore.
+
+## Istilah sederhana
+
+- **Firebase Authentication:** layanan yang mengurus pendaftaran dan login pengguna.
+- **Cloud Firestore:** database online untuk menyimpan data akun.
+- **UID:** kode unik yang diberikan Firebase pada setiap akun. Aplikasi menggunakan kode ini untuk memisahkan riwayat pengguna.
+- **Sinkronisasi:** proses menyalin perubahan dari perangkat ke akun online atau sebaliknya.

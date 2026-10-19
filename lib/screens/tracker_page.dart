@@ -16,16 +16,29 @@ import '../services/online_coach_service.dart';
 import '../services/strava_api_client.dart';
 import '../theme/volt_theme.dart';
 
-/// Halaman pelacak versi lama yang masih disimpan sebagai referensi.
+/// ============================================================
+/// TRACKER PAGE: MODUL UTAMA VOLTSTRIDE
+/// ============================================================
+/// Halaman ini adalah inti aplikasi dan punya empat bagian yang
+/// saling terhubung lewat [_ProfilPelari] hasil perhitungan engine:
 ///
-/// Halaman ini menggabungkan perhitungan profil pelari, rencana latihan,
-/// simulasi balapan, pelacakan GPS lama, coach online, dan kerangka integrasi
-/// Strava. Namun, `main.dart` saat ini tidak memasukkan [TrackerPage] ke
-/// navigasi utama. Alur rekam yang aktif menggunakan `ActivitySetupPage`,
-/// `RunningPage`, dan `RunningEngine` di folder `features/running/`.
+///   1. AI COACH FORM
+///      Empat input: umur, target jarak, target pace, pace 10KM terakhir.
+///      Tombol "Rancang Latihan AI" memanggil [AICoachEngine] dan
+///      [PenyusunRencana] secara lokal lewat setState.
 ///
-/// Jangan menghapus halaman ini sebelum memastikan fitur yang hanya ada di
-/// dalamnya sudah dipindahkan atau memang tidak lagi dibutuhkan.
+///   2. LIVE GPS RUN
+///      Pengukuran lari sungguhan memakai geolocator dengan akurasi
+///      tinggi, Kalman filter, dan deteksi anomali. Stopwatch adalah
+///      sumber kebenaran waktu.
+///
+///   3. RACE SIMULATION
+///      Menjalankan strategi split AI per kilometer secara live dengan
+///      Timer.periodic dan Stopwatch.
+///
+///   4. ONLINE COACH
+///      Chat dan penyesuaian rencana lewat HTTP, dengan fallback ke
+///      hasil lokal saat server tidak terjangkau.
 class TrackerPage extends StatefulWidget {
   const TrackerPage({super.key});
 
@@ -90,8 +103,8 @@ class _TrackerPageState extends State<TrackerPage> {
 
   /// Timer untuk memompa ulang UI dari Stopwatch.
   ///
-  /// Timer ini tidak bergantung pada pembaruan GPS. Jadi, jika GPS terlambat
-  /// mengirim posisi, angka waktu tetap diperbarui dari Stopwatch.
+  /// Sengaja terpisah dari stream GPS: Even if GPS update melambat,
+  ///  timer ini tetap membuat angka waktu terus naik mulus.
   Timer? _timerUi;
 
   /// Langganan stream posisi GPS.
@@ -219,8 +232,8 @@ class _TrackerPageState extends State<TrackerPage> {
   ///   4. Nyalakan Stopwatch sebagai sumber waktu.
   ///   5. Subscribe stream GPS dan arahkan tiap titik ke [_pelacak].
   ///
-  /// Jika salah satu langkah gagal, halaman menampilkan pesan agar pengguna
-  /// tahu apa yang perlu diperbaiki, bukan menghentikan aplikasi tiba-tiba.
+  /// Setiap kegagalan di salah satu langkah menghasilkan pesan yang
+  /// bisa ditindaklanjuti, bukan crash.
   Future<void> _mulaiGps() async {
     // LANGKAH 1: cek layanan lokasi menyala.
     final bool aktif = await LokasiService.cekLayananAktif();
@@ -1320,7 +1333,7 @@ class _TrackerPageState extends State<TrackerPage> {
       return VoltWarna.violet;
     }
     final String fase = _simulator.labelFase;
-    if (fase == 'PEMANASAN' || fase == 'STABIL') return VoltWarna.kuning;
+    if (fase == 'PEMASAN' || fase == 'STABIL') return VoltWarna.kuning;
     if (fase == 'SPRINT') return VoltWarna.hijau;
     return VoltWarna.aksen;
   }

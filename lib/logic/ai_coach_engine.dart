@@ -2,15 +2,21 @@ import '../models/profil_pelari.dart';
 import '../models/split_kilometer.dart';
 import 'split_strategi.dart';
 
-/// Mesin perhitungan lokal untuk profil dan target latihan pelari.
+/// ============================================================
+/// AI COACH ENGINE
+/// ============================================================
+/// Pusat perhitungan "otak" untuk modul lari VoltStride.
 ///
-/// Inputnya meliputi umur, jarak target, target pace, dan pace 10 km terakhir.
-/// Hasilnya mencakup pace adaptif, zona latihan, skor perkiraan, dan rencana
-/// split. Nama "AI Coach" di sini merujuk pada aturan/perhitungan yang ditulis
-/// di kode, bukan model bahasa generatif yang belajar atau menjawab bebas.
+/// Tugas engine:
+///   1. Menerima input mentah pelari: umur, target jarak, pace target,
+///      dan pace 10KM terakhir.
+///   2. Menghasilkan [ProfilPelari] berisi target pace yang realistis,
+///      zona detak jantung, skor kebugaran, dan rencana split balapan.
 ///
-/// Fungsi-fungsinya tidak menyimpan state sesi dan tidak meminta data internet,
-/// sehingga masukan yang sama menghasilkan keluaran yang sama.
+/// Prinsip desain penting: semua fungsi di sini bersifat pure function.
+/// Tidak ada state, tidak ada akses jaringan, tidak ada DateTime.now().
+/// Konsekuensinya, input yang sama selalu menghasilkan output yang sama,
+/// sehingga logika inti bisa diuji secara deterministik.
 class AICoachEngine {
   AICoachEngine._(); // kelas utilitas, tidak perlu diinstansiasi
 
@@ -18,22 +24,25 @@ class AICoachEngine {
   // BATAS KEAMANAN PROGRAM LATIHAN
   // ----------------------------------------------------------
 
-  /// Batas perubahan pace yang diizinkan oleh perhitungan lokal, dalam persen.
+  /// Peningkatan kapasitas aerob maksimum per minggu, dalam persen.
   ///
-  /// Angka ini adalah parameter heuristik di aplikasi, bukan prediksi pasti
-  /// tentang perubahan kebugaran seseorang atau jaminan bebas cedera.
+  /// Secara fisiologi, VO2max naik sekitar 3 sampai 5 persen per minggu
+  /// pada fase awal, lalu melambat seiring waktu. Kita pilih 3 persen
+  /// sebagai batas konservatif agar risiko cedera dan overtraining kecil.
   static const double maksPersenPerMinggu = 0.03;
 
-  /// Selisih minimum yang dipakai saat membandingkan pace target dengan
-  /// hasil perhitungan adaptif. Satuan nilai ini adalah detik per kilometer.
+  /// Selisih pace minimum (detik) antara target adaptif dan ambisi user.
+  ///
+  /// Ini memastikan selalu ada ruang progress yang terasa pelari, sehingga
+  /// mereka merasa-train plan benar-benar bergerak, bukan diam.
   static const int minimumSelisihDetik = 10;
 
-  /// Batas pace tercepat yang diterima perhitungan, yaitu 150 detik/km
-  /// atau 2:30 per km. Nilai di bawah batas ini akan disesuaikan.
+  /// Batas bawah pace yang dianggap masuk akal, yaitu 150 detik per km
+  /// (2:30 per km, caliber lari profesional).
   static const int paceMinimalDetik = 150;
 
-  /// Batas pace terlambat yang dipakai perhitungan, yaitu 420 detik/km
-  /// atau 7:00 per km. Nilai di atas batas ini akan disesuaikan.
+  /// Batas atas pace yang dianggap masuk akal, yaitu 420 detik per km
+  /// (7:00 per km, lari santai atau pulih).
   static const int paceMaksimalDetik = 420;
 
   // ----------------------------------------------------------
@@ -66,8 +75,7 @@ class AICoachEngine {
     // LANGKAH 3: Skor kebugaran dari pace 10KM aktual.
     final double skor = _hitungSkorKebugaran(paceAktual, umurAman);
 
-    // LANGKAH 4: Hitung pace target berdasarkan target pengguna dan
-    // perkiraan kemampuan dari pace 10 km terakhir.
+    // LANGKAH 4: Target pace adaptif, ini inti kecerdasan engine.
     final int paceAdaptif = _hitungTargetPaceAdaptif(
       targetPace: targetPace,
       paceAktual: paceAktual,
@@ -136,8 +144,9 @@ class AICoachEngine {
   ///
   ///   HRmax = 208 - (0.7 x umur)
   ///
-  /// Rumus ini menghasilkan perkiraan, bukan pengukuran langsung.
-  /// Nilai sebenarnya dapat berbeda antarindividu.
+  /// Rumus ini dipilih karena Tanaka mengukur langsung HRmax pada 468
+  /// subjek dan menghasilkan bias rata-rata sekitar 1,85 BPM, sedangkan
+  /// rumus lama 220 - umur bisa meleset hingga belasan BPM.
   static int _hitungHrMax(int umur) {
     return (208 - (0.7 * umur)).round();
   }
@@ -147,9 +156,9 @@ class AICoachEngine {
   // ----------------------------------------------------------
   /// Menentukan zona detak jantung tempo dari HR max.
   ///
-  /// Rentang persentase ini merupakan aturan sederhana yang dipakai aplikasi
-  /// untuk memberi label zona. Nilainya tidak menjamin latihan aman untuk
-  /// setiap orang, terutama karena HR max di sini hanya perkiraan.
+  /// Ambang 80 sampai 85 persen HR max dipilih karena tempo race pada
+  /// pelari terlatih berada di rentang itu. Batas atas 92 persen adalah
+  /// plafon aman untuk pelari pemula yang HR max-nya hanya estimasi.
   static ZonaJantung _zonaTempo(int hrMax) {
     final int bawah = (hrMax * 0.80).round();
     final int plafon = (hrMax * 0.92).round();
@@ -206,9 +215,9 @@ class AICoachEngine {
   }) {
     // LANGKAH A: Konversi ke pace balapan natural.
     //
-    // Faktor 0,94 dan faktor jarak di bawah adalah pendekatan sederhana
-    // untuk memperkirakan pace balapan. Hasilnya bukan prediksi lomba yang
-    // teruji untuk setiap pelari.
+    // Race effort factor sekitar 0.94: pace balapan selalu sedikit lebih
+    // cepat daripada pace training untuk jarak sama. Untuk jarak yang lebih
+    // pendek, effort lebih besar sehingga pace lebih cepat.
     //
     // Contoh dengan pace 10KM 5:00 (300 detik):
     //   10KM -> 300 x 0.94 x 0.96 = 271 detik (4:31)
@@ -218,13 +227,13 @@ class AICoachEngine {
     final int paceBalapanNatural = (paceAktual * 0.94 * faktorJarak).round();
 
     // LANGKAH B: Hitung selisih ambisi terhadap kemampuan natural.
-    // Nilai positif berarti target pengguna lebih lambat daripada estimasi.
-    // Nilai negatif berarti target pengguna lebih cepat daripada estimasi.
+    // Positif berarti ambisi pelari justru lebih lambat (tidak mungkin),
+    // negatif berarti ambisi lebih cepat (wajar untuk jarak pendek).
     final int selisihAmbisi = targetPace - paceBalapanNatural;
 
     // LANGKAH C: Batas bawah perbaikan mingguan. Ini inti perhitungan.
-    // Batasi seberapa jauh pace target boleh dipercepat oleh perhitungan.
-    // Ini pagar logika aplikasi, bukan penilaian medis tentang risiko cedera.
+    // Kita tidak boleh proposes target lebih cepat dari batas ini karena
+    // itu berisiko cedera dan overtraining.
     final double batasPerbaikan = paceBalapanNatural * maksPersenPerMinggu;
     final int batasBawah = (paceBalapanNatural - batasPerbaikan).round();
 

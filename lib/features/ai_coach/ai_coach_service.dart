@@ -296,7 +296,7 @@ class AiCoachService {
 
   String _analyzeConsistency(List<RunSession> runs) {
     if (runs.isEmpty) {
-      return 'Belum ada riwayat lokal yang bisa digunakan untuk menghitung konsistensi. Simpan beberapa sesi lari terlebih dahulu. Setelah itu, saya bisa menghitung jumlah sesi dan total jarak berdasarkan catatan yang tersimpan.';
+      return 'Belum ada riwayat aktivitas yang bisa digunakan untuk menghitung konsistensi. Simpan beberapa sesi lari terlebih dahulu. Setelah itu, saya bisa menghitung jumlah sesi dan total jarak berdasarkan riwayat akun yang tersedia.';
     }
 
     final DateTime now = DateTime.now();

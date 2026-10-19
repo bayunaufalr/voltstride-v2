@@ -124,7 +124,7 @@ class ProgressPageState extends State<ProgressPage> {
                 _weeklyBars(sessions, now),
                 const SizedBox(height: 14),
                 Text(
-                  '${sessions.length} aktivitas tersimpan di perangkat ini.',
+                  '${sessions.length} aktivitas dalam riwayat akun.',
                   style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
                 ),
               ],

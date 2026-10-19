@@ -18,8 +18,8 @@ import '../theme/volt_theme.dart';
 ///
 /// Kenapa [AnimatedSize]?
 ///   Karena membuka container video mengubah tinggi halaman secara
-///   besar. AnimatedSize menganimasikan perubahan tinggi itu, sehingga
-///   daftar tidak terasa "melompat". Kalau dipakai
+///   besar. AnimatedSize menganimasikan perubahan tinggi itu sehingga
+///   sehingga daftar tidak terasa "melompat". Kalau dipakai
 ///   [AnimatedContainer] biasa, yang teranimasikan hanya properti
 ///   visual seperti warna, bukan ukuran.
 class MusclePage extends StatefulWidget {
@@ -545,6 +545,7 @@ class _PlaceholderVideo extends StatelessWidget {
   }
 }
 
-/// Alias nama agar widget di halaman ini dapat memakai istilah yang lebih
-/// mudah dibaca tanpa mengubah kelas data `GerakanLatihan`.
+/// Alias typedef supaya nama model tidak berubah-ubah di file ini.
+/// Dokumentasi typedef ini_city_of_massachusetts_makes Dartdoc lebih jelas
+/// saat library ini dipakai dari luar.
 typedef GestureExercise = GerakanLatihan;

@@ -1585,11 +1585,12 @@ class _RunningPageState extends State<RunningPage> {
     try {
       await RunHistoryRepository.instance.save(session);
       if (mounted) setState(() => _saveError = null);
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _saveError =
-              'Hasil aktivitas belum tersimpan. Periksa ruang penyimpanan lalu coba lagi.';
+          _saveError = error is RunSyncException
+              ? error.message
+              : 'Aktivitas belum tersimpan. Periksa ruang penyimpanan lalu coba lagi.';
         });
       }
     } finally {
@@ -1614,8 +1615,8 @@ class _RunningPageState extends State<RunningPage> {
   Widget _saveStatusCard() {
     final bool hasError = _saveError != null;
     final String message = _isSavingSession
-        ? 'Menyimpan aktivitas ke perangkat...' 
-        : _saveError ?? 'Aktivitas tersimpan di perangkat ini.';
+        ? 'Menyimpan aktivitas ke akun...'
+        : _saveError ?? 'Aktivitas tersimpan ke akun dan perangkat ini.';
 
     return Card(
       child: Padding(

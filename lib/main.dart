@@ -2,7 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
+import 'features/account/account_service.dart';
+import 'features/account/firebase_setup_page.dart';
+import 'features/account/login_page.dart';
 import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/progress/progress_page.dart';
@@ -14,12 +19,11 @@ import 'features/running/running_page.dart';
 import 'screens/muscle_page.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
+import 'firebase_options.dart';
 
-/// Titik awal aplikasi VoltStride. Mengatur orientasi, warna system bar, lalu
-/// menjalankan widget aplikasi utama.
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
@@ -31,11 +35,34 @@ void main() {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-  runApp(const VoltStrideApp());
+  String? firebaseSetupError;
+  try {
+    // Berkas ini dibuat oleh perintah `flutterfire configure`.
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (error) {
+    // Aplikasi tetap bisa menampilkan panduan konfigurasi, bukan layar kosong.
+    firebaseSetupError = error.toString();
+  }
+
+  runApp(
+    VoltStrideApp(
+      firebaseReady: Firebase.apps.isNotEmpty,
+      firebaseSetupError: firebaseSetupError,
+    ),
+  );
 }
 
 class VoltStrideApp extends StatelessWidget {
-  const VoltStrideApp({super.key});
+  const VoltStrideApp({
+    super.key,
+    required this.firebaseReady,
+    this.firebaseSetupError,
+  });
+
+  final bool firebaseReady;
+  final String? firebaseSetupError;
 
   @override
   Widget build(BuildContext context) {
@@ -43,13 +70,48 @@ class VoltStrideApp extends StatelessWidget {
       title: 'VoltStride',
       debugShowCheckedModeBanner: false,
       theme: buildVoltTheme(),
-      home: const RootShell(),
+      home: firebaseReady
+          ? const AccountGate()
+          : FirebaseSetupPage(detailError: firebaseSetupError),
     );
   }
 }
 
-/// Navigasi utama aplikasi. Lima tab utama dipertahankan di dalam
-/// [IndexedStack], jadi berpindah tab tidak langsung membuang state halaman.
+/// Memilih halaman login atau halaman utama berdasarkan sesi akun Firebase.
+class AccountGate extends StatefulWidget {
+  const AccountGate({super.key});
+
+  @override
+  State<AccountGate> createState() => _AccountGateState();
+}
+
+class _AccountGateState extends State<AccountGate> {
+  late final Stream<User?> _perubahanAkun = AccountService.perubahanAkun;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: _perubahanAkun,
+      builder: (BuildContext context, AsyncSnapshot<User?> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const LoginPage();
+        }
+
+        final User? pengguna = snapshot.data;
+        if (pengguna == null) return const LoginPage();
+
+        return RootShell(key: ValueKey<String>(pengguna.uid));
+      },
+    );
+  }
+}
+
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -201,6 +263,8 @@ class _MorePageState extends State<MorePage> {
   RunSession? _latestSession;
   DateTime? _recommendedResumeAt;
   bool _loading = true;
+  bool _movingLegacyHistory = false;
+  int _legacyHistoryCount = 0;
   Timer? _refreshTimer;
 
   @override
@@ -223,11 +287,13 @@ class _MorePageState extends State<MorePage> {
   Future<void> _loadRecovery() async {
     try {
       final List<RunSession> sessions = await RunHistoryRepository.instance.getAll(limit: 1);
+      final int legacyCount = await RunHistoryRepository.instance.legacySessionCount();
       if (!mounted) return;
       if (sessions.isEmpty) {
         setState(() {
           _latestSession = null;
           _recommendedResumeAt = null;
+          _legacyHistoryCount = legacyCount;
           _loading = false;
         });
         return;
@@ -238,6 +304,7 @@ class _MorePageState extends State<MorePage> {
       setState(() {
         _latestSession = session;
         _recommendedResumeAt = activityEnd.add(Duration(hours: hours));
+        _legacyHistoryCount = legacyCount;
         _loading = false;
       });
     } catch (_) {
@@ -274,35 +341,11 @@ class _MorePageState extends State<MorePage> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: <Widget>[
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: VoltWarna.kartu,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: VoltWarna.border),
-            ),
-            child: Row(
-              children: <Widget>[
-                Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(color: VoltWarna.aksen.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(18)),
-                  child: const Icon(Icons.person_outline_rounded, color: VoltWarna.aksen, size: 30),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text('Profil lokal', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-                      SizedBox(height: 4),
-                      Text('Aktivitas disimpan di perangkat. Login belum diperlukan.', style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.35)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _accountCard(),
+          if (_legacyHistoryCount > 0) ...<Widget>[
+            const SizedBox(height: 14),
+            _legacyHistoryCard(),
+          ],
           const SizedBox(height: 14),
           _recoveryCard(remaining, restWindowPassed),
           const SizedBox(height: 24),
@@ -322,6 +365,199 @@ class _MorePageState extends State<MorePage> {
         ],
       ),
     );
+  }
+
+  Widget _accountCard() {
+    final User? pengguna = AccountService.akunAktif;
+    final String nama = pengguna?.displayName?.trim().isNotEmpty == true
+        ? pengguna!.displayName!.trim()
+        : 'Pelari VoltStride';
+    final String email = pengguna?.email ?? 'Email tidak tersedia';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: VoltWarna.kartu,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: VoltWarna.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: VoltWarna.aksen.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.person_outline_rounded,
+                  color: VoltWarna.aksen,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      nama,
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      email,
+                      style: const TextStyle(
+                        color: VoltWarna.teksAbu,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Riwayat lari tersimpan di akun dan perangkat ini.',
+                      style: TextStyle(
+                        color: VoltWarna.teksAbu,
+                        fontSize: 11,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: _konfirmasiKeluar,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Keluar dari akun'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legacyHistoryCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: VoltWarna.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: VoltWarna.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Riwayat lama ditemukan',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Ada $_legacyHistoryCount aktivitas lama yang masih tersimpan di perangkat dan belum terhubung ke akun. Pindahkan hanya jika data itu memang milikmu.',
+            style: const TextStyle(color: VoltWarna.teksAbu, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _movingLegacyHistory ? null : _pindahkanRiwayatLama,
+            icon: _movingLegacyHistory
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: VoltWarna.latar,
+                    ),
+                  )
+                : const Icon(Icons.cloud_upload_outlined),
+            label: Text(
+              _movingLegacyHistory
+                  ? 'Memindahkan riwayat...'
+                  : 'Pindahkan ke akun ini',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _konfirmasiKeluar() async {
+    final bool? keluar = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Keluar dari akun?'),
+        content: const Text(
+          'Data yang sudah tersimpan di akun tetap ada. Kamu perlu masuk lagi untuk membukanya.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+    if (keluar != true) return;
+
+    try {
+      await AccountService.keluarAkun();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Belum berhasil keluar. Coba lagi.')),
+      );
+    }
+  }
+
+  Future<void> _pindahkanRiwayatLama() async {
+    final bool? lanjut = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Pindahkan riwayat lama?'),
+        content: Text(
+          'Sebanyak $_legacyHistoryCount aktivitas beserta titik rute GPS akan disalin ke akun ini. Lakukan hanya jika aktivitas tersebut memang milikmu. Data akun lain tidak akan digabungkan.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Pindahkan'),
+          ),
+        ],
+      ),
+    );
+    if (lanjut != true || !mounted) return;
+
+    setState(() => _movingLegacyHistory = true);
+    try {
+      final int jumlah =
+          await RunHistoryRepository.instance.importLegacyHistoryToAccount();
+      await _loadRecovery();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$jumlah aktivitas berhasil dipindahkan ke akun.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _movingLegacyHistory = false);
+    }
   }
 
   Widget _recoveryCard(Duration? remaining, bool restWindowPassed) {

@@ -1,21 +1,28 @@
-/// Data satu segmen kilometer dalam rencana atau simulasi lari.
+/// ============================================================
+/// MODEL: SPLIT KILOMETER
+/// ============================================================
+/// Objek ini mewakili SATU kilometer yang sudah selesai (atau sedang
+/// berjalan) di simulasi balapan maupun rekaman GPS.
 ///
-/// Selain pace dan waktu kumulatif, segmen menyimpan label serta catatan
-/// pendek agar UI dapat menjelaskan tujuan segmen tanpa menghitung ulang data.
-/// Model ini juga menyediakan format yang diperlukan saat membentuk payload
-/// aktivitas untuk integrasi Strava.
+/// Kenapa perlu model sendiri (bukan Map atau array biasa)?
+///  1. Data split dipakai tiga tempat sekaligus:
+///     - kartu "strategi pace" di layar simulasi,
+///     - payload JSON yang dikirim ke Strava,
+///     - riwayat latihan di portofolio.
+///     Model tunggal memastikan formatnya konsisten di semua tempat.
+///  2. Typo pada nama field dicegah oleh tipe data, bukan dicek manual.
 class SplitKilometer {
   /// Nomor kilometer (1-based). Kilometer ke-1 adalah yang pertama.
   final int nomor;
 
-  /// Pace rata-rata kilometer ini, dalam detik per kilometer.
+  /// Paca rata-rata kilometer ini dalam **detik per kilometer**.
   /// Disimpan sebagai int (detik) agar bebas dari pembulatan float.
   final int paceDetik;
 
   /// Waktu tempuh kumulatif sampai finishing kilometer ini (detik).
   final int waktuKumulatifDetik;
 
-  /// Label jenis segmen, misalnya "PEMANASAN", "TEMPO", atau "SPRINT".
+  /// Label jenis segmen, misalnya "PEMASAN", "TEMPO", "SPRINT".
   /// Dipakai untuk warna badge di UI dan intensitas di Strava.
   final String labelSegmen;
 

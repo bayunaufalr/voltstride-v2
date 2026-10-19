@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Profil dan data olahraga hanya dapat diakses oleh pemilik akun.
+    match /users/{userId} {
+      allow read, create, update, delete: if request.auth != null
+        && request.auth.uid == userId;
+
+      // Setiap catatan lari berada di dalam akun pemiliknya.
+      match /runSessions/{sessionId} {
+        allow read, create, update, delete: if request.auth != null
+          && request.auth.uid == userId;
+      }
+    }
+  }
+}

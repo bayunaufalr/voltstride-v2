@@ -4,61 +4,114 @@ on:
   push:
     branches:
       - main
+      - master
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Test and build Android APK
+    name: Check, test, and build Android APK
     runs-on: ubuntu-latest
+    env:
+      # Nilai ini diambil dari Settings > Secrets and variables > Actions.
+      VOLTSTRIDE_FIREBASE_API_KEY: ${{ secrets.VOLTSTRIDE_FIREBASE_API_KEY }}
+      VOLTSTRIDE_FIREBASE_APP_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_APP_ID }}
+      VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID }}
+      VOLTSTRIDE_FIREBASE_PROJECT_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_PROJECT_ID }}
+      VOLTSTRIDE_KEYSTORE_BASE64: ${{ secrets.VOLTSTRIDE_KEYSTORE_BASE64 }}
+      VOLTSTRIDE_KEYSTORE_PASSWORD: ${{ secrets.VOLTSTRIDE_KEYSTORE_PASSWORD }}
 
     steps:
-      - name: Checkout source code
+      - name: Download source code
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
           cache: gradle
 
-      - name: Setup Flutter 3.47.6
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: '3.47.6'
           cache: true
 
-      - name: Check Flutter version
+      - name: Show Flutter version
         run: flutter --version
 
-      - name: Get Flutter dependencies
+      - name: Create Firebase configuration for this build
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          names = {
+              "API key": "VOLTSTRIDE_FIREBASE_API_KEY",
+              "App ID Android": "VOLTSTRIDE_FIREBASE_APP_ID",
+              "Messaging sender ID": "VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID",
+              "Project ID": "VOLTSTRIDE_FIREBASE_PROJECT_ID",
+          }
+          values = {label: os.environ.get(name, "").strip() for label, name in names.items()}
+          missing = [label for label, value in values.items() if not value]
+
+          if missing:
+              print("::error::Konfigurasi Firebase belum lengkap. Tambahkan semua repository secrets berikut:")
+              for label in missing:
+                  print(f"::error::{names[label]}")
+              print("Buka panduan PANDUAN_FIREBASE_GRATIS.md untuk melihat cara mengambil nilainya.")
+              sys.exit(1)
+
+          def dart_string(value):
+              # JSON memakai format string yang juga aman untuk nilai teks Dart.
+              return json.dumps(value, ensure_ascii=True)
+
+          isi_file = """// Dibuat otomatis oleh GitHub Actions dari konfigurasi Firebase proyek ini.
+          // Jangan menambahkan kata sandi atau private key ke dalam berkas ini.
+          import 'package:firebase_core/firebase_core.dart';
+
+          class DefaultFirebaseOptions {
+            static FirebaseOptions get currentPlatform => FirebaseOptions(
+                  apiKey: API_KEY,
+                  appId: APP_ID,
+                  messagingSenderId: SENDER_ID,
+                  projectId: PROJECT_ID,
+                );
+          }
+          """
+          # Ganti penanda agar nilai konfigurasi ditulis sebagai teks Dart yang aman.
+          isi_file = isi_file.replace("API_KEY", dart_string(values["API key"]))
+          isi_file = isi_file.replace("APP_ID", dart_string(values["App ID Android"]))
+          isi_file = isi_file.replace("SENDER_ID", dart_string(values["Messaging sender ID"]))
+          isi_file = isi_file.replace("PROJECT_ID", dart_string(values["Project ID"]))
+
+          Path("lib/firebase_options.dart").write_text(isi_file, encoding="utf-8")
+          print("Konfigurasi Firebase berhasil dibuat untuk proses build ini.")
+          PY
+
+      - name: Download Flutter packages
         run: flutter pub get
 
-      - name: Analyze Flutter project
+      - name: Check code quality
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run automated tests
         run: flutter test
 
-      - name: Prepare release signing key
-        env:
-          VOLTSTRIDE_KEYSTORE_BASE64: ${{ secrets.VOLTSTRIDE_KEYSTORE_BASE64 }}
-          VOLTSTRIDE_KEYSTORE_PASSWORD: ${{ secrets.VOLTSTRIDE_KEYSTORE_PASSWORD }}
+      - name: Prepare release signing key when provided
+        if: ${{ env.VOLTSTRIDE_KEYSTORE_BASE64 != '' && env.VOLTSTRIDE_KEYSTORE_PASSWORD != '' }}
+        shell: bash
         run: |
-          set -e
-
-          test -n "$VOLTSTRIDE_KEYSTORE_BASE64"
-          test -n "$VOLTSTRIDE_KEYSTORE_PASSWORD"
-
+          set -euo pipefail
           mkdir -p android/key
-
-          echo "$VOLTSTRIDE_KEYSTORE_BASE64" \
-            | base64 --decode \
-            > android/key/voltstride-release.jks
-
+          printf '%s' "$VOLTSTRIDE_KEYSTORE_BASE64" | base64 --decode > android/key/voltstride-release.jks
           cat > android/key.properties <<EOF
           storePassword=$VOLTSTRIDE_KEYSTORE_PASSWORD
           keyPassword=$VOLTSTRIDE_KEYSTORE_PASSWORD
@@ -66,12 +119,17 @@ jobs:
           storeFile=key/voltstride-release.jks
           EOF
 
-      - name: Build release APK
+      - name: Explain test signing fallback
+        if: ${{ env.VOLTSTRIDE_KEYSTORE_BASE64 == '' || env.VOLTSTRIDE_KEYSTORE_PASSWORD == '' }}
+        run: echo "::warning::Signing key belum diatur. APK tetap dibuat menggunakan debug key untuk pengujian, bukan untuk publikasi Play Store."
+
+      - name: Build release APK files
         run: flutter build apk --release --split-per-abi
 
-      - name: Upload signed APK artifacts
+      - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: voltstride-apk-release-signed
+          name: voltstride-apk-release
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
+          retention-days: 14

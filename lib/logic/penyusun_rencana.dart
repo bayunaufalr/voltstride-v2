@@ -6,36 +6,38 @@ import '../models/rencana_latihan.dart';
 /// ============================================================
 /// Mengubah [ProfilPelari] menjadi program latihan multi-minggu.
 ///
-/// Modul ini menyusun jadwal dari aturan dan angka yang ditetapkan di kode.
-/// Hasilnya merupakan titik awal yang dapat ditinjau atau disesuaikan, bukan
-/// program individual yang telah divalidasi oleh pelatih atau tenaga medis.
+/// Ini adalah "pelatih program" lokal di aplikasi. Fungsinya
+/// menghasilkan kerangka yang benar secara fisiologis, lalu online
+/// coach boleh memperkaya atau menyesuaikan hasil ini dengan konteks
+/// tambahan seperti riwayat cedera, jadwal, atau kondisi lapangan.
 ///
 /// Prinsip periodisasi yang dipakai:
 ///   1. FASE BUILD  : volume dan intensitas naik bertahap.
 ///   2. FASE PEAK   : volume mulai turun, intensitas tetap tinggi.
-///   3. FASE TAPER  : volume dikurangi menjelang target.
+///   3. FASE TAPER  : volume turun drastis, latihan tetap quality.
 ///   4. FASE EVALUASI : balapan uji coba sebagai tes.
 ///
-/// Batas yang diterapkan generator jadwal:
-///   - Volume fase build bertambah maksimal 10 persen per minggu.
-///   - Jadwal menyertakan hari tanpa lari untuk pemulihan.
-///   - Interval dan tempo tidak dijadwalkan lebih dari dua kali per minggu.
-///   - Long run dijadwalkan paling banyak satu kali per minggu.
-///
-/// Ini aturan program di dalam kode, bukan pengganti penyesuaian latihan
-/// berdasarkan kondisi dan kemampuan masing-masing pelari.
+/// Aturan besi yang tidak boleh dilanggar:
+///   - Penambahan volume maksimal 10 persen per minggu.
+///   - Ada minimal satu hari istirahat penuh setiap minggu.
+///   - Sesi quality (interval dan tempo) maksimal dua kali per minggu.
+///   - Long run maksimal satu kali per minggu.
 class PenyusunRencana {
   PenyusunRencana._(); // kelas utilitas, tidak perlu instance
 
   /// Batas maksimum penambahan volume mingguan, dalam persen.
   ///
-  /// Nilai ini membatasi kenaikan volume pada fase build. Angka 10 persen
-  /// hanya aturan yang dipakai generator, bukan jaminan bahwa program aman.
+  /// Aturan 10 persen ini berasal dari fisiologi jaringan otot dan
+  /// sistem kardiovaskular yang butuh waktu adaptasi. Melewatinya
+  /// adalah penyebab cedera paling umum pada pelari rekreasi.
   static const double maksVolumePerMinggu = 0.10;
 
-  /// Pengali yang dipilih berdasarkan jarak target. Nilai ini digunakan
-  /// bersama jarak target untuk menentukan volume dasar mingguan. Angkanya
-  /// merupakan aturan sederhana di aplikasi dan dapat perlu penyesuaian.
+  /// Pengali volume dasar terhadap jarak target, per jarak balapan.
+  ///
+  /// Pelari marathon butuh volume dasar lebih kecil dari pelari 5K
+  /// karena intensitas yang jauh lebih tinggi sudah memberi beban
+  /// aerob yang cukup. Pelari 5K justru butuh volume lebih besar
+  /// supaya bisa menahan intensitas tinggi itu.
   static double _pengaliVolumeDasar(double jarakTargetKm) {
     if (jarakTargetKm <= 5.0) return 1.60;
     if (jarakTargetKm <= 10.0) return 1.50;
@@ -45,8 +47,9 @@ class PenyusunRencana {
 
   /// Menentukan jumlah minggu program dari jarak target pelari.
   ///
-  /// Ini pemetaan sederhana yang ditetapkan aplikasi: target lebih panjang
-  /// diberi durasi program lebih lama. Jadwal nyata bisa perlu penyesuaian.
+  /// Alasan: jarak target yang lebih panjang butuh waktu adaptasi
+  /// aerob yang jauh lebih panjang. Marathon butuh 16 sampai 20 minggu,
+  /// sedangkan 5K bisa cukup 6 sampai 8 minggu.
   static int tentukanJumlahMinggu(double jarakTargetKm) {
     if (jarakTargetKm <= 5.0) return 8;
     if (jarakTargetKm <= 10.0) return 10;
@@ -62,8 +65,9 @@ class PenyusunRencana {
     final double volumeDasar =
         profil.targetJarakKm * _pengaliVolumeDasar(profil.targetJarakKm);
 
-    // Fase build mengambil sekitar 60 persen awal program. Tiga minggu
-    // terakhir dialokasikan untuk penurunan beban dan minggu evaluasi.
+    // Panjang fase build: 60 persen dari total minggu.
+    // Dua minggu pertama dipegang sebagai fase build, tiga minggu
+    // terakhir sebagai taper dan evaluasi.
     final int mingguBuild = (jumlahMinggu * 0.6).round();
     final int mingguTaper = 3;
 
@@ -82,7 +86,7 @@ class PenyusunRencana {
         fase = 'evaluasi';
         tema = 'Hari Balapan';
       } else if (m > jumlahMinggu - mingguTaper) {
-        // Dua minggu sebelum evaluasi: volume dikurangi menjelang target.
+        // Tiga minggu terakhir: volume turun drastis.
         fase = 'taper';
         tema = 'Taper';
         // Volume dikurangi 40 persen terhadap volume puncak.
@@ -138,9 +142,9 @@ class PenyusunRencana {
   /// mengikuti fase program. Susunan hari:
   ///
   ///   Senin    : Easy run + strength ringan
-  ///   Selasa   : Interval (sesi intensitas 1)
+  ///   Selasa   : Interval (sesi quality 1)
   ///   Rabu     : Easy run
-  ///   Kamis    : Tempo (sesi intensitas 2)
+  ///   Kamis    : Tempo (sesi quality 2)
   ///   Jumat    : Rest / strength
   ///   Sabtu    : Long run
   ///   Minggu   : Recovery easy
@@ -149,13 +153,14 @@ class PenyusunRencana {
     required double volumeKm,
     required ProfilPelari profil,
   }) {
-    // Pada fase taper, jumlah sesi intensitas dikurangi agar tubuh benar-benar
+    // Pada fase taper, jumlah sesi quality dikurangi agar tubuh benar-benar
     // pulih sebelum balapan.
     final bool adaInterval = fase != 'taper';
     final bool adaTempo = fase != 'taper';
 
-    // Porsi ini membagi volume mingguan ke sesi easy dan long run.
-    // Angkanya adalah pilihan desain aplikasi, bukan ketentuan untuk semua pelari.
+    // Pembagian volume ke sesi easy.
+    // Distribusi 25 persen, 15 persen, 40 persen sudah lazim dalam
+    // periodisasi: volume long run paling besar, volume quality paling kecil.
     final double kmEasy1 = volumeKm * 0.25;
     final double kmEasy2 = volumeKm * 0.15;
     final double kmRecovery = volumeKm * 0.20;
@@ -240,7 +245,7 @@ class PenyusunRencana {
         paceDetik: profil.petaZona.paceEasy,
         zonaJantung: 'Recovery',
         instruksi: 'Lari sangat santai 20 menit, atau jalan cepat jika kaki '
-            'masih terasa berat.',
+            'masih pegang.',
       ));
     }
 

@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
-/// Palet warna dan tema global VoltStride.
+/// ============================================================
+/// VOLTWARNA - Palet warna global aplikasi VoltStride
+/// ============================================================
+/// Tema gelap futuristik ala dashboard sport-tech:
+///   - Latar dasar biru-slate sangat gelap (#0f172a)
+///   - Aksen utama biru neon (#38bdf8) untuk tombol utama, indikator
+///     aktif, dan garis progres.
+///   - Warna status terpisah agar mudah dibaca sekilas:
+///       Hijau  = ronde aktif / target tercapai
+///       Kuning = jeda / istirahat
+///       Violet = selesai / sesi khatam
 ///
-/// Warna dasar, aksen, status, dan teks didefinisikan di satu tempat supaya
-/// tampilan antarhalaman tetap konsisten dan perubahan desain lebih mudah.
+/// Semua warna dibuat `const` supaya Flutter tidak membangun ulang
+/// ThemeData pada setiap build, sehingga frame tetap ringan.
 class VoltWarna {
   VoltWarna._(); // constructor privat: kelas ini kumpulan konstanta saja
 

@@ -1,10 +1,26 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import '../models/run_session.dart';
+
+/// Pesan khusus ketika aktivitas sudah aman tersimpan di perangkat,
+/// tetapi proses pengiriman ke akun cloud belum berhasil.
+class RunSyncException implements Exception {
+  const RunSyncException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// Penyimpanan riwayat lari lokal berbasis SQLite.
 ///
@@ -18,11 +34,78 @@ class RunHistoryRepository {
 
   static const String _databaseName = 'voltstride_runs.db';
   static const String _tableName = 'run_sessions';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 6;
   static const String _backupFormat = 'voltstride-run-history';
   static const int _backupVersion = 1;
 
   Database? _database;
+
+  /// ID akun yang sedang masuk. Jika Firebase belum siap, data tetap bisa
+  /// diuji sebagai data lokal tanpa mencampurnya dengan akun sungguhan.
+  String? get _akunAktifId {
+    if (Firebase.apps.isEmpty) return null;
+    return FirebaseAuth.instance.currentUser?.uid;
+  }
+
+  String get _pemilikPenyimpanan => _akunAktifId ?? 'guest';
+
+  CollectionReference<Map<String, dynamic>> _koleksiAktivitas(String uid) {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('runSessions');
+  }
+
+  String _idDokumenAktivitas(RunSession session) =>
+      session.startedAt.toUtc().microsecondsSinceEpoch.toString();
+
+  Future<void> _tulisAktivitasLokal(
+    Database db,
+    RunSession session,
+    String pemilik,
+  ) async {
+    final Map<String, Object?> data = session.toStorageMap();
+    data['userId'] = pemilik;
+    await db.insert(
+      _tableName,
+      data,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> _unggahAktivitas(RunSession session, String uid) async {
+    try {
+      await _koleksiAktivitas(uid)
+          .doc(_idDokumenAktivitas(session))
+          .set(<String, dynamic>{
+            ...session.toStorageMap(),
+            'diperbaruiPada': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 10));
+    } on TimeoutException {
+      throw const RunSyncException(
+        'Aktivitas tersimpan di perangkat, tetapi sinkronisasi akun belum terkonfirmasi. Periksa internet lalu buka Riwayat untuk mencoba kembali.',
+      );
+    } catch (error) {
+      if (error is RunSyncException) rethrow;
+      throw const RunSyncException(
+        'Aktivitas tersimpan di perangkat, tetapi belum berhasil disinkronkan ke akun. Periksa koneksi dan aturan keamanan Firebase.',
+      );
+    }
+  }
+
+  Future<List<RunSession>> _bacaAktivitasLokal(
+    Database db, {
+    required String pemilik,
+  }) async {
+    final List<Map<String, Object?>> rows = await db.query(
+      _tableName,
+      where: 'userId = ?',
+      whereArgs: <Object?>[pemilik],
+      orderBy: 'startedAt DESC',
+    );
+    return rows.map(RunSession.fromStorageMap).toList(growable: false);
+  }
 
   Future<String> get databasePath async {
     final String basePath = await getDatabasesPath();
@@ -40,7 +123,8 @@ class RunHistoryRepository {
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $_tableName (
-            startedAt TEXT PRIMARY KEY,
+            startedAt TEXT NOT NULL,
+            userId TEXT NOT NULL DEFAULT 'guest',
             finishedAt TEXT,
             distanceMeters REAL NOT NULL,
             elapsedMilliseconds INTEGER NOT NULL,
@@ -56,7 +140,8 @@ class RunHistoryRepository {
             intervalPlanJson TEXT,
             activityType TEXT NOT NULL DEFAULT 'run',
             environment TEXT NOT NULL DEFAULT 'outdoor',
-            activityMetricsJson TEXT NOT NULL DEFAULT '{}'
+            activityMetricsJson TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (startedAt, userId)
           )
         ''');
       },
@@ -82,39 +167,222 @@ class RunHistoryRepository {
             "ALTER TABLE $_tableName ADD COLUMN activityMetricsJson TEXT NOT NULL DEFAULT '{}'",
           );
         }
+        if (oldVersion < 5) {
+          // Riwayat lama diberi label guest agar tidak otomatis masuk ke akun
+          // tertentu sebelum pemilik perangkat menyetujuinya.
+          await db.execute(
+            "ALTER TABLE $_tableName ADD COLUMN userId TEXT NOT NULL DEFAULT 'guest'",
+          );
+        }
+        if (oldVersion < 6) {
+          // Kunci gabungan mencegah dua akun di satu perangkat saling menimpa
+          // jika kebetulan menyimpan aktivitas pada waktu mulai yang sama.
+          await db.execute(
+            'ALTER TABLE $_tableName RENAME TO ${_tableName}_previous',
+          );
+          await db.execute('''
+            CREATE TABLE $_tableName (
+              startedAt TEXT NOT NULL,
+              userId TEXT NOT NULL DEFAULT 'guest',
+              finishedAt TEXT,
+              distanceMeters REAL NOT NULL,
+              elapsedMilliseconds INTEGER NOT NULL,
+              movingMilliseconds INTEGER NOT NULL,
+              averagePaceSecondsPerKm REAL,
+              currentPaceSecondsPerKm REAL,
+              gpsAccuracyMeters REAL,
+              acceptedPoints INTEGER NOT NULL,
+              rejectedPoints INTEGER NOT NULL,
+              routeJson TEXT NOT NULL,
+              splitsJson TEXT NOT NULL,
+              hundredMeterLapsJson TEXT NOT NULL DEFAULT '[]',
+              intervalPlanJson TEXT,
+              activityType TEXT NOT NULL DEFAULT 'run',
+              environment TEXT NOT NULL DEFAULT 'outdoor',
+              activityMetricsJson TEXT NOT NULL DEFAULT '{}',
+              PRIMARY KEY (startedAt, userId)
+            )
+          ''');
+          await db.execute('''
+            INSERT INTO $_tableName (
+              startedAt, userId, finishedAt, distanceMeters,
+              elapsedMilliseconds, movingMilliseconds,
+              averagePaceSecondsPerKm, currentPaceSecondsPerKm,
+              gpsAccuracyMeters, acceptedPoints, rejectedPoints,
+              routeJson, splitsJson, hundredMeterLapsJson,
+              intervalPlanJson, activityType, environment, activityMetricsJson
+            )
+            SELECT
+              startedAt, userId, finishedAt, distanceMeters,
+              elapsedMilliseconds, movingMilliseconds,
+              averagePaceSecondsPerKm, currentPaceSecondsPerKm,
+              gpsAccuracyMeters, acceptedPoints, rejectedPoints,
+              routeJson, splitsJson, hundredMeterLapsJson,
+              intervalPlanJson, activityType, environment, activityMetricsJson
+            FROM ${_tableName}_previous
+          ''');
+          await db.execute('DROP TABLE ${_tableName}_previous');
+        }
       },
     );
     _database = opened;
     return opened;
   }
 
+  /// Menyimpan aktivitas ke perangkat dan, bila sudah login, ke akun Firebase.
   Future<void> save(RunSession session) async {
     final Database db = await _db;
-    await db.insert(
+    final String? uid = _akunAktifId;
+    final String pemilik = uid ?? 'guest';
+
+    // Simpan di perangkat lebih dulu. Dengan begitu, rekaman GPS tidak hilang
+    // hanya karena jaringan sedang bermasalah.
+    await _tulisAktivitasLokal(db, session, pemilik);
+
+    // Saat pengguna masuk, salin data yang sama ke ruang milik akun tersebut.
+    if (uid != null) await _unggahAktivitas(session, uid);
+  }
+
+  /// Mengambil riwayat milik akun aktif, lalu memperbarui salinan lokal.
+  /// Saat internet tidak tersedia, aplikasi tetap memakai data di perangkat.
+  Future<List<RunSession>> getAll({int? limit}) async {
+    final Database db = await _db;
+    final String? uid = _akunAktifId;
+    final String pemilik = uid ?? 'guest';
+    final List<RunSession> aktivitasLokal = await _bacaAktivitasLokal(
+      db,
+      pemilik: pemilik,
+    );
+
+    if (uid == null) return _batasiRiwayat(aktivitasLokal, limit);
+
+    final Map<String, RunSession> semuaAktivitas = <String, RunSession>{
+      for (final RunSession session in aktivitasLokal)
+        session.startedAt.toUtc().toIso8601String(): session,
+    };
+
+    try {
+      Query<Map<String, dynamic>> permintaan = _koleksiAktivitas(uid)
+          .orderBy('startedAt', descending: true);
+      if (limit != null && limit > 0) {
+        permintaan = permintaan.limit(limit);
+      }
+
+      final QuerySnapshot<Map<String, dynamic>> hasil = await permintaan
+          .get()
+          .timeout(const Duration(seconds: 10));
+      final Set<String> idCloudTersedia = hasil.docs
+          .map((QueryDocumentSnapshot<Map<String, dynamic>> dokumen) => dokumen.id)
+          .toSet();
+
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> dokumen
+          in hasil.docs) {
+        try {
+          final RunSession session = RunSession.fromStorageMap(
+            Map<String, Object?>.from(dokumen.data()),
+          );
+          final String kunci = session.startedAt.toUtc().toIso8601String();
+          semuaAktivitas[kunci] = session;
+          await _tulisAktivitasLokal(db, session, uid);
+        } catch (_) {
+          // Satu catatan yang rusak tidak boleh membuat seluruh riwayat hilang.
+        }
+      }
+
+      // Tanpa batas jumlah, pencarian riwayat juga mencoba mengirim catatan
+      // lokal yang belum ada di cloud. Ini membantu pemulihan setelah offline.
+      if (limit == null && !hasil.metadata.isFromCache) {
+        for (final RunSession session in aktivitasLokal) {
+          if (idCloudTersedia.contains(_idDokumenAktivitas(session))) continue;
+          try {
+            await _unggahAktivitas(session, uid);
+          } catch (_) {
+            // Riwayat lokal tetap ditampilkan jika pengiriman masih gagal.
+          }
+        }
+      }
+    } catch (_) {
+      // Jika cloud sedang tidak bisa diakses, tampilkan salinan lokal.
+    }
+
+    final List<RunSession> hasilAkhir = semuaAktivitas.values.toList()
+      ..sort((RunSession a, RunSession b) => b.startedAt.compareTo(a.startedAt));
+    return _batasiRiwayat(hasilAkhir, limit);
+  }
+
+  List<RunSession> _batasiRiwayat(List<RunSession> aktivitas, int? limit) {
+    final List<RunSession> terurut = List<RunSession>.of(aktivitas)
+      ..sort((RunSession a, RunSession b) => b.startedAt.compareTo(a.startedAt));
+    if (limit == null || limit <= 0 || terurut.length <= limit) return terurut;
+    return terurut.take(limit).toList(growable: false);
+  }
+
+  /// Menghapus aktivitas dari akun dan perangkat.
+  Future<void> delete(DateTime startedAt) async {
+    final Database db = await _db;
+    final String? uid = _akunAktifId;
+
+    if (uid != null) {
+      try {
+        await _koleksiAktivitas(uid)
+            .doc(startedAt.toUtc().microsecondsSinceEpoch.toString())
+            .delete()
+            .timeout(const Duration(seconds: 10));
+      } on TimeoutException {
+        throw const RunSyncException(
+          'Penghapusan dari akun belum terkonfirmasi. Data perangkat belum dihapus.',
+        );
+      } catch (_) {
+        throw const RunSyncException(
+          'Aktivitas belum dapat dihapus dari akun. Periksa koneksi internet lalu coba lagi.',
+        );
+      }
+    }
+
+    await db.delete(
       _tableName,
-      session.toStorageMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      where: 'startedAt = ? AND userId = ?',
+      whereArgs: <Object?>[
+        startedAt.toUtc().toIso8601String(),
+        _pemilikPenyimpanan,
+      ],
     );
   }
 
-  Future<List<RunSession>> getAll({int? limit}) async {
+  /// Jumlah riwayat lama yang belum ditautkan ke akun mana pun.
+  Future<int> legacySessionCount() async {
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      "SELECT COUNT(*) AS total FROM $_tableName WHERE userId = 'guest'",
+    );
+    return Sqflite.firstIntValue(rows) ?? 0;
+  }
+
+  /// Memindahkan riwayat lama ke akun yang sedang masuk setelah pengguna
+  /// memilih tindakan ini secara sadar. Data lalu disinkronkan ke cloud.
+  Future<int> importLegacyHistoryToAccount() async {
+    final String? uid = _akunAktifId;
+    if (uid == null) {
+      throw const RunSyncException('Masuk ke akun sebelum memindahkan riwayat lama.');
+    }
+
     final Database db = await _db;
     final List<Map<String, Object?>> rows = await db.query(
       _tableName,
-      orderBy: 'startedAt DESC',
-      limit: limit,
+      where: "userId = 'guest'",
+      orderBy: 'startedAt ASC',
     );
+    final List<RunSession> aktivitasLama = rows
+        .map(RunSession.fromStorageMap)
+        .toList(growable: false);
 
-    return rows.map(RunSession.fromStorageMap).toList(growable: false);
-  }
-
-  Future<void> delete(DateTime startedAt) async {
-    final Database db = await _db;
-    await db.delete(
-      _tableName,
-      where: 'startedAt = ?',
-      whereArgs: <Object?>[startedAt.toUtc().toIso8601String()],
-    );
+    for (final RunSession session in aktivitasLama) {
+      // Baru ubah kepemilikan lokal setelah unggahan berhasil, agar data yang
+      // belum tersalin tetap muncul sebagai riwayat lama yang bisa dicoba lagi.
+      await _unggahAktivitas(session, uid);
+      await _tulisAktivitasLokal(db, session, uid);
+    }
+    return aktivitasLama.length;
   }
 
   /// Membuat file cadangan JSON yang bisa disimpan di luar data aplikasi.
@@ -173,15 +441,25 @@ class RunHistoryRepository {
     }
 
     final Database db = await _db;
+    final String? uid = _akunAktifId;
+    final String pemilik = uid ?? 'guest';
     await db.transaction((Transaction transaction) async {
       for (final RunSession session in sessions) {
+        final Map<String, Object?> data = session.toStorageMap();
+        data['userId'] = pemilik;
         await transaction.insert(
           _tableName,
-          session.toStorageMap(),
+          data,
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
     });
+
+    if (uid != null) {
+      for (final RunSession session in sessions) {
+        await _unggahAktivitas(session, uid);
+      }
+    }
 
     return sessions.length;
   }
@@ -192,7 +470,8 @@ class RunHistoryRepository {
     final String filePath = await databasePath;
     final File file = File(filePath);
     final List<Map<String, Object?>> countRows = await db.rawQuery(
-      'SELECT COUNT(*) AS total FROM $_tableName',
+      'SELECT COUNT(*) AS total FROM $_tableName WHERE userId = ?',
+      <Object?>[_pemilikPenyimpanan],
     );
     final List<Map<String, Object?>> integrityRows =
         await db.rawQuery('PRAGMA quick_check');

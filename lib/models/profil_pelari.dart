@@ -1,11 +1,15 @@
 import 'split_kilometer.dart';
 
-/// Data profil dan hasil perhitungan untuk satu pelari.
+/// ============================================================
+/// MODEL: PROFIL PELARI
+/// ============================================================
+/// "Kartu identitas parietal" pelari setelah AI Coach Engine memproses
+/// input mentah (umur, target jarak, pace target, pace 10KM terakhir).
 ///
-/// Objek ini menyimpan masukan pengguna, seperti umur, jarak target, dan pace
-/// 10 km terakhir, beserta hasil turunannya: pace adaptif, zona latihan, skor
-/// kebugaran, dan strategi split. Field dibuat final agar nilainya tidak
-/// berubah diam-diam setelah profil selesai dihitung.
+/// Semua field bersifat final karena objek ini immutable:
+///   1. Aman dipakai lintas widget tanpa perlu StatefulWidget,
+///   2. Mudah di-cache (bisa dibungkus memoization di kemudian hari),
+///   3. Cocok langsung dikirim ke endpoint AI online sebagai JSON.
 class ProfilPelari {
   // --- Input mentah dari form ----------------------------------
   /// Umur pelari (tahun). Memengaruhi HR max dan kelonggaran adaptif.
@@ -14,8 +18,8 @@ class ProfilPelari {
   /// Jarak target yang diinginkan pelari (KM). Contoh: 5, 10, 21, 42.
   final double targetJarakKm;
 
-  /// Pace target yang diinginkan pelari, dalam detik per kilometer.
-  /// Ini target awal; perhitungan lokal dapat menyesuaikannya.
+  /// Pace target yang diariesakan pelari (detik per KM).
+  /// Ini ambisi, belum tentu realistis; AI akan menyesuaikan.
   final int targetPaceDetik;
 
   /// Pace 10KM terakhir sebagai data aktual (detik per KM).
@@ -35,8 +39,8 @@ class ProfilPelari {
   /// dengan targetnya.
   final double skorKebugaran;
 
-  /// Pace target yang disesuaikan oleh perhitungan lokal.
-  /// Nilai ini dipakai simulasi lama setelah mempertimbangkan data awal.
+  /// Target pace REALISTIS setelah disesuaikan AI.
+  /// Inilah yang dipakai simulasi balapan, bukan ambisi mentah.
   final int targetPaceAdaptifDetik;
 
   /// Perkiraan durasi finish (detik) untuk [targetJarakKm]

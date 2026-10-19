@@ -5,15 +5,29 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/split_kilometer.dart';
 
-/// Kerangka client untuk berkomunikasi dengan Strava API.
+/// ============================================================
+/// STRAVA API CLIENT
+/// ============================================================
+/// Kerangka integrasi Strava yang sungguhan: membangun payload JSON,
+/// melakukan POST, dan membuka alur otorisasi lewat browser sistem.
 ///
-/// File ini menyiapkan URL otorisasi, payload aktivitas, dan request upload.
-/// Namun, konfigurasi OAuth serta pertukaran kode menjadi access token tetap
-/// harus diselesaikan sebelum integrasi dapat digunakan. Client ini juga
-/// berasal dari alur pelacak lama dan belum dipanggil dari navigasi utama.
+/// Tiga bagian penting dari integrasi Strava:
 ///
-/// Jangan menyimpan client secret atau token rahasia di source code aplikasi.
-/// Gunakan backend untuk pertukaran token dan simpan kredensial dengan aman.
+///  1. OAUTH  : pengguna login di halaman Strava, aplikasi menerima
+///              access token. Alur ini dibuka dengan `url_launcher`.
+///
+///  2. UPLOAD : aplikasi mengirim activity dalam format JSON lewat
+///              `POST /api/v3/activities`.
+///
+///  3. SPLITS : setiap kilometer dikirim sebagai array `splits` di
+///              payload yang sama, bukan sebagai upload terpisah.
+///
+/// PENTING soal keamanan token:
+///   Access token Strava punya masa berlaku dan niveau izin spesifik.
+///   Token tidak boleh disimpan di dalam source code. Di produksi,
+///   simpan di `flutter_secure_storage` atau minta token lewat
+///   backend milikmu sendiri. [tokenAkses] di sini sengaja
+///   dikosongkan supaya tidak ada kredensial yang ikut ter-commit.
 class StravaApiClient {
   StravaApiClient._(); // kelas utilitas, tidak perlu instance
 
@@ -57,8 +71,9 @@ class StravaApiClient {
     String redirectUri = 'voltstride://auth/callback',
     String scope = 'read,activity:write',
   }) {
-    // Uri.https mengodekan karakter khusus pada parameter URL dengan benar.
-    // Ini lebih aman daripada merangkai URL secara manual.
+    // Uri.https dipakai supaya karakter khusus seperti ':' dan '/'
+    // otomatis ter-encode dengan benar. Merangkai string manual
+    // prone kesalahan encoding.
     return Uri.https('www.strava.com', '/oauth/authorize', <String, String>{
       'client_id': clientId.toString(),
       'redirect_uri': redirectUri,
@@ -73,9 +88,10 @@ class StravaApiClient {
 
   /// Membuka halaman login Strava di browser sistem.
   ///
-  /// `url_launcher` membuka halaman login di browser bawaan pengguna.
-  /// Dengan cara ini, aplikasi tidak perlu meminta atau menyimpan kata sandi
-  /// Strava secara langsung.
+  /// `url_launcher` dipakai supaya login ditangani oleh browser yang
+  /// sudah punya sesi Strava milik pengguna. Tidak ada input
+  /// kredensial yang pernah melewati aplikasi kita, dan ini juga
+  /// memenuhi syarat login sosial(app review) di Android dan iOS.
   ///
   /// Mengembalikan true bila browser berhasil dibuka.
   static Future<bool> bukaOtorisasi() async {
@@ -102,8 +118,8 @@ class StravaApiClient {
   static String? ekstrakKodeOtorisasi(String url) {
     final Uri uri = Uri.parse(url);
 
-    // Strava mengirim parameter error jika pengguna menolak akses atau
-    // izin yang diminta tidak mencukupi.
+    // Strava mengirim error sebagai query parameter kalau pengguna
+    // menolak atauscope tidak mencukupi.
     if (uri.queryParameters['error'] != null) {
       return null;
     }

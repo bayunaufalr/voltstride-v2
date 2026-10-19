@@ -485,9 +485,9 @@ class RunningEngine extends ChangeNotifier {
   void _seedPosition(Position position) {
     final int activeElapsedMilliseconds =
         _stopwatch?.elapsedMilliseconds ?? 0;
-    // Titik awal GPS mungkin diperoleh sebelum hitung mundur dimulai. Geser
-    // timestamp-nya ke waktu sesi agar waktu mencari sinyal dan countdown
-    // tidak ikut memengaruhi perhitungan kecepatan.
+    // The first fix is acquired before the 5-second countdown. Anchor it to
+    // the real start moment, not the old acquisition timestamp, so the first
+    // movement is not divided by the GPS wait + countdown duration.
     final DateTime timestamp = DateTime.now();
     _gpsTimestampOffset = timestamp.difference(position.timestamp);
 
@@ -553,10 +553,14 @@ class RunningEngine extends ChangeNotifier {
         _stopwatch?.elapsedMilliseconds ?? elapsedBeforeUpdate;
     final int activeElapsedDelta = elapsedAfterUpdate - elapsedBeforeUpdate;
 
-    // Timestamp GPS membantu mengukur jeda antartitik, termasuk saat Android
-    // mengirim beberapa posisi sekaligus. Jika waktunya duplikat atau mundur,
-    // gunakan selang dari Stopwatch sebagai pengganti. Offset yang sama dipakai
-    // untuk semua titik supaya selisih waktu antartitik tetap konsisten.
+    // GPS timestamp normally provides the best interval, including when the
+    // Android location provider delivers a delayed batch. If the timestamp is
+    // duplicated or moves backwards, repair it from the monotonic Stopwatch.
+    // Semua timestamp stream digeser dengan offset yang sama. Ini penting
+    // karena timestamp GPS pertama bisa jauh lebih awal daripada waktu sesi
+    // setelah layar menampilkan countdown. Jangan mengganti setiap titik yang
+    // terlihat "mundur" secara independen, karena itu membuat dt hanya 1 ms,
+    // lalu semua gerakan tampak seperti lonjakan kecepatan yang mustahil.
     DateTime trackingTimestamp = _normalizeGpsTimestamp(position.timestamp);
     if (!trackingTimestamp.isAfter(previousTimestamp)) {
       trackingTimestamp = previousTimestamp.add(
@@ -589,8 +593,10 @@ class RunningEngine extends ChangeNotifier {
     final double speedKmh = speedMps * 3.6;
 
     if (!speedKmh.isFinite || speedKmh > maxSpeedKmh) {
-      // Jangan tambahkan jarak dari lonjakan ini. Jadikan titik baru sebagai
-      // acuan untuk sampel berikutnya agar satu error tidak merusak seluruh sesi.
+      // Kode lama membuang lonjakan tanpa memperbarui titik acuan. Akibatnya,
+      // semua titik sesudahnya dibandingkan dengan koordinat lama dan GPS
+      // dapat terlihat macet sepanjang sesi. Re-anchor tanpa menambahkan jarak
+      // dan mulai segmen peta baru agar satu lonjakan tidak merusak sesi.
       _rejectedPoints++;
       _reanchorAfterRejectedJump(
         position,
@@ -609,9 +615,10 @@ class RunningEngine extends ChangeNotifier {
       elapsedMilliseconds: elapsedAfterUpdate,
     );
 
-    // Titik valid tetap disimpan untuk rute. Jarak baru bertambah jika
-    // perpindahan melewati ambang adaptif agar noise kecil tidak terakumulasi,
-    // tanpa terlalu mudah menghapus gerakan pelan.
+    // Titik GPS yang valid selalu masuk ke rute yang telah dihaluskan. Jarak
+    // hanya ditambah bila perpindahannya lebih besar daripada ambang noise.
+    // Ambang 2,5 m sebelumnya membuang hampir semua langkah pelan ketika GPS
+    // mengirim satu titik per detik.
     if (rawDistanceMeters >= movementThreshold) {
       _distanceMeters += rawDistanceMeters;
 
@@ -836,8 +843,8 @@ class RunningEngine extends ChangeNotifier {
       const Duration(seconds: paceWindowSeconds),
     );
 
-    // Sisakan satu sampel sebelum batas jendela agar selisih jarak dan waktu
-    // tetap dapat dihitung ketika sampel lama mulai dibuang.
+    // Pertahankan satu sampel tepat sebelum batas jendela untuk menghitung
+    // jarak/waktu secara stabil.
     while (_paceSamples.length > 2 &&
         _paceSamples[1].timestamp.isBefore(cutoff)) {
       _paceSamples.removeAt(0);

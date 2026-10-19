@@ -1,9 +1,15 @@
-/// Struktur data untuk program latihan beberapa minggu.
+/// ============================================================
+/// MODEL: RENCANA LATIHAN MINGGUAN
+/// ============================================================
+/// Struktur data yang dipakai online coach untuk menyusun program
+/// latihan menuju sebuah target balapan.
 ///
-/// Satu rencana berisi tujuan, ringkasan, dan daftar minggu latihan. Setiap
-/// minggu menyimpan fase program serta sesi yang dijadwalkan. File ini hanya
-/// mendefinisikan bentuk datanya; aturan penyusunan jadwal berada di modul
-/// perencana latihan.
+/// Analogi paling dekat untuk portofolio: ini adalah "prescription"
+/// dokter untuk atlet. Satu [RencanaLatihan] berisi beberapa [MingguLatihan],
+/// setiap minggu berisi beberapa [SesiLatihan] dengan instruksi spesifik.
+///
+/// Semua data diturunkan dari [ProfilPelari] sehingga rencana selalu
+/// konsisten dengan hasil perhitungan AI Coach Engine.
 class RencanaLatihan {
   /// Tujuan akhir program, ditulis bebas misalnya "10 KM di bawah 55 menit".
   final String tujuan;
@@ -14,7 +20,7 @@ class RencanaLatihan {
   /// Daftar isi program, diurut dari minggu 1 sampai minggu terakhir.
   final List<MingguLatihan> minggu;
 
-  /// Ringkasan satu kalimat yang ditampilkan pada bagian atas program.
+  /// Ringkasan Satu kalimat yang bisa ditampilkan di header.
   final String ringkasan;
 
   RencanaLatihan({
@@ -25,12 +31,15 @@ class RencanaLatihan {
   });
 }
 
-/// Data jadwal latihan untuk satu minggu dalam program.
+/// ============================================================
+/// MODEL: SATU MINGGU LATIHAN
+/// ============================================================
+/// Menjadwalkan sesi latihan untuk rentang seven hari.
 class MingguLatihan {
   /// Nomor minggu, mulai dari 1.
   final int nomor;
 
-  /// Tema minggu, misalnya "Build", "Peak", atau "Taper".
+  /// Tema week'straining, misalnya "Build", "Peak", "Taper".
   /// Tema ini menentukan komposisi sesi lewat [fase].
   final String tema;
 
@@ -39,8 +48,8 @@ class MingguLatihan {
   /// Nilai yang dipakai:
   ///   - 'build'   : volume dan intensitas naik bertahap
   ///   - 'peak'    : volume turun, intensitas tetap tinggi
-  ///   - 'taper'   : volume dikurangi menjelang target
-  ///   - 'evaluasi': sesi uji untuk menilai perkembangan
+  ///   - 'taper'   : volume turun drastis, latihan tetap quality
+  ///   - 'evaluasi : balapan uji coba
   final String fase;
 
   /// Jadwal sesi pada minggu ini, sudah terurut dari hari Senin.
@@ -55,7 +64,8 @@ class MingguLatihan {
 
   /// Total jarak mingguan dalam kilometer.
   ///
-  /// Dijumlahkan dari jarak setiap sesi. Sesi tanpa target jarak dianggap nol.
+  /// Dijumlahkan dari semua sesi. Ini angka yang dipakai untuk
+  /// sectarian prinsipambahan volume maksimal 10 persen per minggu.
   double get totalJarakKm {
     double total = 0;
     for (final SesiLatihan s in sesi) {
@@ -76,7 +86,10 @@ class MingguLatihan {
   }
 }
 
-/// Data satu sesi latihan beserta target dan instruksinya.
+/// ============================================================
+/// MODEL: SATU SESI LATIHAN
+/// ============================================================
+/// Satu sesi latihan dengan instruksi lengkap.
 class SesiLatihan {
   /// Nama sesi, misalnya "Easy Run", "Interval 6x800m", "Long Run".
   final String nama;

@@ -98,7 +98,7 @@ class SplitStrategi {
       if (km == 1) {
         // Kilometer 1: pemanasan.
         pengali = faktorPemanasan;
-        label = 'PEMANASAN';
+        label = 'PEMASAN';
         catatan =
             'Mulai pelan untuk memanaskan sistem kardiovaskular. '
             'Jaga napas dalam dan ritme longgar.';

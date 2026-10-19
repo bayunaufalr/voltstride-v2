@@ -275,7 +275,7 @@ class _TimerPageState extends State<TimerPage> {
     _fase = 'selesai';
     _sisaDetik = 0;
 
-    // Getaran panjang digunakan saat seluruh sesi selesai.
+    // Getaran sangat berat: sesi khatam.
     HapticFeedback.heavyImpact();
     setState(() {});
   }

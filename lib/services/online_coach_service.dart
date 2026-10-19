@@ -6,16 +6,27 @@ import 'package:http/http.dart' as http;
 import '../models/profil_pelari.dart';
 import '../models/rencana_latihan.dart';
 
-/// Menghubungkan modul coach lokal dengan layanan AI melalui HTTP.
+/// ============================================================
+/// ONLINE COACH SERVICE
+/// ============================================================
+/// Mengirim data profil pelari ke server AI dan menerima:
 ///
-/// Layanan ini mengirim profil atau kerangka rencana latihan ke backend.
-/// Jika server tidak merespons, metode mengembalikan `null` agar pemanggil
-/// dapat memakai hasil lokal. Perhitungan inti tidak seharusnya bergantung
-/// pada koneksi internet.
+///   1. Jawab coaching natural language (chat).
+///   2. Rencana latihan yang sudah disesuaikan server.
 ///
-/// Catatan: layanan ini berasal dari alur pelacak lama. Halaman coach yang
-/// dibuka melalui navigasi utama saat ini memakai `AiCoachService` lokal di
-/// `features/ai_coach/ai_coach_service.dart`, bukan layanan HTTP ini.
+/// Prinsip penting untuk portofolio: aplikasi ini TIDAK bergantung
+///total pada server. Semua kalkulasi kritis ada di [AICoachEngine] dan
+/// [PenyusunRencana] yang berjalan lokal. Server bersifat enrichment:
+///
+///   - 응답 yang baik memperkaya program dengan konteks lebih-depth
+///     (cuaca, jadwal-personal, riwayat-latihan).
+///   - Server down tidak membuat aplikasi mati: [tanyaCoach] dan
+///     [mintaRencana] selalu mengembalikan null, dan UI memakai hasil
+///     lokal sebagai fallback.
+///
+/// Ini pola yang dikenal sebagai graceful degradation, dan dipakai
+/// aplikasi produksi dengan fitur AI yang tidak boleh mengganggu
+/// pengguna saat offline.
 class OnlineCoachService {
   /// Alamat endpoint AI. Ganti dengan milikmu sendiri saat deploy.
   ///
@@ -29,17 +40,31 @@ class OnlineCoachService {
 
   /// API key. Nilai di bawah hanya placeholder untuk portofolio.
   ///
-  /// Nilai ini hanya placeholder dan tidak dapat dipakai untuk autentikasi.
-  /// Untuk produksi, simpan kunci rahasia di backend atau layanan serverless
-  /// seperti Cloud Functions/Cloud Run. Jangan menanam kunci rahasia di APK:
-  /// isi APK dapat diperiksa oleh orang lain.
+  /// CATATAN KEAMANAN yang wajib dipatuhi di produksi:
+  /// Jangan pernah menaruh API key di dalam kode aplikasi. Kode
+  /// aplikasi bisa dibongkar. Langkah yang benar:
+  ///   1. Ganti [endpoint] dengan backend milikmu sendiri.
+  ///   2. API key disimpan di server backend, bukan di aplikasi.
+  ///   3. Aplikasi hanya diminta izin oleh backend kamu.
+  ///
+  /// Alternatif yang lebih aman untuk aplikasi purely-client:
+  /// pakai Firebase Functions atau Cloud Run yang kunci API-nya disimpan di
+  /// secret manager.
   static const String apiKey = 'GANTI_DENGAN_API_KEY_MILIKMU';
 
-  /// Batas waktu tiap request. Jika terlampaui, metode mengembalikan `null`
-  /// sehingga layar dapat melanjutkan dengan jawaban atau rencana lokal.
+  /// Timeout untuk setiap request, dalam detik.
+  ///
+  /// 12 detik dipilih karena di jaringan seluler, koneksi bisa lambat
+  /// Timeout pendek membuat pengguna cepat mendapat fallback lokal; timeout
+  /// mendapat fallback lokal; timeout terlalu lama membuat UI
+  /// menggantung tanpa penjelasan.
   static const int timeoutDetik = 12;
 
-  /// Klien HTTP yang dipakai ulang untuk request di kelas ini.
+  /// Klien HTTP.
+  ///
+  /// Dibuat sekali dan dipakai ulang. Membuat objek http.Client baru
+  /// untuk setiap request membuka koneksi TCP baru, yang boros koneksi
+  /// dan baterai di perangkat mobile.
   static final http.Client _klien = http.Client();
 
   // ------------------------------------------------------------
@@ -74,9 +99,8 @@ class OnlineCoachService {
   /// Membangun body JSON rencana lokal untuk dikirim ke server.
   ///
   /// Server menerima kerangka lokal lalu bisa menyesuaikannya.
-  /// Mengirim rancangan latihan lokal sebagai dasar penyesuaian server.
-  /// Dengan begitu, server menerima konteks awal dan hasilnya tetap mengikuti
-  /// struktur data yang dipahami oleh aplikasi.
+  /// Mengirim kerangka lokal (bukan-from-scratch) Saves token dan
+  /// memastikan hasil server tetap konsisten dengan engine lokal.
   static Map<String, dynamic> rencanaKeJson(RencanaLatihan rencana) {
     return <String, dynamic>{
       'jumlah_minggu': rencana.jumlahMinggu,
@@ -108,13 +132,13 @@ class OnlineCoachService {
   /// Parameter:
   ///   - [profil]: profil pelari hasil hitungan engine lokal.
   ///   - [pertanyaan]: pesan pengguna.
-  ///   - [riwayat]: percakapan sebelumnya dalam bentuk daftar role dan isi.
+  ///   - [riwayat]: pesan sebelumnya,=list of {role, content}.
   ///
   /// Mengembalikan teks jawaban coach, atau null bila server gagal.
   /// Null berarti UI harus memakai fallback lokal.
   ///
-  /// Timeout, status HTTP gagal, atau JSON yang tidak valid ditangani
-  /// dengan mengembalikan null agar error tidak merambat ke tampilan.
+  /// Timeout, status bukan 200, dan JSON rusak semua ditangani
+  /// sebagai null, bukan exception yang_crashes aplikasi.
   static Future<String?> tanyaCoach({
     required ProfilPelari profil,
     required String pertanyaan,
@@ -140,7 +164,8 @@ class OnlineCoachService {
           )
           .timeout(const Duration(seconds: timeoutDetik));
 
-      // Terima semua kode HTTP pada rentang 2xx sebagai respons sukses.
+      // Status 200 sampai 299 berarti sukses. Strava dan sebagian besar
+      // API memakai kode 2xx sebagai penanda, jadi kita cek rentangnya.
       if (respons.statusCode < 200 || respons.statusCode >= 300) {
         return null;
       }
@@ -201,9 +226,11 @@ class OnlineCoachService {
     }
   }
 
-  /// Mengubah JSON dari server menjadi [RencanaLatihan].
-  /// Nilai default membantu menangani beberapa field opsional yang tidak
-  /// dikirim server. Struktur inti tetap harus valid agar rencana bisa dipakai.
+  /// Mengubah JSON server menjadi objek [RencanaLatihan].
+  ///
+  /// Sengaja ditulis manual (bukan fromJson generik) supaya setiap
+  /// field punya nilai default yang aman. Kalau server mengirim data
+  /// tidak lengkap, aplikasi tetap bisa menampilkan rencana.
   static RencanaLatihan? _jsonKeRencana(Map<String, dynamic> json) {
     try {
       final List<dynamic> mingguJson =

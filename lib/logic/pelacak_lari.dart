@@ -1,12 +1,26 @@
 import 'kalman_gps.dart';
 
-/// Pelacak GPS generasi lama yang mengubah koordinat menjadi statistik lari.
+/// ============================================================
+/// PELACAK LARI
+/// ============================================================
+/// Mengubah aliran titik GPS mentah menjadi statistik lari yang akurat.
 ///
-/// Kelas ini menghitung perpindahan dengan Haversine, memeriksa anomali,
-/// lalu memakai filter Kalman untuk menghaluskan jarak kumulatif. Kode ini
-/// dipakai oleh `TrackerPage` lama. Halaman rekam aktif saat ini memakai
-/// `RunningEngine` di `features/running/services/running_engine.dart`, yang
-/// mempunyai alur validasi dan penghitungan jarak tersendiri.
+/// Ini adalah inti modul lari VoltStride, dan tempat upgrade akurasi
+/// GPS benar-benar terjadi. Raw GPS langsung dijumlahkan akan menghasilkan
+/// jarak yang terlalu jauh karena noise, jadi titik mentah hanya diperlakukan
+/// sebagai pengukuran dan semua statistik dibangun dari hasil filter.
+///
+/// Rantai pemrosesan satu titik baru:
+///   titik GPS
+///     -> cek akurasi masih layak dipakai
+///     -> hitung jarak kasar dari titik sebelumnya (Haversine)
+///     -> tolak bila pergerakannya tidak manusiawi (DeteksAnomali)
+///     -> koreksi posisi lewat Kalman filter
+///     -> akumulasi jarak terfilter
+///     -> perbarui pace real-time dan split kilometer
+///
+/// Semua perhitungan jarak memakai [GeoUtil.jarakAntarTitik] dalam meter,
+/// lalu dikonversi ke kilometer hanya untuk ditampilkan.
 class PelacakLari {
   /// Filter Kalman untuk merapikan posisi sepanjang arah gerak.
   final KalmanGps _kalman = KalmanGps();
@@ -196,7 +210,7 @@ class PelacakLari {
     final double deltaDetik = deltaMs / 1000.0;
 
     // LANGKAH 4: Saring anomali gerak.
-    // Lonjakan posisi akibat kesalahan GPS ditolak di sini, sebelum
+    // Lonjakan posisi karena glitch GPS akan ditolak di sini, sebelum
     // sempat merusak total jarak.
     if (!DeteksAnomali.valid(jarakMeter: jarakKasar, dtDetik: deltaDetik)) {
       titikDitolak++;

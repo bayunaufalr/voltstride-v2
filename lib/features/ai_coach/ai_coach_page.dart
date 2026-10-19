@@ -23,7 +23,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
       role: 'assistant',
       text:
           'Saya VoltStride Coach lokal. Saya bisa membahas pace, split, konsistensi, '
-          'target lomba, dan latihan berdasarkan data yang tersimpan di perangkat. '
+          'target lomba, dan latihan berdasarkan riwayat aktivitas dari akun serta perangkat. '
           'Mode ini tidak membutuhkan internet atau API berbayar dan bukan pengganti tenaga kesehatan.',
     ),
   ];
@@ -122,7 +122,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
                             role: 'assistant',
                             text:
                                 'Percakapan baru dimulai. Saya akan memakai '
-                                'ringkasan lari lokal yang tersedia. Saya bekerja secara offline dengan aturan dan perhitungan, bukan model generatif seperti ChatGPT.',
+                                'ringkasan lari yang tersedia dari akun atau perangkat. Saya bekerja secara offline dengan aturan dan perhitungan, bukan model generatif seperti ChatGPT.',
                           ),
                         );
                     });
