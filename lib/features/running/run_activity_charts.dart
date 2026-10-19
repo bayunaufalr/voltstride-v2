@@ -151,8 +151,6 @@ class _InteractiveMetricChart extends StatefulWidget {
 class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
   static const double _plotLeft = 54;
   static const double _plotRightInset = 12;
-  static const double _plotTop = 15;
-  static const double _plotBottomInset = 34;
 
   int _selectedIndex = 0;
 

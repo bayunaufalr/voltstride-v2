@@ -15,39 +15,36 @@ jobs:
     name: Check, test, and build Android APK
     runs-on: ubuntu-latest
     env:
-      # Konfigurasi Firebase diambil dari GitHub repository secrets.
+      # Nilai ini diambil dari Settings > Secrets and variables > Actions.
       VOLTSTRIDE_FIREBASE_API_KEY: ${{ secrets.VOLTSTRIDE_FIREBASE_API_KEY }}
       VOLTSTRIDE_FIREBASE_APP_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_APP_ID }}
       VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID }}
       VOLTSTRIDE_FIREBASE_PROJECT_ID: ${{ secrets.VOLTSTRIDE_FIREBASE_PROJECT_ID }}
-
-      # Dua secret ini opsional. Tanpa keduanya, APK dibuat dengan debug key
-      # agar bisa diuji di HP, tetapi bukan untuk diunggah ke Google Play.
       VOLTSTRIDE_KEYSTORE_BASE64: ${{ secrets.VOLTSTRIDE_KEYSTORE_BASE64 }}
       VOLTSTRIDE_KEYSTORE_PASSWORD: ${{ secrets.VOLTSTRIDE_KEYSTORE_PASSWORD }}
 
     steps:
-      - name: Ambil kode dari GitHub
+      - name: Download source code
         uses: actions/checkout@v4
 
-      - name: Siapkan Java 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
           cache: gradle
 
-      - name: Siapkan Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: '3.47.6'
           cache: true
 
-      - name: Periksa versi Flutter
+      - name: Show Flutter version
         run: flutter --version
 
-      - name: Buat konfigurasi Firebase untuk build ini
+      - name: Create Firebase configuration for this build
         shell: bash
         run: |
           python3 - <<'PY'
@@ -56,62 +53,59 @@ jobs:
           import sys
           from pathlib import Path
 
-          # Nama secret dan keterangan supaya pesan kegagalan mudah dipahami.
-          secret_yang_diperlukan = {
-              "API Key": "VOLTSTRIDE_FIREBASE_API_KEY",
+          names = {
+              "API key": "VOLTSTRIDE_FIREBASE_API_KEY",
               "App ID Android": "VOLTSTRIDE_FIREBASE_APP_ID",
-              "Messaging Sender ID": "VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID",
+              "Messaging sender ID": "VOLTSTRIDE_FIREBASE_MESSAGING_SENDER_ID",
               "Project ID": "VOLTSTRIDE_FIREBASE_PROJECT_ID",
           }
+          values = {label: os.environ.get(name, "").strip() for label, name in names.items()}
+          missing = [label for label, value in values.items() if not value]
 
-          nilai = {
-              keterangan: os.environ.get(nama_secret, "").strip()
-              for keterangan, nama_secret in secret_yang_diperlukan.items()
-          }
-          belum_diisi = [nama for nama, isi in nilai.items() if not isi]
-
-          if belum_diisi:
-              print("::error::Konfigurasi Firebase belum lengkap. Buat GitHub Secrets berikut:")
-              for nama in belum_diisi:
-                  print(f"::error::{secret_yang_diperlukan[nama]}")
+          if missing:
+              print("::error::Konfigurasi Firebase belum lengkap. Tambahkan semua repository secrets berikut:")
+              for label in missing:
+                  print(f"::error::{names[label]}")
+              print("Buka panduan PANDUAN_FIREBASE_GRATIS.md untuk melihat cara mengambil nilainya.")
               sys.exit(1)
 
-          # json.dumps menghasilkan teks yang aman saat dimasukkan ke kode Dart.
-          api_key = json.dumps(nilai["API Key"], ensure_ascii=True)
-          app_id = json.dumps(nilai["App ID Android"], ensure_ascii=True)
-          sender_id = json.dumps(nilai["Messaging Sender ID"], ensure_ascii=True)
-          project_id = json.dumps(nilai["Project ID"], ensure_ascii=True)
+          def dart_string(value):
+              # JSON memakai format string yang juga aman untuk nilai teks Dart.
+              return json.dumps(value, ensure_ascii=True)
 
-          isi_file = f'''// File ini dibuat otomatis oleh GitHub Actions.
-          // Nilainya berasal dari GitHub Secrets milik proyek Firebase VoltStride.
+          isi_file = """// Dibuat otomatis oleh GitHub Actions dari konfigurasi Firebase proyek ini.
+          // Jangan menambahkan kata sandi atau private key ke dalam berkas ini.
           import 'package:firebase_core/firebase_core.dart';
 
-          class DefaultFirebaseOptions {{
+          class DefaultFirebaseOptions {
             static FirebaseOptions get currentPlatform => FirebaseOptions(
-                  apiKey: {api_key},
-                  appId: {app_id},
-                  messagingSenderId: {sender_id},
-                  projectId: {project_id},
+                  apiKey: API_KEY,
+                  appId: APP_ID,
+                  messagingSenderId: SENDER_ID,
+                  projectId: PROJECT_ID,
                 );
-          }}
-          '''
+          }
+          """
+          # Ganti penanda agar nilai konfigurasi ditulis sebagai teks Dart yang aman.
+          isi_file = isi_file.replace("API_KEY", dart_string(values["API key"]))
+          isi_file = isi_file.replace("APP_ID", dart_string(values["App ID Android"]))
+          isi_file = isi_file.replace("SENDER_ID", dart_string(values["Messaging sender ID"]))
+          isi_file = isi_file.replace("PROJECT_ID", dart_string(values["Project ID"]))
 
           Path("lib/firebase_options.dart").write_text(isi_file, encoding="utf-8")
-          print("Konfigurasi Firebase berhasil disiapkan.")
+          print("Konfigurasi Firebase berhasil dibuat untuk proses build ini.")
           PY
 
-      - name: Unduh dependensi proyek
+      - name: Download Flutter packages
         run: flutter pub get
 
-      - name: Periksa kode Dart
-        # dart analyze tidak gagal hanya karena pesan berstatus info.
-        # Error dan warning yang sungguhan tetap membuat tahap ini gagal.
-        run: dart analyze
+      - name: Check code quality
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Jalankan pengujian otomatis
+      - name: Run automated tests
         run: flutter test
 
-      - name: Siapkan kunci penandatanganan rilis jika tersedia
+      - name: Prepare release signing key when provided
         if: ${{ env.VOLTSTRIDE_KEYSTORE_BASE64 != '' && env.VOLTSTRIDE_KEYSTORE_PASSWORD != '' }}
         shell: bash
         run: |
@@ -125,14 +119,14 @@ jobs:
           storeFile=key/voltstride-release.jks
           EOF
 
-      - name: Jelaskan kunci pengujian
+      - name: Explain test signing fallback
         if: ${{ env.VOLTSTRIDE_KEYSTORE_BASE64 == '' || env.VOLTSTRIDE_KEYSTORE_PASSWORD == '' }}
-        run: echo "::warning::Kunci rilis belum diatur. APK akan memakai debug key untuk pengujian, bukan untuk publikasi Google Play."
+        run: echo "::warning::Signing key belum diatur. APK tetap dibuat menggunakan debug key untuk pengujian, bukan untuk publikasi Play Store."
 
-      - name: Buat APK Android
+      - name: Build release APK files
         run: flutter build apk --release --split-per-abi
 
-      - name: Simpan APK sebagai Artifact
+      - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
           name: voltstride-apk-release

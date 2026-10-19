@@ -1080,7 +1080,7 @@ class _RunningPageState extends State<RunningPage> {
         currentPace.isFinite &&
         currentPace > 0 &&
         currentPace <= 3600;
-    final bool onTarget = enoughData && currentPace! <= targetPace;
+    final bool onTarget = enoughData && currentPace <= targetPace;
     final Color statusColor = !enoughData
         ? Colors.white70
         : onTarget
