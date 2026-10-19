@@ -1,0 +1,77 @@
+name: Build VoltStride APK
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test and build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Flutter 3.47.6
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.6'
+          cache: true
+
+      - name: Check Flutter version
+        run: flutter --version
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter project
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run automated tests
+        run: flutter test
+
+      - name: Prepare release signing key
+        env:
+          VOLTSTRIDE_KEYSTORE_BASE64: ${{ secrets.VOLTSTRIDE_KEYSTORE_BASE64 }}
+          VOLTSTRIDE_KEYSTORE_PASSWORD: ${{ secrets.VOLTSTRIDE_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+
+          test -n "$VOLTSTRIDE_KEYSTORE_BASE64"
+          test -n "$VOLTSTRIDE_KEYSTORE_PASSWORD"
+
+          mkdir -p android/key
+
+          echo "$VOLTSTRIDE_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/key/voltstride-release.jks
+
+          cat > android/key.properties <<EOF
+          storePassword=$VOLTSTRIDE_KEYSTORE_PASSWORD
+          keyPassword=$VOLTSTRIDE_KEYSTORE_PASSWORD
+          keyAlias=voltstride
+          storeFile=key/voltstride-release.jks
+          EOF
+
+      - name: Build release APK
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload signed APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: voltstride-apk-release-signed
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
