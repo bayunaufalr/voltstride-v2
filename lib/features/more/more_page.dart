@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
-
 class MorePage extends StatefulWidget {
   const MorePage({
     super.key,

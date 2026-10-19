@@ -7,8 +7,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-import '../../theme/volt_theme.dart';
-
 /// Perencana rute dengan beberapa titik singgah.
 class RoutePlannerPage extends StatefulWidget {
   const RoutePlannerPage({super.key, required this.active});

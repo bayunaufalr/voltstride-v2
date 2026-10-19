@@ -112,8 +112,8 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         },
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.all(12),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
                       child: Text(
                         'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
                         style: TextStyle(
@@ -246,7 +246,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Panjang segmen',
                   style: TextStyle(
