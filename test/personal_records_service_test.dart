@@ -47,15 +47,17 @@ void main() {
     );
   });
 
-  test('a new measured session announces distance and longest-run records', () {
+  test('a new measured session announces distance and longest-run achievements', () {
     final RunSession session = createFiveKilometerSession();
     final List<String> achievements = PersonalRecordsService.achievementsFor(
       session,
       const <RunSession>[],
     );
 
-    expect(achievements, contains('1 km tercepat kamu!'));
-    expect(achievements, contains('5 km tercepat kamu!'));
-    expect(achievements, contains('Rekor lari terjauh: 5.00 km!'));
+    // Istilah di aplikasi sudah berubah dari "rekor" menjadi "pencapaian".
+    // Tes mengikuti teks baru yang benar-benar ditampilkan aplikasi.
+    expect(achievements, contains('Pencapaian 1 km: 03:20.'));
+    expect(achievements, contains('Pencapaian 5 km: 16:40.'));
+    expect(achievements, contains('Pencapaian jarak terjauh: 5.00 km.'));
   });
 }
