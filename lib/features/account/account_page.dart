@@ -193,15 +193,16 @@ class AccountPageState extends State<AccountPage> {
 
   Future<void> _memilihFotoProfil() async {
     try {
-      final FilePickerResult? hasil = await FilePicker.platform.pickFiles(
+      // file_picker versi 12 mengembalikan satu PlatformFile secara langsung.
+      // Jika pengguna membatalkan pemilihan, hasilnya bernilai null.
+      final PlatformFile? hasil = await FilePicker.pickFile(
         type: FileType.image,
-        allowMultiple: false,
-        withData: true,
       );
-      if (hasil == null || hasil.files.isEmpty) return;
+      if (hasil == null) return;
 
-      final Uint8List? bytes = hasil.files.single.bytes;
-      if (bytes == null || bytes.isEmpty) {
+      // Baca isi gambar setelah pengguna memilih berkas.
+      final Uint8List bytes = await hasil.readAsBytes();
+      if (bytes.isEmpty) {
         _tampilkanPesan('Foto tidak dapat dibaca. Coba pilih gambar lain.');
         return;
       }

@@ -170,8 +170,12 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
           for (int i = 1; i < ketinggian.length; i++) {
             final double perubahan = ketinggian[i] - ketinggian[i - 1];
             // Abaikan perubahan kecil agar noise data elevasi tidak dihitung.
-            if (perubahan >= 3) naik += perubahan;
-            if (perubahan <= -3) turun += perubahan.abs();
+            if (perubahan >= 3) {
+              naik = (naik ?? 0) + perubahan;
+            }
+            if (perubahan <= -3) {
+              turun = (turun ?? 0) + perubahan.abs();
+            }
           }
         }
       } catch (_) {
