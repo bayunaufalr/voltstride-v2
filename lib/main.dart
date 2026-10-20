@@ -27,12 +27,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await loadVoltThemeMode();
   await AppLanguageService.load();
-  try {
-    await ReminderService.initialize();
-    await ReminderService.restoreSavedSchedules();
-  } catch (_) {
-    // Kegagalan pengingat tidak boleh menghalangi aplikasi dibuka.
-  }
+  // Penjadwalan pengingat tidak dijalankan sebelum tampilan pertama muncul.
+  // Pada perangkat tertentu, membaca zona waktu dan memulihkan banyak jadwal
+  // dapat membuat aplikasi terasa macet saat baru dibuka.
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -62,6 +59,32 @@ Future<void> main() async {
       firebaseSetupError: firebaseSetupError,
     ),
   );
+
+  // Beri Android kesempatan menampilkan layar lebih dahulu. Setelah itu,
+  // pengingat dipulihkan di belakang layar tanpa menahan pembukaan aplikasi.
+  WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+    unawaited(_restoreRemindersAfterStartup());
+  });
+}
+
+Future<void> _restoreRemindersAfterStartup() async {
+  // Jeda singkat memastikan bingkai pertama sempat ditampilkan di HP.
+  await Future<void>.delayed(const Duration(milliseconds: 700));
+  try {
+    await ReminderService.initialize().timeout(
+      const Duration(seconds: 12),
+    );
+    await ReminderService.restoreSavedSchedules().timeout(
+      const Duration(seconds: 20),
+    );
+  } on TimeoutException catch (error) {
+    // Aplikasi tetap dapat dipakai walaupun pemulihan alarm tertunda.
+    debugPrint('Pemulihan pengingat melewati batas waktu: $error');
+  } catch (error, stackTrace) {
+    // Kegagalan alarm tidak boleh membuat seluruh aplikasi macet.
+    debugPrint('Pengingat belum dapat dipulihkan: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
 
 class VoltStrideApp extends StatelessWidget {

@@ -101,17 +101,30 @@ class ReminderService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _ready = false;
+  static Future<void>? _initialization;
 
-  static Future<void> initialize() async {
-    if (_ready) return;
-    timezone_data.initializeTimeZones();
-    timezone.setLocalLocation(timezone.getLocation(_zoneName));
-    const InitializationSettings settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
-    );
-    await _plugin.initialize(settings);
-    _ready = true;
+  /// Hindari inisialisasi plugin ganda jika halaman dan proses pemulihan
+  /// pengingat memanggil fungsi ini hampir bersamaan.
+  static Future<void> initialize() {
+    if (_ready) return Future<void>.value();
+    return _initialization ??= _initializePlugin();
+  }
+
+  static Future<void> _initializePlugin() async {
+    try {
+      timezone_data.initializeTimeZones();
+      timezone.setLocalLocation(timezone.getLocation(_zoneName));
+      const InitializationSettings settings = InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
+      );
+      await _plugin.initialize(settings);
+      _ready = true;
+    } catch (_) {
+      // Izinkan percobaan ulang jika inisialisasi pertama gagal.
+      _initialization = null;
+      rethrow;
+    }
   }
 
   static Future<List<TrainingReminder>> getAll() async {
