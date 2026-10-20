@@ -13,6 +13,7 @@ import '../../theme/volt_theme.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
 import '../progress/progress_page.dart';
+import 'profile_training_summary.dart';
 import 'account_service.dart';
 
 class AccountPage extends StatefulWidget {
@@ -24,6 +25,7 @@ class AccountPage extends StatefulWidget {
 
 class AccountPageState extends State<AccountPage> {
   RunSession? _latestSession;
+  List<RunSession> _allSessions = <RunSession>[];
   DateTime? _recommendedResumeAt;
   bool _loading = true;
   bool _movingLegacyHistory = false;
@@ -45,12 +47,14 @@ class AccountPageState extends State<AccountPage> {
 
   Future<void> _loadRecovery() async {
     try {
-      final List<RunSession> sessions = await RunHistoryRepository.instance.getAll(limit: 1);
+      final List<RunSession> sessions =
+          await RunHistoryRepository.instance.getAll(limit: 200);
       final int legacyCount = await RunHistoryRepository.instance.pendingSessionCount();
       if (!mounted) return;
       if (sessions.isEmpty) {
         setState(() {
           _latestSession = null;
+          _allSessions = <RunSession>[];
           _recommendedResumeAt = null;
           _legacyHistoryCount = legacyCount;
           _loading = false;
@@ -61,6 +65,7 @@ class AccountPageState extends State<AccountPage> {
       final int hours = _suggestedRestHours(session);
       final DateTime activityEnd = (session.finishedAt ?? session.startedAt).toLocal();
       setState(() {
+        _allSessions = sessions;
         _latestSession = session;
         _recommendedResumeAt = activityEnd.add(Duration(hours: hours));
         _legacyHistoryCount = legacyCount;
@@ -125,6 +130,8 @@ class AccountPageState extends State<AccountPage> {
         padding: const EdgeInsets.all(18),
         children: <Widget>[
           _accountCard(),
+          const SizedBox(height: 12),
+          ProfileTrainingSummary(sessions: _allSessions),
           const SizedBox(height: 12),
           ProgressPage(key: _progressKey, embedded: true),
           const SizedBox(height: 12),
@@ -308,6 +315,8 @@ class AccountPageState extends State<AccountPage> {
         _tampilkanPesan('File tersebut bukan gambar yang dapat dibuka.');
         return;
       }
+      // Ikuti arah asli foto dari kamera sebelum proses potong dibuka.
+      gambarAsli = img.bakeOrientation(gambarAsli);
 
       // Perkecil gambar berukuran sangat besar sebelum membuka alat potong,
       // agar penyuntingan tetap ringan di ponsel.
@@ -509,23 +518,42 @@ class _CropFotoDialog extends StatefulWidget {
 }
 
 class _CropFotoDialogState extends State<_CropFotoDialog> {
-  late final int _sisiPotong;
-  late final int _maksKiri;
-  late final int _maksAtas;
+  late final int _sisiDasar;
+  late int _sisiPotong;
   late double _kiri;
   late double _atas;
+  double _zoom = 1;
+
+  int get _maksKiri => widget.gambarAsli.width - _sisiPotong;
+  int get _maksAtas => widget.gambarAsli.height - _sisiPotong;
 
   @override
   void initState() {
     super.initState();
-    _sisiPotong = math.min(
+    _sisiDasar = math.min(
       widget.gambarAsli.width,
       widget.gambarAsli.height,
     );
-    _maksKiri = widget.gambarAsli.width - _sisiPotong;
-    _maksAtas = widget.gambarAsli.height - _sisiPotong;
+    _sisiPotong = _sisiDasar;
     _kiri = _maksKiri / 2;
     _atas = _maksAtas / 2;
+  }
+
+  void _ubahZoom(double nilai) {
+    // Pertahankan titik tengah gambar saat tingkat perbesaran berubah.
+    final double tengahX = _kiri + (_sisiPotong / 2);
+    final double tengahY = _atas + (_sisiPotong / 2);
+    setState(() {
+      _zoom = nilai;
+      _sisiPotong =
+          (_sisiDasar / _zoom).round().clamp(1, _sisiDasar).toInt();
+      _kiri = (tengahX - _sisiPotong / 2)
+          .clamp(0, _maksKiri)
+          .toDouble();
+      _atas = (tengahY - _sisiPotong / 2)
+          .clamp(0, _maksAtas)
+          .toDouble();
+    });
   }
 
   Uint8List _hasilPotongan() {
@@ -547,6 +575,7 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
   @override
   Widget build(BuildContext context) {
     final Uint8List preview = _hasilPotongan();
+    final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
     return AlertDialog(
       title: const Text('Potong foto profil'),
       content: SizedBox(
@@ -555,22 +584,52 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(128),
-                  child: Image.memory(
-                    preview,
-                    width: 210,
-                    height: 210,
-                    fit: BoxFit.cover,
+              GestureDetector(
+                onPanUpdate: (DragUpdateDetails details) {
+                  setState(() {
+                    final double scale = _sisiPotong / 210;
+                    _kiri = (_kiri - details.delta.dx * scale)
+                        .clamp(0, _maksKiri)
+                        .toDouble();
+                    _atas = (_atas - details.delta.dy * scale)
+                        .clamp(0, _maksAtas)
+                        .toDouble();
+                  });
+                },
+                child: Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(128),
+                    child: Image.memory(
+                      preview,
+                      width: 210,
+                      height: 210,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
+              Text(
+                'Geser foto untuk mengatur posisi.',
+                style: TextStyle(color: teksSekunder, fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Perbesaran'),
+              ),
+              Slider(
+                value: _zoom,
+                min: 1,
+                max: 2.5,
+                divisions: 15,
+                label: '${_zoom.toStringAsFixed(1)}×',
+                onChanged: _ubahZoom,
+              ),
               if (_maksKiri > 0) ...<Widget>[
                 const Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Geser area ke kiri atau kanan'),
+                  child: Text('Geser kiri-kanan'),
                 ),
                 Slider(
                   value: _kiri.clamp(0, _maksKiri).toDouble(),
@@ -582,7 +641,7 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
               if (_maksAtas > 0) ...<Widget>[
                 const Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Geser area ke atas atau bawah'),
+                  child: Text('Geser atas-bawah'),
                 ),
                 Slider(
                   value: _atas.clamp(0, _maksAtas).toDouble(),

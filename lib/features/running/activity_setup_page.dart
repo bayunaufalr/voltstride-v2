@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../services/lokasi_service.dart';
-import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'run_route_map_view.dart';
 
@@ -106,15 +105,17 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   @override
   Widget build(BuildContext context) {
     final bool indoor = _environment == RunEnvironment.indoor;
+    final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
       appBar: AppBar(title: const Text('Rekam aktivitas')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
           children: <Widget>[
-            const Text('Siap bergerak?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 6),
-            const Text('Pilih aktivitas dan lokasi sebelum mulai merekam.', style: TextStyle(color: VoltWarna.teksAbu)),
+            const Text(
+              'Pilih aktivitas',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+            ),
             const SizedBox(height: 18),
             if (indoor)
               _indoorMapCard()
@@ -131,13 +132,13 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  Expanded(child: Text(_locationMessage ?? 'Peta dan posisi GPS sebelum mulai.', style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12))),
+                  Expanded(child: Text(_locationMessage ?? 'Peta dan posisi GPS sebelum mulai.', style: TextStyle(color: teksSekunder, fontSize: 12))),
                   IconButton(
                     tooltip: 'Perbarui lokasi',
                     onPressed: _loadingLocation ? null : loadLocation,
                     icon: _loadingLocation
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.my_location_rounded, color: VoltWarna.aksen),
+                        : Icon(Icons.my_location_rounded, color: Theme.of(context).colorScheme.primary),
                   ),
                 ],
               ),
@@ -149,9 +150,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               children: <Widget>[
                 Expanded(child: _choiceCard(
                   selected: _environment == RunEnvironment.outdoor,
-                  icon: Icons.wb_sunny_outlined,
                   title: 'Luar ruangan',
-                  subtitle: 'Jarak dari GPS',
+                  subtitle: 'GPS',
                   onTap: () {
                     setState(() => _environment = RunEnvironment.outdoor);
                     loadLocation();
@@ -160,7 +160,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 const SizedBox(width: 10),
                 Expanded(child: _choiceCard(
                   selected: _environment == RunEnvironment.indoor,
-                  icon: Icons.fitness_center_rounded,
                   title: 'Dalam ruangan',
                   subtitle: 'Jarak manual',
                   onTap: () => setState(() {
@@ -176,27 +175,24 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             const SizedBox(height: 10),
             _choiceCard(
               selected: _mode == _ActivityMode.run,
-              icon: Icons.directions_run_rounded,
               title: 'Lari biasa',
-              subtitle: 'Rekam jarak, pace, rute, dan elevasi.',
+              subtitle: 'Jarak, pace, rute, dan elevasi.',
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.run),
             ),
             const SizedBox(height: 9),
             _choiceCard(
               selected: _mode == _ActivityMode.interval,
-              icon: Icons.repeat_rounded,
               title: 'Lari interval',
-              subtitle: 'Atur waktu kerja, pemulihan, dan pengulangan.',
+              subtitle: 'Atur kerja dan pemulihan.',
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.interval),
             ),
             const SizedBox(height: 9),
             _choiceCard(
               selected: _mode == _ActivityMode.walk,
-              icon: Icons.directions_walk_rounded,
               title: 'Berjalan',
-              subtitle: 'Pelacakan jalan kaki dengan metrik serupa.',
+              subtitle: 'Rekam perjalanan berjalan.',
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
@@ -206,16 +202,16 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
-                color: VoltWarna.kartu,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.zero,
-                border: Border.all(color: VoltWarna.border),
+                border: Border.all(color: Theme.of(context).dividerColor),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'Isi keduanya jika ingin melihat estimasi waktu dan saran pace selama aktivitas.',
-                    style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.4),
+                  Text(
+                    'Opsional. Isi jarak dan pace target.',
+                    style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -227,6 +223,9 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                           inputFormatters: <TextInputFormatter>[
                             FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
                           ],
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                           decoration: const InputDecoration(
                             labelText: 'Jarak target (km)',
                             hintText: '5,0',
@@ -242,6 +241,9 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                           inputFormatters: <TextInputFormatter>[
                             FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
                           ],
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                           decoration: const InputDecoration(
                             labelText: 'Pace target (m:ss/km)',
                             hintText: '6:00',
@@ -259,9 +261,9 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: VoltWarna.kartu,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.zero,
-                  border: Border.all(color: VoltWarna.border),
+                  border: Border.all(color: Theme.of(context).dividerColor),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,16 +274,40 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                     ),
                     const SizedBox(height: 10),
                     SegmentedButton<IntervalMeasure>(
+                      style: ButtonStyle(
+                        foregroundColor:
+                            WidgetStateProperty.resolveWith<Color?>(
+                          (Set<WidgetState> states) {
+                            return states.contains(WidgetState.selected)
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.onSurface;
+                          },
+                        ),
+                        backgroundColor:
+                            WidgetStateProperty.resolveWith<Color?>(
+                          (Set<WidgetState> states) {
+                            return states.contains(WidgetState.selected)
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.surface;
+                          },
+                        ),
+                        side: WidgetStatePropertyAll<BorderSide?>(
+                          BorderSide(color: Theme.of(context).dividerColor),
+                        ),
+                        shape: const WidgetStatePropertyAll<OutlinedBorder?>(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
+                        ),
+                      ),
                       segments: const <ButtonSegment<IntervalMeasure>>[
                         ButtonSegment<IntervalMeasure>(
                           value: IntervalMeasure.time,
                           label: Text('Berdasarkan waktu'),
-                          icon: Icon(Icons.timer_outlined),
                         ),
                         ButtonSegment<IntervalMeasure>(
                           value: IntervalMeasure.distance,
                           label: Text('Berdasarkan jarak'),
-                          icon: Icon(Icons.straighten_rounded),
                         ),
                       ],
                       selected: <IntervalMeasure>{_intervalMeasure},
@@ -300,9 +326,9 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       ),
                     ] else ...<Widget>[
                       if (indoor)
-                        const Text(
+                        Text(
                           'Interval berbasis jarak membutuhkan jarak GPS selama sesi. Pilih Luar ruangan untuk memakai mode ini.',
-                          style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+                          style: TextStyle(color: teksSekunder, fontSize: 12),
                         )
                       else
                         Row(
@@ -321,16 +347,15 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             ],
             if (indoor) ...<Widget>[
               const SizedBox(height: 12),
-              const Text('Mode dalam ruangan tidak meminta GPS. Saat selesai, masukkan jarak dari treadmill atau alat yang digunakan.', style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.4)),
+              Text('Mode dalam ruangan tidak meminta GPS. Saat selesai, masukkan jarak dari treadmill atau alat yang digunakan.', style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4)),
             ],
             const SizedBox(height: 20),
-            FilledButton.icon(
+            FilledButton(
               onPressed: _start,
-              icon: const Icon(Icons.radio_button_checked_rounded),
-              label: const Text('Mulai aktivitas'),
+              child: const Text('Mulai aktivitas'),
             ),
             const SizedBox(height: 8),
-            const Text('Untuk hasil GPS terbaik, mulai di area terbuka dan tunggu posisi memiliki akurasi yang baik.', textAlign: TextAlign.center, style: TextStyle(color: VoltWarna.teksAbu, fontSize: 11, height: 1.4)),
+            Text('Untuk GPS yang lebih akurat, mulai di area terbuka.', textAlign: TextAlign.center, style: TextStyle(color: teksSekunder, fontSize: 11, height: 1.4)),
           ],
         ),
       ),
@@ -338,21 +363,33 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   }
 
   Widget _indoorMapCard() {
+    final Color teks = Theme.of(context).colorScheme.onSurface;
+    final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       height: 210,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.zero,
-        color: VoltWarna.surface,
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      child: const Column(
+      child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          Icon(Icons.directions_run_rounded, size: 48, color: VoltWarna.aksen),
-          SizedBox(height: 12),
-          Text('Mode dalam ruangan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          SizedBox(height: 5),
-          Text('GPS dinonaktifkan. Waktu tetap direkam; jarak dapat dimasukkan saat selesai.', textAlign: TextAlign.center, style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.4)),
+          Text(
+            'Mode dalam ruangan',
+            style: TextStyle(
+              color: teks,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'GPS dinonaktifkan. Waktu tetap direkam; jarak dapat dimasukkan saat selesai.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
+          ),
         ],
       ),
     );
@@ -360,12 +397,17 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
 
   Widget _choiceCard({
     required bool selected,
-    required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
     bool horizontal = false,
   }) {
+    final Color teks = Theme.of(context).colorScheme.onSurface;
+    final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
+    final Color warnaBorder = selected
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).dividerColor;
+
     return InkWell(
       borderRadius: BorderRadius.zero,
       onTap: onTap,
@@ -373,29 +415,45 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? VoltWarna.aksen.withValues(alpha: 0.12) : VoltWarna.kartu,
+          color: selected
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.10)
+              : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.zero,
-          border: Border.all(color: selected ? VoltWarna.aksen : VoltWarna.border, width: selected ? 1.6 : 1),
+          border: Border.all(color: warnaBorder, width: selected ? 1.6 : 1),
         ),
-        child: horizontal
-            ? Row(
-                children: <Widget>[
-                  Icon(icon, color: selected ? VoltWarna.aksen : VoltWarna.teksAbu, size: 26),
-                  const SizedBox(width: 12),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[Text(title, style: const TextStyle(fontWeight: FontWeight.w900)), const SizedBox(height: 3), Text(subtitle, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11))])),
-                  if (selected) const Icon(Icons.check_circle_rounded, color: VoltWarna.aksen),
-                ],
-              )
-            : Column(
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Icon(icon, color: selected ? VoltWarna.aksen : VoltWarna.teksAbu, size: 25),
-                  const SizedBox(height: 10),
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 10)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: teks,
+                      fontWeight: FontWeight.w800,
+                      fontSize: horizontal ? 14 : 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: teksSekunder, fontSize: 11),
+                  ),
                 ],
               ),
+            ),
+            if (selected)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -403,6 +461,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   Widget _numberField(String label, TextEditingController controller) {
     return TextField(
       controller: controller,
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       keyboardType: TextInputType.number,
       inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
       decoration: InputDecoration(labelText: label, isDense: true),

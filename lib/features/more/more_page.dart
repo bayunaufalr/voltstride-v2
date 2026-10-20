@@ -6,11 +6,13 @@ class MorePage extends StatefulWidget {
     required this.onOpenTimer,
     required this.onOpenCoach,
     required this.onOpenStrength,
+    required this.onOpenReminders,
   });
 
   final VoidCallback onOpenTimer;
   final VoidCallback onOpenCoach;
   final VoidCallback onOpenStrength;
+  final VoidCallback onOpenReminders;
 
   @override
   MorePageState createState() => MorePageState();
@@ -26,6 +28,7 @@ class MorePageState extends State<MorePage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
+          _menuItem('Pengingat dan rencana latihan', widget.onOpenReminders),
           _menuItem('Timer latihan', widget.onOpenTimer),
           _menuItem('Coach', widget.onOpenCoach),
           _menuItem('Latihan kekuatan', widget.onOpenStrength),
@@ -43,7 +46,10 @@ class MorePageState extends State<MorePage> {
       ),
       child: ListTile(
         title: Text(judul, style: const TextStyle(fontWeight: FontWeight.w600)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.black),
+        trailing: Icon(
+          Icons.chevron_right,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
         onTap: saatDibuka,
       ),
     );

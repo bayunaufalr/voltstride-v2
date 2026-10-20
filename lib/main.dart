@@ -10,6 +10,8 @@ import 'features/account/firebase_setup_page.dart';
 import 'features/account/login_page.dart';
 import 'features/account/account_page.dart';
 import 'features/more/more_page.dart';
+import 'features/reminders/reminder_service.dart';
+import 'features/reminders/training_reminders_page.dart';
 import 'features/route_planner/route_planner_page.dart';
 import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
@@ -24,6 +26,12 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await loadVoltThemeMode();
+  try {
+    await ReminderService.initialize();
+    await ReminderService.restoreSavedSchedules();
+  } catch (_) {
+    // Kegagalan pengingat tidak boleh menghalangi aplikasi dibuka.
+  }
   await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -175,6 +183,7 @@ class _RootShellState extends State<RootShell> {
           onOpenTimer: () => _openPage(const TimerPage()),
           onOpenCoach: () => _openPage(const AiCoachPage()),
           onOpenStrength: () => _openPage(const MusclePage()),
+          onOpenReminders: () => _openPage(const TrainingRemindersPage()),
         ),
       ];
 

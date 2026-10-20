@@ -1,0 +1,324 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest_all.dart' as timezone_data;
+import 'package:timezone/timezone.dart' as timezone;
+
+/// Pilihan cara VoltStride mengingatkan jadwal.
+enum ReminderStyle { notificationOnly, notificationAndAlarm }
+
+/// Satu kegiatan rutin pada hari dan waktu tertentu.
+class TrainingReminder {
+  const TrainingReminder({
+    required this.id,
+    required this.activity,
+    required this.weekdays,
+    required this.hour,
+    required this.minute,
+    required this.durationMinutes,
+    required this.style,
+    required this.sound,
+  });
+
+  final int id;
+  final String activity;
+  final List<int> weekdays;
+  final int hour;
+  final int minute;
+  final int durationMinutes;
+  final ReminderStyle style;
+  final String sound;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'id': id,
+        'activity': activity,
+        'weekdays': weekdays,
+        'hour': hour,
+        'minute': minute,
+        'durationMinutes': durationMinutes,
+        'style': style.name,
+        'sound': sound,
+      };
+
+  factory TrainingReminder.fromJson(Map<String, dynamic> json) {
+    final List<dynamic> rawDays = json['weekdays'] as List<dynamic>? ??
+        <dynamic>[DateTime.monday, DateTime.wednesday, DateTime.friday];
+    return TrainingReminder(
+      id: (json['id'] as num).toInt(),
+      activity: json['activity'] as String? ?? 'Lari',
+      weekdays: rawDays.map((dynamic day) => (day as num).toInt()).toList(),
+      hour: (json['hour'] as num?)?.toInt() ?? 7,
+      minute: (json['minute'] as num?)?.toInt() ?? 0,
+      durationMinutes: (json['durationMinutes'] as num?)?.toInt() ?? 30,
+      style: ReminderStyle.values.firstWhere(
+        (ReminderStyle value) => value.name == json['style'],
+        orElse: () => ReminderStyle.notificationOnly,
+      ),
+      sound: json['sound'] as String? ?? 'lembut',
+    );
+  }
+
+  String get timeText =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  String get daysText {
+    const List<String> labels = <String>[
+      'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'
+    ];
+    final List<int> sorted = weekdays.toList()..sort();
+    return sorted.map((int day) => labels[day - 1]).join(', ');
+  }
+}
+
+/// Menyimpan jadwal di perangkat dan memasang pemberitahuan Android.
+class ReminderService {
+  ReminderService._();
+
+  static const String _storageKey = 'voltstride_training_reminders_v1';
+  static const String _zoneName = 'Asia/Jakarta';
+  static final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  static bool _ready = false;
+
+  static Future<void> initialize() async {
+    if (_ready) return;
+    timezone_data.initializeTimeZones();
+    timezone.setLocalLocation(timezone.getLocation(_zoneName));
+    const InitializationSettings settings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      iOS: DarwinInitializationSettings(),
+    );
+    await _plugin.initialize(settings);
+    _ready = true;
+  }
+
+  static Future<List<TrainingReminder>> getAll() async {
+    final SharedPreferences preferences =
+        await SharedPreferences.getInstance();
+    final String? jsonText = preferences.getString(_storageKey);
+    if (jsonText == null || jsonText.isEmpty) return <TrainingReminder>[];
+
+    try {
+      final List<dynamic> values = jsonDecode(jsonText) as List<dynamic>;
+      return values
+          .whereType<Map<String, dynamic>>()
+          .map(TrainingReminder.fromJson)
+          .toList(growable: false);
+    } catch (_) {
+      return <TrainingReminder>[];
+    }
+  }
+
+  static Future<void> save(TrainingReminder reminder) async {
+    await initialize();
+    await _requestNotificationPermission();
+    if (reminder.style == ReminderStyle.notificationAndAlarm) {
+      await _requestExactAlarmPermission();
+    }
+
+    final List<TrainingReminder> existing = await getAll();
+    await _cancelReminderNotifications(reminder.id);
+
+    for (final int day in reminder.weekdays.toSet()) {
+      final int notificationId = _notificationId(reminder.id, day);
+      final timezone.TZDateTime nextDate = _nextDate(
+        weekday: day,
+        hour: reminder.hour,
+        minute: reminder.minute,
+      );
+      await _plugin.zonedSchedule(
+        notificationId,
+        reminder.style == ReminderStyle.notificationAndAlarm
+            ? 'Waktunya ${reminder.activity.toLowerCase()}'
+            : 'Jadwal ${reminder.activity.toLowerCase()}',
+        'Durasi ${reminder.durationMinutes} menit.',
+        nextDate,
+        _details(reminder),
+        payload: 'voltstride-reminder-${reminder.id}',
+        androidScheduleMode: _scheduleMode(reminder),
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      );
+    }
+
+    final List<TrainingReminder> updated = <TrainingReminder>[
+      ...existing.where((TrainingReminder item) => item.id != reminder.id),
+      reminder,
+    ]..sort((TrainingReminder a, TrainingReminder b) => a.hour != b.hour
+        ? a.hour.compareTo(b.hour)
+        : a.minute.compareTo(b.minute));
+    await _write(updated);
+  }
+
+  static Future<void> delete(TrainingReminder reminder) async {
+    await initialize();
+    await _cancelReminderNotifications(reminder.id);
+    final List<TrainingReminder> updated = await getAll();
+    updated.removeWhere((TrainingReminder item) => item.id == reminder.id);
+    await _write(updated);
+  }
+
+  static Future<void> restoreSavedSchedules() async {
+    await initialize();
+    final List<TrainingReminder> saved = await getAll();
+    for (final TrainingReminder reminder in saved) {
+      try {
+        for (final int day in reminder.weekdays.toSet()) {
+          await _plugin.zonedSchedule(
+            _notificationId(reminder.id, day),
+            reminder.style == ReminderStyle.notificationAndAlarm
+                ? 'Waktunya ${reminder.activity.toLowerCase()}'
+                : 'Jadwal ${reminder.activity.toLowerCase()}',
+            'Durasi ${reminder.durationMinutes} menit.',
+            _nextDate(
+              weekday: day,
+              hour: reminder.hour,
+              minute: reminder.minute,
+            ),
+            _details(reminder),
+            payload: 'voltstride-reminder-${reminder.id}',
+            androidScheduleMode: _scheduleMode(reminder),
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        }
+      } catch (_) {
+        // Satu jadwal yang tidak bisa dipasang tidak membatalkan jadwal lain.
+      }
+    }
+  }
+
+  static Future<void> _requestNotificationPermission() async {
+    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
+
+    final bool? allowed = await android.requestNotificationsPermission();
+    if (allowed == false) {
+      throw StateError(
+        'Aktifkan izin notifikasi VoltStride di pengaturan HP.',
+      );
+    }
+  }
+
+  static Future<void> _requestExactAlarmPermission() async {
+    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return;
+
+    final bool? allowed = await android.requestExactAlarmsPermission();
+    if (allowed == false) {
+      throw StateError(
+        'Izinkan alarm terjadwal VoltStride di pengaturan HP.',
+      );
+    }
+  }
+
+  static AndroidScheduleMode _scheduleMode(TrainingReminder reminder) {
+    return reminder.style == ReminderStyle.notificationAndAlarm
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
+  /// Memainkan suara yang dipilih melalui notifikasi percobaan.
+  static Future<void> previewSound(String sound) async {
+    await initialize();
+    await _requestNotificationPermission();
+    final TrainingReminder contoh = TrainingReminder(
+      id: 987654,
+      activity: 'uji suara',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationAndAlarm,
+      sound: sound,
+    );
+    await _plugin.cancel(987654);
+    await _plugin.show(
+      987654,
+      'Contoh suara alarm',
+      'Ini suara yang dipilih untuk pengingat latihan.',
+      _details(contoh),
+      payload: 'voltstride-alarm-preview',
+    );
+  }
+
+  static NotificationDetails _details(TrainingReminder reminder) {
+    final bool withAlarm =
+        reminder.style == ReminderStyle.notificationAndAlarm;
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      withAlarm ? 'voltstride_alarm_${reminder.sound}' : 'voltstride_notice',
+      withAlarm ? 'Alarm latihan' : 'Pengingat latihan',
+      channelDescription: withAlarm
+          ? 'Pengingat latihan dengan suara pilihan pengguna.'
+          : 'Pemberitahuan jadwal latihan.',
+      importance: withAlarm ? Importance.max : Importance.defaultImportance,
+      priority: withAlarm ? Priority.max : Priority.defaultPriority,
+      playSound: true,
+      sound: withAlarm
+          ? RawResourceAndroidNotificationSound(_soundResource(reminder.sound))
+          : null,
+      audioAttributesUsage:
+          withAlarm ? AudioAttributesUsage.alarm : AudioAttributesUsage.notification,
+      enableVibration: true,
+      category: withAlarm ? AndroidNotificationCategory.alarm : AndroidNotificationCategory.reminder,
+    );
+    return NotificationDetails(
+      android: androidDetails,
+      iOS: const DarwinNotificationDetails(),
+    );
+  }
+
+  static String _soundResource(String value) {
+    switch (value) {
+      case 'digital':
+        return 'volt_alarm_digital';
+      case 'denyut':
+        return 'volt_alarm_pulse';
+      default:
+        return 'volt_alarm_gentle';
+    }
+  }
+
+  static int _notificationId(int reminderId, int weekday) =>
+      (reminderId * 10) + weekday;
+
+  static timezone.TZDateTime _nextDate({
+    required int weekday,
+    required int hour,
+    required int minute,
+  }) {
+    final timezone.TZDateTime now = timezone.TZDateTime.now(timezone.local);
+    int daysAhead = (weekday - now.weekday) % 7;
+    timezone.TZDateTime candidate = timezone.TZDateTime(
+      timezone.local,
+      now.year,
+      now.month,
+      now.day + daysAhead,
+      hour,
+      minute,
+    );
+    if (!candidate.isAfter(now)) {
+      candidate = candidate.add(const Duration(days: 7));
+    }
+    return candidate;
+  }
+
+  static Future<void> _cancelReminderNotifications(int reminderId) async {
+    for (int day = DateTime.monday; day <= DateTime.sunday; day++) {
+      await _plugin.cancel(_notificationId(reminderId, day));
+    }
+  }
+
+  static Future<void> _write(List<TrainingReminder> reminders) async {
+    final SharedPreferences preferences =
+        await SharedPreferences.getInstance();
+    await preferences.setString(
+      _storageKey,
+      jsonEncode(reminders.map((TrainingReminder item) => item.toJson()).toList()),
+    );
+  }
+}

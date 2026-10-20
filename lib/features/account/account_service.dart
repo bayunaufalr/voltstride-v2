@@ -95,6 +95,44 @@ class AccountService {
     );
   }
 
+  /// Menyimpan data profil yang dibutuhkan untuk analisis latihan.
+  static Future<void> perbaruiDetailProfil({
+    required DateTime tanggalLahir,
+    required String jenisKelamin,
+    required String bio,
+  }) async {
+    final User? pengguna = _auth.currentUser;
+    if (pengguna == null) {
+      throw StateError('Masuk ke akun sebelum mengubah profil.');
+    }
+
+    final DateTime tanggal = DateTime(
+      tanggalLahir.year,
+      tanggalLahir.month,
+      tanggalLahir.day,
+    );
+    final DateTime sekarang = DateTime.now();
+    if (tanggal.isAfter(DateTime(sekarang.year, sekarang.month, sekarang.day))) {
+      throw ArgumentError('Tanggal lahir tidak boleh di masa depan.');
+    }
+    if (jenisKelamin.trim().isEmpty || bio.trim().isEmpty) {
+      throw ArgumentError('Tanggal lahir, jenis kelamin, dan bio wajib diisi.');
+    }
+
+    await _profilAkun.doc(pengguna.uid).set(
+      <String, dynamic>{
+        'tanggalLahir':
+            '${tanggal.year.toString().padLeft(4, '0')}-'
+            '${tanggal.month.toString().padLeft(2, '0')}-'
+            '${tanggal.day.toString().padLeft(2, '0')}',
+        'jenisKelamin': jenisKelamin.trim(),
+        'bio': bio.trim(),
+        'diperbaruiPada': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
   /// Mengirim email untuk mengatur ulang kata sandi.
   static Future<void> kirimLinkAturUlangSandi(String email) {
     return _auth.sendPasswordResetEmail(email: email.trim());

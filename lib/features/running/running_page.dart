@@ -126,7 +126,7 @@ class _RunningPageState extends State<RunningPage> {
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
       if (previousKey != null && previousKey != phaseKey) {
-        unawaited(HapticFeedback.mediumImpact());
+        unawaited(HapticFeedback.heavyImpact());
       }
       _lastIntervalPhaseKey = phaseKey;
     }
