@@ -7,7 +7,10 @@ import '../running/services/personal_records_service.dart';
 import '../running/services/run_history_repository.dart';
 
 class ProgressPage extends StatefulWidget {
-  const ProgressPage({super.key});
+  const ProgressPage({super.key, this.embedded = false});
+
+  // true: tampilkan isi kemajuan di dalam halaman Anda tanpa Scaffold/halaman baru.
+  final bool embedded;
 
   @override
   ProgressPageState createState() => ProgressPageState();
@@ -31,112 +34,138 @@ class ProgressPageState extends State<ProgressPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Kemajuan')),
-      body: FutureBuilder<List<RunSession>>(
-        future: _sessionsFuture,
-        builder: (BuildContext context, AsyncSnapshot<List<RunSession>> snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting &&
-              !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
+    final Widget isiKemajuan = FutureBuilder<List<RunSession>>(
+      future: _sessionsFuture,
+      builder: (BuildContext context, AsyncSnapshot<List<RunSession>> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Center(
               child: FilledButton(
                 onPressed: reload,
                 child: const Text('Muat ulang'),
               ),
-            );
-          }
-
-          final List<RunSession> sessions = snapshot.data ?? <RunSession>[];
-          final DateTime now = DateTime.now();
-          final List<_WeekData> weeks = _buildWeeks(sessions, now);
-          final int selectedIndex = _selectedWeekIndex
-              .clamp(0, weeks.length - 1)
-              .toInt();
-          final _WeekData thisWeek = weeks.last;
-          final Map<String, PersonalRecord> records =
-              PersonalRecordsService.calculate(sessions);
-          final RunSession? longest = _bestByDistance(sessions);
-          final RunSession? mostClimb = _bestByAscent(sessions);
-
-          return RefreshIndicator(
-            onRefresh: reload,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-              children: <Widget>[
-                _weeklyBars(weeks, selectedIndex),
-                const SizedBox(height: 16),
-                _predictionSection(sessions),
-                const SizedBox(height: 20),
-                _sectionTitle('Minggu ini'),
-                const SizedBox(height: 10),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: _summaryMetric(
-                        'Jarak',
-                        '${thisWeek.distanceKm.toStringAsFixed(1)} km',
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _summaryMetric(
-                        'Waktu gerak',
-                        _durationText(thisWeek.movingTime),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _summaryMetric(
-                        'Aktivitas',
-                        thisWeek.activityCount.toString(),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                _sectionTitle('Pencapaian'),
-                const SizedBox(height: 10),
-                ...PersonalRecordsService.distances.map(
-                  (DistanceRecordDefinition definition) => _recordTextRow(
-                    definition,
-                    records[definition.key],
-                    sessions,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _sectionTitle('Pencapaian lain'),
-                const SizedBox(height: 10),
-                _plainRecord(
-                  'Lari terjauh',
-                  longest == null
-                      ? '--'
-                      : '${longest.distanceKm.toStringAsFixed(2)} km',
-                  longest == null ? 'Belum ada data' : _dateText(longest.startedAt),
-                ),
-                const SizedBox(height: 8),
-                _plainRecord(
-                  'Elevasi total terbesar',
-                  mostClimb == null
-                      ? '--'
-                      : '+${mostClimb.elevationStats.totalAscentMeters.round()} m',
-                  mostClimb == null
-                      ? 'Belum ada data elevasi'
-                      : _dateText(mostClimb.startedAt),
-                ),
-
-                const SizedBox(height: 16),
-                Text(
-                  '${sessions.length} aktivitas tersimpan.',
-                  style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
-                ),
-              ],
             ),
           );
-        },
-      ),
+        }
+
+        final List<RunSession> sessions = snapshot.data ?? <RunSession>[];
+        final DateTime now = DateTime.now();
+        final List<_WeekData> weeks = _buildWeeks(sessions, now);
+        final int selectedIndex = _selectedWeekIndex
+            .clamp(0, weeks.length - 1)
+            .toInt();
+        final _WeekData thisWeek = weeks.last;
+        final Map<String, PersonalRecord> records =
+            PersonalRecordsService.calculate(sessions);
+        final RunSession? longest = _bestByDistance(sessions);
+        final RunSession? mostClimb = _bestByAscent(sessions);
+
+        final List<Widget> bagianKemajuan = <Widget>[
+          _weeklyBars(weeks, selectedIndex),
+          const SizedBox(height: 16),
+          _predictionSection(sessions),
+          const SizedBox(height: 20),
+          _sectionTitle('Minggu ini'),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _summaryMetric(
+                  'Jarak',
+                  '${thisWeek.distanceKm.toStringAsFixed(1)} km',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryMetric(
+                  'Waktu gerak',
+                  _durationText(thisWeek.movingTime),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryMetric(
+                  'Aktivitas',
+                  thisWeek.activityCount.toString(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          _sectionTitle('Pencapaian'),
+          const SizedBox(height: 10),
+          ...PersonalRecordsService.distances.map(
+            (DistanceRecordDefinition definition) => _recordTextRow(
+              definition,
+              records[definition.key],
+              sessions,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _sectionTitle('Pencapaian lain'),
+          const SizedBox(height: 10),
+          _plainRecord(
+            'Lari terjauh',
+            longest == null
+                ? '--'
+                : '${longest.distanceKm.toStringAsFixed(2)} km',
+            longest == null ? 'Belum ada data' : _dateText(longest.startedAt),
+          ),
+          const SizedBox(height: 8),
+          _plainRecord(
+            'Elevasi total terbesar',
+            mostClimb == null
+                ? '--'
+                : '+${mostClimb.elevationStats.totalAscentMeters.round()} m',
+            mostClimb == null
+                ? 'Belum ada data elevasi'
+                : _dateText(mostClimb.startedAt),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '${sessions.length} aktivitas tersimpan.',
+            style: TextStyle(
+              color: Theme.of(context).hintColor,
+              fontSize: 12,
+            ),
+          ),
+        ];
+
+        // Di tab Anda, seluruh bagian ditampilkan langsung dalam satu guliran.
+        // Halaman kemajuan mandiri tetap bisa menggunakan tarik-untuk-muat-ulang.
+        if (widget.embedded) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: bagianKemajuan,
+            ),
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: reload,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            children: bagianKemajuan,
+          ),
+        );
+      },
+    );
+
+    if (widget.embedded) return isiKemajuan;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Kemajuan')),
+      body: isiKemajuan,
     );
   }
 

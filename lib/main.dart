@@ -13,7 +13,6 @@ import 'features/more/more_page.dart';
 import 'features/route_planner/route_planner_page.dart';
 import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
-import 'features/progress/progress_page.dart';
 import 'features/running/activity_setup_page.dart';
 import 'features/running/run_history_page.dart';
 import 'features/running/running_page.dart';
@@ -170,10 +169,7 @@ class _RootShellState extends State<RootShell> {
         ),
         RunHistoryPage(key: _historyKey),
         RoutePlannerPage(active: _index == 3),
-        AccountPage(
-          key: _accountKey,
-          onOpenProgress: () => _openPage(const ProgressPage()),
-        ),
+        AccountPage(key: _accountKey),
         MorePage(
           key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),

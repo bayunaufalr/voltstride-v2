@@ -12,12 +12,11 @@ import 'package:image/image.dart' as img;
 import '../../theme/volt_theme.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
+import '../progress/progress_page.dart';
 import 'account_service.dart';
 
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key, required this.onOpenProgress});
-
-  final VoidCallback onOpenProgress;
+  const AccountPage({super.key});
 
   @override
   State<AccountPage> createState() => AccountPageState();
@@ -29,6 +28,8 @@ class AccountPageState extends State<AccountPage> {
   bool _loading = true;
   bool _movingLegacyHistory = false;
   int _legacyHistoryCount = 0;
+  final GlobalKey<ProgressPageState> _progressKey =
+      GlobalKey<ProgressPageState>();
 
   @override
   void initState() {
@@ -36,7 +37,11 @@ class AccountPageState extends State<AccountPage> {
     _loadRecovery();
   }
 
-  Future<void> reload() => _loadRecovery();
+  Future<void> reload() async {
+    await _loadRecovery();
+    final ProgressPageState? halamanKemajuan = _progressKey.currentState;
+    if (halamanKemajuan != null) await halamanKemajuan.reload();
+  }
 
   Future<void> _loadRecovery() async {
     try {
@@ -121,11 +126,7 @@ class AccountPageState extends State<AccountPage> {
         children: <Widget>[
           _accountCard(),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: widget.onOpenProgress,
-            icon: const Icon(Icons.show_chart_rounded),
-            label: const Text('Kemajuan dan pencapaian'),
-          ),
+          ProgressPage(key: _progressKey, embedded: true),
           const SizedBox(height: 12),
           _themeCard(),
           if (_legacyHistoryCount > 0) ...<Widget>[
