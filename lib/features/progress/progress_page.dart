@@ -142,10 +142,10 @@ class ProgressPageState extends State<ProgressPage> {
         // Di tab Anda, seluruh bagian ditampilkan langsung dalam satu guliran.
         // Halaman kemajuan mandiri tetap bisa menggunakan tarik-untuk-muat-ulang.
         if (widget.embedded) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          return RefreshIndicator(
+            onRefresh: reload,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: bagianKemajuan,
             ),
           );

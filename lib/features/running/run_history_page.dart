@@ -13,7 +13,9 @@ import 'run_route_map_view.dart';
 
 /// Riwayat sesi yang disimpan lokal pada perangkat.
 class RunHistoryPage extends StatefulWidget {
-  const RunHistoryPage({super.key});
+  const RunHistoryPage({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   RunHistoryPageState createState() => RunHistoryPageState();
@@ -205,6 +207,28 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return Column(
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
+            child: Row(
+              children: <Widget>[
+                const Spacer(),
+                IconButton(
+                  tooltip: 'Muat ulang',
+                  onPressed: reload,
+                  icon: const Icon(Icons.refresh),
+                ),
+                _backupMenu(),
+              ],
+            ),
+          ),
+          Expanded(child: _historyContent()),
+        ],
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Riwayat aktivitas'),
@@ -214,101 +238,106 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             onPressed: reload,
             icon: const Icon(Icons.refresh),
           ),
-          PopupMenuButton<String>(
-            tooltip: 'Cadangan dan diagnostik',
-            onSelected: (String value) {
-              switch (value) {
-                case 'export':
-                  unawaited(_exportBackup());
-                  break;
-                case 'import':
-                  unawaited(_importBackup());
-                  break;
-                case 'diagnostics':
-                  unawaited(_showStorageDiagnostics());
-                  break;
-              }
-            },
-            itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'export',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.download_outlined),
-                  title: Text('Ekspor cadangan'),
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'import',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.upload_file_outlined),
-                  title: Text('Pulihkan cadangan'),
-                ),
-              ),
-              PopupMenuItem<String>(
-                value: 'diagnostics',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.storage_outlined),
-                  title: Text('Info penyimpanan'),
-                ),
-              ),
-            ],
-          ),
+          _backupMenu(),
         ],
       ),
-      body: SafeArea(
-        child: FutureBuilder<List<RunSession>>(
-          future: _sessionsFuture,
-          builder: (
-            BuildContext context,
-            AsyncSnapshot<List<RunSession>> snapshot,
-          ) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      body: SafeArea(child: _historyContent()),
+    );
+  }
 
-            if (snapshot.hasError) {
-              return _messageState(
-                icon: Icons.storage_outlined,
-                title: 'Riwayat tidak dapat dibuka',
-                message: 'Penyimpanan lokal mengalami masalah.',
-                action: FilledButton.icon(
-                  onPressed: reload,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Coba lagi'),
-                ),
-              );
-            }
-
-            final List<RunSession> sessions =
-                snapshot.data ?? const <RunSession>[];
-            if (sessions.isEmpty) {
-              return _messageState(
-                icon: Icons.directions_run,
-                title: 'Belum ada riwayat',
-                message:
-                    'Selesaikan satu aktivitas. Hasilnya akan disimpan ke akun dan salinan perangkat ini.',
-              );
-            }
-
-            return RefreshIndicator(
-              onRefresh: reload,
-              child: ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                itemCount: sessions.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (BuildContext context, int index) {
-                  final RunSession session = sessions[index];
-                  return _sessionCard(session);
-                },
-              ),
-            );
-          },
+  PopupMenuButton<String> _backupMenu() {
+    return PopupMenuButton<String>(
+      tooltip: 'Cadangan dan diagnostik',
+      onSelected: (String value) {
+        switch (value) {
+          case 'export':
+            unawaited(_exportBackup());
+            break;
+          case 'import':
+            unawaited(_importBackup());
+            break;
+          case 'diagnostics':
+            unawaited(_showStorageDiagnostics());
+            break;
+        }
+      },
+      itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'export',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.download_outlined),
+            title: Text('Ekspor cadangan'),
+          ),
         ),
-      ),
+        PopupMenuItem<String>(
+          value: 'import',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.upload_file_outlined),
+            title: Text('Pulihkan cadangan'),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'diagnostics',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.storage_outlined),
+            title: Text('Info penyimpanan'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _historyContent() {
+    return FutureBuilder<List<RunSession>>(
+      future: _sessionsFuture,
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<List<RunSession>> snapshot,
+      ) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return _messageState(
+            icon: Icons.storage_outlined,
+            title: 'Riwayat tidak dapat dibuka',
+            message: 'Penyimpanan lokal mengalami masalah.',
+            action: FilledButton.icon(
+              onPressed: reload,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Coba lagi'),
+            ),
+          );
+        }
+
+        final List<RunSession> sessions =
+            snapshot.data ?? const <RunSession>[];
+        if (sessions.isEmpty) {
+          return _messageState(
+            icon: Icons.directions_run,
+            title: 'Belum ada riwayat',
+            message:
+                'Selesaikan satu aktivitas. Hasilnya akan disimpan ke akun dan salinan perangkat ini.',
+          );
+        }
+
+        return RefreshIndicator(
+          onRefresh: reload,
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            itemCount: sessions.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (BuildContext context, int index) {
+              return _sessionCard(sessions[index]);
+            },
+          ),
+        );
+      },
     );
   }
 

@@ -84,11 +84,7 @@ class TrainingInsightsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Kondisi latihan',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 2),
           _barisNilai(
             context,
             judul: 'Indeks kemampuan lari',

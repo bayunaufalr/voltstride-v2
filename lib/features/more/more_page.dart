@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../services/app_language_service.dart';
+
 class MorePage extends StatefulWidget {
   const MorePage({
     super.key,
     required this.onOpenTimer,
     required this.onOpenCoach,
     required this.onOpenStrength,
-    required this.onOpenReminders,
   });
 
   final VoidCallback onOpenTimer;
   final VoidCallback onOpenCoach;
   final VoidCallback onOpenStrength;
-  final VoidCallback onOpenReminders;
 
   @override
   MorePageState createState() => MorePageState();
@@ -21,23 +21,31 @@ class MorePage extends StatefulWidget {
 class MorePageState extends State<MorePage> {
   Future<void> reload() async {}
 
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Lainnya')),
+      appBar: AppBar(title: Text(_text('Lainnya', 'More'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
-          _menuItem('Pengingat dan rencana latihan', widget.onOpenReminders),
-          _menuItem('Timer latihan', widget.onOpenTimer),
+          _menuItem(
+            _text('Timer latihan', 'Workout timer'),
+            widget.onOpenTimer,
+          ),
           _menuItem('Coach', widget.onOpenCoach),
-          _menuItem('Latihan kekuatan', widget.onOpenStrength),
+          _menuItem(
+            _text('Latihan kekuatan', 'Strength training'),
+            widget.onOpenStrength,
+          ),
         ],
       ),
     );
   }
 
-  Widget _menuItem(String judul, VoidCallback saatDibuka) {
+  Widget _menuItem(String title, VoidCallback onTap) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -45,12 +53,12 @@ class MorePageState extends State<MorePage> {
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: ListTile(
-        title: Text(judul, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         trailing: Icon(
           Icons.chevron_right,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        onTap: saatDibuka,
+        onTap: onTap,
       ),
     );
   }

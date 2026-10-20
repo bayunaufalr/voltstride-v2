@@ -20,6 +20,7 @@ class TrainingReminder {
     required this.durationMinutes,
     required this.style,
     required this.sound,
+    this.completedDates = const <String>[],
   });
 
   final int id;
@@ -30,6 +31,21 @@ class TrainingReminder {
   final int durationMinutes;
   final ReminderStyle style;
   final String sound;
+  final List<String> completedDates;
+
+  TrainingReminder copyWith({List<String>? completedDates}) {
+    return TrainingReminder(
+      id: id,
+      activity: activity,
+      weekdays: weekdays,
+      hour: hour,
+      minute: minute,
+      durationMinutes: durationMinutes,
+      style: style,
+      sound: sound,
+      completedDates: completedDates ?? this.completedDates,
+    );
+  }
 
   Map<String, Object?> toJson() => <String, Object?>{
         'id': id,
@@ -40,6 +56,7 @@ class TrainingReminder {
         'durationMinutes': durationMinutes,
         'style': style.name,
         'sound': sound,
+        'completedDates': completedDates,
       };
 
   factory TrainingReminder.fromJson(Map<String, dynamic> json) {
@@ -57,6 +74,9 @@ class TrainingReminder {
         orElse: () => ReminderStyle.notificationOnly,
       ),
       sound: json['sound'] as String? ?? 'lembut',
+      completedDates: (json['completedDates'] as List<dynamic>? ?? <dynamic>[])
+          .whereType<String>()
+          .toList(growable: false),
     );
   }
 
@@ -113,11 +133,6 @@ class ReminderService {
 
   static Future<void> save(TrainingReminder reminder) async {
     await initialize();
-    await _requestNotificationPermission();
-    if (reminder.style == ReminderStyle.notificationAndAlarm) {
-      await _requestExactAlarmPermission();
-    }
-
     final List<TrainingReminder> existing = await getAll();
     await _cancelReminderNotifications(reminder.id);
 
@@ -159,6 +174,25 @@ class ReminderService {
     await _write(updated);
   }
 
+  static Future<void> setOccurrenceCompleted({
+    required int reminderId,
+    required String dateKey,
+    required bool completed,
+  }) async {
+    final List<TrainingReminder> reminders = await getAll();
+    final List<TrainingReminder> updated = reminders.map((TrainingReminder item) {
+      if (item.id != reminderId) return item;
+      final Set<String> dates = item.completedDates.toSet();
+      if (completed) {
+        dates.add(dateKey);
+      } else {
+        dates.remove(dateKey);
+      }
+      return item.copyWith(completedDates: dates.toList()..sort());
+    }).toList(growable: false);
+    await _write(updated);
+  }
+
   static Future<void> restoreSavedSchedules() async {
     await initialize();
     final List<TrainingReminder> saved = await getAll();
@@ -188,32 +222,72 @@ class ReminderService {
     }
   }
 
-  static Future<void> _requestNotificationPermission() async {
+  /// Memeriksa izin notifikasi Android tanpa menutup formulir jadwal.
+  static Future<bool> requestNotificationPermission() async {
+    await initialize();
     final AndroidFlutterLocalNotificationsPlugin? android = _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return;
+    if (android == null) return true;
 
-    final bool? allowed = await android.requestNotificationsPermission();
-    if (allowed == false) {
-      throw StateError(
-        'Aktifkan izin notifikasi VoltStride di pengaturan HP.',
-      );
-    }
+    bool? allowed = await android.areNotificationsEnabled();
+    if (allowed == true) return true;
+
+    await android.requestNotificationsPermission();
+    allowed = await android.areNotificationsEnabled();
+    return allowed == true;
   }
 
-  static Future<void> _requestExactAlarmPermission() async {
+  /// Membaca status izin alarm tepat setelah pengguna kembali dari Setelan.
+  static Future<bool> isExactAlarmPermissionGranted() async {
+    await initialize();
+    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.canScheduleExactNotifications() == true;
+  }
+
+  /// Membuka halaman izin alarm khusus untuk VoltStride.
+  /// Android memang mengharuskan pengguna mengaktifkan izin ini di Setelan.
+  static Future<void> openExactAlarmSettings() async {
+    await initialize();
     final AndroidFlutterLocalNotificationsPlugin? android = _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
+    await android.requestExactAlarmsPermission();
+  }
 
-    final bool? allowed = await android.requestExactAlarmsPermission();
-    if (allowed == false) {
-      throw StateError(
-        'Izinkan alarm terjadwal VoltStride di pengaturan HP.',
-      );
+  static Future<bool> areRequiredPermissionsGranted(
+    ReminderStyle style,
+  ) async {
+    await initialize();
+    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+
+    final bool notificationsAllowed =
+        await android.areNotificationsEnabled() == true;
+    if (!notificationsAllowed) return false;
+
+    if (style == ReminderStyle.notificationAndAlarm) {
+      return isExactAlarmPermissionGranted();
     }
+    return true;
+  }
+
+  /// Meminta izin yang diperlukan. Formulir akan tetap terbuka bila pengguna
+  /// perlu mengaktifkan izin alarm dari Setelan Android.
+  static Future<bool> requestRequiredPermissions(ReminderStyle style) async {
+    if (!await requestNotificationPermission()) return false;
+    if (style == ReminderStyle.notificationAndAlarm &&
+        !await isExactAlarmPermissionGranted()) {
+      await openExactAlarmSettings();
+      return isExactAlarmPermissionGranted();
+    }
+    return true;
   }
 
   static AndroidScheduleMode _scheduleMode(TrainingReminder reminder) {
@@ -225,7 +299,10 @@ class ReminderService {
   /// Memainkan suara yang dipilih melalui notifikasi percobaan.
   static Future<void> previewSound(String sound) async {
     await initialize();
-    await _requestNotificationPermission();
+    final bool permission = await requestNotificationPermission();
+    if (!permission) {
+      throw StateError('Izin notifikasi belum diaktifkan.');
+    }
     final TrainingReminder contoh = TrainingReminder(
       id: 987654,
       activity: 'uji suara',

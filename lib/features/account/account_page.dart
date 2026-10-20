@@ -13,6 +13,10 @@ import '../../theme/volt_theme.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
 import '../progress/progress_page.dart';
+import '../running/run_history_page.dart';
+import '../reminders/training_reminders_page.dart';
+import '../reminders/reminder_service.dart';
+import '../../services/app_language_service.dart';
 import 'profile_training_summary.dart';
 import 'account_service.dart';
 
@@ -23,33 +27,59 @@ class AccountPage extends StatefulWidget {
   State<AccountPage> createState() => AccountPageState();
 }
 
-class AccountPageState extends State<AccountPage> {
+class AccountPageState extends State<AccountPage>
+    with SingleTickerProviderStateMixin {
   RunSession? _latestSession;
   List<RunSession> _allSessions = <RunSession>[];
   DateTime? _recommendedResumeAt;
   bool _loading = true;
   bool _movingLegacyHistory = false;
   int _legacyHistoryCount = 0;
+  late final TabController _sectionController;
   final GlobalKey<ProgressPageState> _progressKey =
       GlobalKey<ProgressPageState>();
+  final GlobalKey<RunHistoryPageState> _historyKey =
+      GlobalKey<RunHistoryPageState>();
+  final GlobalKey<TrainingRemindersPageState> _remindersKey =
+      GlobalKey<TrainingRemindersPageState>();
 
   @override
   void initState() {
     super.initState();
+    _sectionController = TabController(length: 4, vsync: this);
     _loadRecovery();
+  }
+
+  void openSection(int index) {
+    if (index < 0 || index >= _sectionController.length) return;
+    _sectionController.animateTo(index);
   }
 
   Future<void> reload() async {
     await _loadRecovery();
-    final ProgressPageState? halamanKemajuan = _progressKey.currentState;
-    if (halamanKemajuan != null) await halamanKemajuan.reload();
+    final ProgressPageState? progress = _progressKey.currentState;
+    final RunHistoryPageState? history = _historyKey.currentState;
+    final TrainingRemindersPageState? reminders = _remindersKey.currentState;
+    if (progress != null) await progress.reload();
+    if (history != null) await history.reload();
+    if (reminders != null) await reminders.reload();
+  }
+
+  @override
+  void dispose() {
+    _sectionController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecovery() async {
     try {
       final List<RunSession> sessions =
           await RunHistoryRepository.instance.getAll(limit: 200);
-      final int legacyCount = await RunHistoryRepository.instance.pendingSessionCount();
+      final int legacyCount =
+          await RunHistoryRepository.instance.pendingSessionCount();
+      if (sessions.isNotEmpty) {
+        await _markScheduledActivityCompleted(sessions.first);
+      }
       if (!mounted) return;
       if (sessions.isEmpty) {
         setState(() {
@@ -73,6 +103,46 @@ class AccountPageState extends State<AccountPage> {
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _markScheduledActivityCompleted(RunSession session) async {
+    if (session.finishedAt == null || session.distanceKm <= 0) return;
+
+    final DateTime start = session.startedAt.toLocal();
+    final String dateKey = '${start.year.toString().padLeft(4, '0')}-'
+        '${start.month.toString().padLeft(2, '0')}-'
+        '${start.day.toString().padLeft(2, '0')}';
+    final List<TrainingReminder> reminders = await ReminderService.getAll();
+    for (final TrainingReminder reminder in reminders) {
+      if (!reminder.weekdays.contains(start.weekday) ||
+          reminder.completedDates.contains(dateKey)) {
+        continue;
+      }
+
+      final String planned = reminder.activity.toLowerCase();
+      final bool isWalk = session.activityType == RunActivityType.walk;
+      final bool matchesActivity = planned.contains('jalan')
+          ? isWalk
+          : planned.contains('interval')
+              ? !isWalk && session.intervalPlan != null
+              : planned.contains('lari') && !isWalk;
+      if (!matchesActivity) continue;
+
+      final DateTime plannedStart = DateTime(
+        start.year,
+        start.month,
+        start.day,
+        reminder.hour,
+        reminder.minute,
+      );
+      if (start.difference(plannedStart).abs() <= const Duration(hours: 2)) {
+        await ReminderService.setOccurrenceCompleted(
+          reminderId: reminder.id,
+          dateKey: dateKey,
+          completed: true,
+        );
+      }
     }
   }
 
@@ -124,30 +194,69 @@ class AccountPageState extends State<AccountPage> {
 
   @override
   Widget build(BuildContext context) {
+    final List<Tab> tabs = <Tab>[
+      Tab(
+        icon: const Icon(Icons.bar_chart_rounded),
+        text: AppLanguageService.text(context, 'Kemajuan', 'Progress'),
+      ),
+      Tab(
+        icon: const Icon(Icons.history_rounded),
+        text: AppLanguageService.text(context, 'Aktivitas', 'Activities'),
+      ),
+      Tab(
+        icon: const Icon(Icons.event_note_rounded),
+        text: AppLanguageService.text(context, 'Rencanakan latihan', 'Training plan'),
+      ),
+      Tab(
+        icon: const Icon(Icons.person_outline_rounded),
+        text: AppLanguageService.text(context, 'Profil', 'Profile'),
+      ),
+    ];
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Anda')),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+      appBar: AppBar(
+        title: Text(AppLanguageService.text(context, 'Anda', 'You')),
+        bottom: TabBar(
+          controller: _sectionController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: tabs,
+        ),
+      ),
+      body: TabBarView(
+        controller: _sectionController,
         children: <Widget>[
-          _accountCard(),
-          const SizedBox(height: 12),
-          ProfileTrainingSummary(sessions: _allSessions),
-          const SizedBox(height: 12),
           ProgressPage(key: _progressKey, embedded: true),
-          const SizedBox(height: 12),
-          _themeCard(),
-          if (_legacyHistoryCount > 0) ...<Widget>[
-            const SizedBox(height: 14),
-            _legacyHistoryCard(),
-          ],
-          const SizedBox(height: 14),
-          _RecoveryCountdownCard(
-            recommendedResumeAt: _recommendedResumeAt,
-            loading: _loading,
-            hasActivity: _latestSession != null,
-          ),
+          RunHistoryPage(key: _historyKey, embedded: true),
+          TrainingRemindersPage(key: _remindersKey, embedded: true),
+          _profileTab(),
         ],
       ),
+    );
+  }
+
+  Widget _profileTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        _accountCard(),
+        const SizedBox(height: 12),
+        ProfileTrainingSummary(sessions: _allSessions),
+        const SizedBox(height: 12),
+        _themeCard(),
+        const SizedBox(height: 12),
+        const AppLanguageSettingCard(),
+        if (_legacyHistoryCount > 0) ...<Widget>[
+          const SizedBox(height: 14),
+          _legacyHistoryCard(),
+        ],
+        const SizedBox(height: 14),
+        _RecoveryCountdownCard(
+          recommendedResumeAt: _recommendedResumeAt,
+          loading: _loading,
+          hasActivity: _latestSession != null,
+        ),
+      ],
     );
   }
 
@@ -161,29 +270,39 @@ class AccountPageState extends State<AccountPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Tampilan',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          Text(
+            AppLanguageService.text(context, 'Tampilan', 'Appearance'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: voltThemeModeNotifier,
             builder: (BuildContext context, ThemeMode mode, Widget? child) {
               return DropdownButtonFormField<ThemeMode>(
-                value: mode,
-                decoration: const InputDecoration(labelText: 'Tema aplikasi'),
-                items: const <DropdownMenuItem<ThemeMode>>[
+                initialValue: mode,
+                decoration: InputDecoration(
+                  labelText: AppLanguageService.text(
+                    context,
+                    'Tema aplikasi',
+                    'App theme',
+                  ),
+                ),
+                items: <DropdownMenuItem<ThemeMode>>[
                   DropdownMenuItem<ThemeMode>(
                     value: ThemeMode.system,
-                    child: Text('Ikuti perangkat'),
+                    child: Text(AppLanguageService.text(
+                      context,
+                      'Ikuti perangkat',
+                      'Follow device',
+                    )),
                   ),
                   DropdownMenuItem<ThemeMode>(
                     value: ThemeMode.light,
-                    child: Text('Terang'),
+                    child: Text(AppLanguageService.text(context, 'Terang', 'Light')),
                   ),
                   DropdownMenuItem<ThemeMode>(
                     value: ThemeMode.dark,
-                    child: Text('Gelap'),
+                    child: Text(AppLanguageService.text(context, 'Gelap', 'Dark')),
                   ),
                 ],
                 onChanged: (ThemeMode? pilihan) {
@@ -203,8 +322,9 @@ class AccountPageState extends State<AccountPage> {
     final User? pengguna = AccountService.akunAktif;
     final String nama = pengguna?.displayName?.trim().isNotEmpty == true
         ? pengguna!.displayName!.trim()
-        : 'Pengguna';
-    final String email = pengguna?.email ?? 'Email tidak tersedia';
+        : AppLanguageService.text(context, 'Pengguna', 'User');
+    final String email = pengguna?.email ??
+        AppLanguageService.text(context, 'Email tidak tersedia', 'Email unavailable');
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: AccountService.perubahanProfil,
@@ -265,14 +385,14 @@ class AccountPageState extends State<AccountPage> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: _memilihFotoProfil,
-                      child: const Text('Ubah foto profil'),
+                      child: Text(AppLanguageService.text(context, 'Ubah foto profil', 'Change profile photo')),
                     ),
                   ),
                   if (fotoBase64.isNotEmpty) ...<Widget>[
                     const SizedBox(width: 8),
                     TextButton(
                       onPressed: _hapusFotoProfil,
-                      child: const Text('Hapus'),
+                      child: Text(AppLanguageService.text(context, 'Hapus', 'Remove')),
                     ),
                   ],
                 ],
@@ -280,7 +400,7 @@ class AccountPageState extends State<AccountPage> {
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: _konfirmasiKeluar,
-                child: const Text('Keluar dari akun'),
+                child: Text(AppLanguageService.text(context, 'Keluar dari akun', 'Sign out')),
               ),
             ],
           ),
@@ -754,7 +874,7 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
     } else if (!widget.hasActivity || remaining == null) {
       status = 'Belum ada aktivitas.';
     } else if (sudahLewat) {
-      status = 'Waktu istirahat yang disarankan sudah lewat.';
+      status = 'Anda siap berolahraga.';
     } else {
       status = _teksHitungMundur(remaining);
     }
