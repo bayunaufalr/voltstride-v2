@@ -728,8 +728,10 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
         details.focalPointDelta.dx * rasioSumberPerPixel;
     final double tengahY = _atas + _sisiPotong / 2 -
         details.focalPointDelta.dy * rasioSumberPerPixel;
-    final double kiriMaks = widget.gambarAsli.width - sisiBaru;
-    final double atasMaks = widget.gambarAsli.height - sisiBaru;
+    final double kiriMaks =
+        (widget.gambarAsli.width - sisiBaru).toDouble();
+    final double atasMaks =
+        (widget.gambarAsli.height - sisiBaru).toDouble();
 
     setState(() {
       _zoom = zoomBaru;

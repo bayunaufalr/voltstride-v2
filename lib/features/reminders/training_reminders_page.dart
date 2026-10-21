@@ -739,16 +739,26 @@ class _ReminderEditorState extends State<_ReminderEditor>
                 decoration: InputDecoration(
                   labelText: _text(context, 'Aktivitas', 'Activity'),
                 ),
-                items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem(value: 'Lari', child: Text(_text('Lari', 'Run'))),
+                items: <DropdownMenuItem<String>>[
+                  DropdownMenuItem(
+                    value: 'Lari',
+                    child: Text(_text(context, 'Lari', 'Run')),
+                  ),
                   DropdownMenuItem(
                     value: 'Lari interval',
-                    child: Text(_text('Lari interval', 'Interval run')),
+                    child: Text(
+                      _text(context, 'Lari interval', 'Interval run'),
+                    ),
                   ),
-                  DropdownMenuItem(value: 'Jalan', child: Text(_text('Jalan', 'Walk'))), 
+                  DropdownMenuItem(
+                    value: 'Jalan',
+                    child: Text(_text(context, 'Jalan', 'Walk')),
+                  ),
                   DropdownMenuItem(
                     value: 'Latihan kekuatan',
-                    child: Text(_text('Latihan kekuatan', 'Strength training')),
+                    child: Text(
+                      _text(context, 'Latihan kekuatan', 'Strength training'),
+                    ),
                   ),
                 ],
                 onChanged: _checkingPermission
