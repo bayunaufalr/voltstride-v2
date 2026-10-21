@@ -29,6 +29,8 @@ dependencies:
   pedometer: ^4.2.0
   share_plus: ^13.3.1
   shared_preferences: ^2.5.3
+
+  shared_preferences_android: '>=2.4.28 <2.5.0'
   cross_file: ^0.3.4+2
 
 dev_dependencies:
