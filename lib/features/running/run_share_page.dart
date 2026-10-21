@@ -3,12 +3,10 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
-import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 
