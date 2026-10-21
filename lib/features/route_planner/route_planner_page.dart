@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../services/app_language_service.dart';
+
 /// Perencana rute dengan beberapa titik singgah.
 class RoutePlannerPage extends StatefulWidget {
   const RoutePlannerPage({super.key, required this.active});
@@ -19,6 +21,8 @@ class RoutePlannerPage extends StatefulWidget {
 }
 
 class _RoutePlannerPageState extends State<RoutePlannerPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
   final MapController _mapController = MapController();
   static const LatLng _pusatAwal = LatLng(-7.7956, 110.3695);
 
@@ -67,7 +71,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
 
   void _pilihTitik(LatLng titik) {
     if (_titikRute.length >= 10) {
-      setState(() => _pesanError = 'Maksimal 10 titik dalam satu rute.');
+      setState(() => _pesanError = _text('Maksimal 10 titik dalam satu rute.', 'A route can have up to 10 points.'));
       return;
     }
 
@@ -144,7 +148,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
     try {
       final bool layananAktif = await Geolocator.isLocationServiceEnabled();
       if (!layananAktif) {
-        throw Exception('Aktifkan layanan lokasi pada ponsel.');
+        throw Exception(_text('Aktifkan layanan lokasi pada ponsel.', 'Turn on location services on your phone.'));
       }
 
       LocationPermission izin = await Geolocator.checkPermission();
@@ -153,7 +157,11 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
       }
       if (izin == LocationPermission.denied ||
           izin == LocationPermission.deniedForever) {
-        throw Exception('Izin lokasi belum diberikan.');
+        await Geolocator.openAppSettings();
+        throw Exception(_text(
+          'Setelan aplikasi sudah dibuka. Aktifkan izin lokasi, lalu kembali ke VoltStride.',
+          'App settings were opened. Enable location permission, then return to VoltStride.',
+        ));
       }
 
       final Position posisi = await Geolocator.getCurrentPosition(
@@ -227,7 +235,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
           .timeout(const Duration(seconds: 25));
 
       if (jawaban.statusCode != 200) {
-        throw Exception('Rute belum bisa dihitung. Coba lagi sebentar.');
+        throw Exception(_text('Rute belum bisa dihitung. Coba lagi sebentar.', 'The route could not be calculated. Please try again.'));
       }
 
       final Map<String, dynamic> data =
@@ -236,7 +244,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
           data['routes'] as List<dynamic>? ?? <dynamic>[];
       if (data['code'] != 'Ok' || daftarRute.isEmpty) {
         throw Exception(
-          'Jalur tidak ditemukan. Coba pilih titik yang dekat jalan atau jalur.',
+          _text('Jalur tidak ditemukan. Coba pilih titik yang dekat jalan atau jalur.', 'No route was found. Choose points closer to roads or paths.'),
         );
       }
 
@@ -255,7 +263,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
       }).toList(growable: false);
 
       if (jalurBaru.length < 2) {
-        throw Exception('Data jalur dari layanan peta belum lengkap.');
+        throw Exception(_text('Data jalur dari layanan peta belum lengkap.', 'The map service returned incomplete route data.'));
       }
 
       final double jarakBaru = (rute['distance'] as num).toDouble();
@@ -370,7 +378,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
         .timeout(const Duration(seconds: 20));
 
     if (jawaban.statusCode != 200) {
-      throw Exception('Data elevasi belum tersedia.');
+      throw Exception(_text('Data elevasi belum tersedia.', 'Elevation data is currently unavailable.'));
     }
 
     final Map<String, dynamic> data =
@@ -400,7 +408,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
     final Color text = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Rencanakan rute')),
+      appBar: AppBar(title: Text(_text('Rencanakan rute', 'Plan a route'))),
       body: Column(
         children: <Widget>[
           Padding(
@@ -410,8 +418,8 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                 Expanded(
                   child: Text(
                     _titikRute.isEmpty
-                        ? 'Mengambil lokasi awal…'
-                        : '${_titikRute.length} titik dipilih',
+                        ? _text('Mengambil lokasi awal…', 'Getting starting location…')
+                        : _text('${_titikRute.length} titik dipilih', '${_titikRute.length} points selected'),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
@@ -423,17 +431,17 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                       ? null
                       : () => unawaited(_gunakanLokasiSaatIni()),
                   child: Text(
-                    _sedangMengambilLokasi ? 'Mencari GPS…' : 'Lokasi saya',
+                    _sedangMengambilLokasi ? _text('Mencari GPS…', 'Finding GPS…') : _text('Lokasi saya', 'My location'),
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Urungkan titik terakhir',
+                  tooltip: _text('Urungkan titik terakhir', 'Undo last point'),
                   onPressed:
                       _titikRute.isEmpty ? null : _urungkanTitikTerakhir,
                   icon: const Icon(Icons.undo),
                 ),
                 IconButton(
-                  tooltip: 'Hapus semua titik',
+                  tooltip: _text('Hapus semua titik', 'Clear all points'),
                   onPressed: _titikRute.isEmpty ? null : _hapusSemuaTitik,
                   icon: const Icon(Icons.delete_outline),
                 ),
@@ -462,7 +470,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                       Polyline(
                         points: _jalur,
                         strokeWidth: 5,
-                        color: const Color(0xFF171717),
+                        color: const Color(0xFF356B54),
                       ),
                     ],
                   ),
@@ -484,6 +492,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                   ],
                 ),
                 const RichAttributionWidget(
+                  showFlutterMapAttribution: false,
                   attributions: <SourceAttribution>[
                     TextSourceAttribution('© OpenStreetMap contributors'),
                   ],
@@ -518,13 +527,13 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                     children: <Widget>[
                       Expanded(
                         child: _hasilUkuran(
-                          'Jarak rute',
+                          _text('Jarak rute', 'Route distance'),
                           _formatJarak(_jarakMeter!),
                         ),
                       ),
                       Expanded(
                         child: _hasilUkuran(
-                          'Elevasi +',
+                          _text('Elevasi +', 'Ascent'),
                           _elevasiNaik == null
                               ? '--'
                               : '+${_elevasiNaik!.round()} m',
@@ -532,7 +541,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                       ),
                       Expanded(
                         child: _hasilUkuran(
-                          'Elevasi −',
+                          _text('Elevasi −', 'Descent'),
                           _elevasiTurun == null
                               ? '--'
                               : '−${_elevasiTurun!.round()} m',
@@ -544,7 +553,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                   Row(
                     children: <Widget>[
                       Text(
-                        'Kesulitan',
+                        _text('Kesulitan', 'Difficulty'),
                         style: TextStyle(color: Theme.of(context).hintColor),
                       ),
                       const SizedBox(width: 10),
@@ -570,7 +579,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                 if (_titikRute.length < 2) ...<Widget>[
                   const SizedBox(height: 8),
                   Text(
-                    'Ketuk peta untuk menambah titik berikutnya.',
+                    _text('Ketuk peta untuk menambah titik berikutnya.', 'Tap the map to add the next point.'),
                     style: TextStyle(color: Theme.of(context).hintColor),
                   ),
                 ],
@@ -586,8 +595,8 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
     return Container(
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border.all(color: Colors.white, width: 2),
+        color: const Color(0xFF356B54),
+        border: Border.all(color: const Color(0xFFE7EFE8), width: 2),
         shape: BoxShape.circle,
       ),
       child: Text(

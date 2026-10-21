@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'services/run_history_repository.dart';
 import 'run_detail_page.dart';
@@ -22,6 +23,8 @@ class RunHistoryPage extends StatefulWidget {
 }
 
 class RunHistoryPageState extends State<RunHistoryPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
   final RunHistoryRepository _repository = RunHistoryRepository.instance;
   late Future<List<RunSession>> _sessionsFuture;
 
@@ -47,19 +50,16 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Ekspor cadangan riwayat?'),
-          content: const Text(
-            'Cadangan dapat berisi titik koordinat GPS rute lari. Simpan file '
-            'di tempat pribadi dan jangan unggah secara publik.',
-          ),
+          title: Text(_text('Ekspor cadangan riwayat?', 'Export activity backup?')),
+          content: Text(_text('Cadangan dapat berisi titik koordinat GPS rute lari. Simpan file di tempat pribadi dan jangan unggah secara publik.', 'The backup may include GPS coordinates from your routes. Keep it private and do not upload it publicly.')),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Batal'),
+              child: Text(_text('Batal', 'Cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Lanjutkan'),
+              child: Text(_text('Lanjutkan', 'Continue')),
             ),
           ],
         );
@@ -74,20 +74,20 @@ class RunHistoryPageState extends State<RunHistoryPage> {
           '${now.year}${_twoDigits(now.month)}${_twoDigits(now.day)}_'
           '${_twoDigits(now.hour)}${_twoDigits(now.minute)}';
       final Uri? savedUri = await FilePicker.saveFile(
-        dialogTitle: 'Simpan cadangan riwayat VoltStride',
-        fileName: 'VoltStride_Riwayat_$stamp.json',
+        dialogTitle: _text('Simpan cadangan riwayat VoltStride', 'Save VoltStride activity backup'),
+        fileName: 'VoltStride_Activities_$stamp.json',
         bytes: Uint8List.fromList(utf8.encode(contents)),
         mimeType: 'application/json',
       );
       if (!mounted) return;
       _showSnackBar(
         savedUri == null
-            ? 'Ekspor dibatalkan.'
-            : 'Cadangan riwayat berhasil dibuat. Simpan file di tempat aman.',
+            ? _text('Ekspor dibatalkan.', 'Export cancelled.')
+            : _text('Cadangan riwayat berhasil dibuat. Simpan file di tempat aman.', 'Activity backup created. Store the file somewhere safe.'),
       );
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Gagal membuat cadangan. Coba lagi. ($error)');
+      _showSnackBar(_text('Gagal membuat cadangan. Coba lagi.', 'Could not create the backup. Please try again.')); 
     }
   }
 
@@ -106,20 +106,16 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         context: context,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
-            title: const Text('Pulihkan riwayat?'),
-            content: const Text(
-              'Data dari cadangan akan digabung dengan riwayat yang ada. '
-              'Riwayat lain tidak dihapus. Jika waktu mulai sesi sama, '
-              'data sesi dari cadangan akan menggantikan sesi tersebut.',
-            ),
+            title: Text(_text('Pulihkan riwayat?', 'Restore activity history?')),
+            content: Text(_text('Data dari cadangan akan digabung dengan riwayat yang ada. Riwayat lain tidak dihapus. Jika waktu mulai sesi sama, data sesi dari cadangan akan menggantikan sesi tersebut.', 'Backup data will be merged with your current history. Other sessions will not be deleted. If a session has the same start time, the backup version will replace it.')),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Batal'),
+                child: Text(_text('Batal', 'Cancel')),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('Pulihkan'),
+                child: Text(_text('Pulihkan', 'Restore')),
               ),
             ],
           );
@@ -130,10 +126,10 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       final int importedCount = await _repository.importBackupJson(contents);
       await reload();
       if (!mounted) return;
-      _showSnackBar('$importedCount sesi berhasil dipulihkan atau digabungkan.');
+      _showSnackBar(_text('$importedCount sesi berhasil dipulihkan atau digabungkan.', '$importedCount sessions restored or merged.'));
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Cadangan gagal dipulihkan. Pastikan file VoltStride valid. ($error)');
+      _showSnackBar(_text('Cadangan gagal dipulihkan. Pastikan file VoltStride valid.', 'Could not restore the backup. Make sure the file is a valid VoltStride backup.'));
     }
   }
 
@@ -145,21 +141,21 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         context: context,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
-            title: const Text('Info penyimpanan'),
+            title: Text(_text('Info penyimpanan', 'Storage diagnostics')),
             content: SingleChildScrollView(
               child: SelectableText(
-                'Jumlah sesi: ${info['sessionCount']}\n'
-                'File database ada: ${info['fileExists']}\n'
-                'Ukuran file: ${info['fileSizeBytes']} byte\n'
-                'Pemeriksaan SQLite: ${info['integrity']}\n'
-                'Versi SQLite: ${info['sqliteVersion']}\n\n'
-                'Lokasi database:\n${info['databasePath']}',
+                '${_text('Jumlah sesi', 'Session count')}: ${info['sessionCount']}\n'
+                '${_text('File database ada', 'Database file exists')}: ${info['fileExists']}\n'
+                '${_text('Ukuran file', 'File size')}: ${info['fileSizeBytes']} ${_text('byte', 'bytes')}\n'
+                'SQLite ${_text('Pemeriksaan', 'integrity check')}: ${info['integrity']}\n'
+'SQLite ${_text('Versi', 'version')}: ${info['sqliteVersion']}\n\n'
+                '${_text('Lokasi database', 'Database location')}:\n${info['databasePath']}',
               ),
             ),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Tutup'),
+                child: Text(_text('Tutup', 'Close')),
               ),
             ],
           );
@@ -167,7 +163,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       );
     } catch (error) {
       if (!mounted) return;
-      _showSnackBar('Gagal membaca info penyimpanan. ($error)');
+      _showSnackBar(_text('Gagal membaca info penyimpanan.', 'Could not read storage diagnostics.'));
     }
   }
 
@@ -182,18 +178,18 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Hapus aktivitas?'),
+          title: Text(_text('Hapus aktivitas?', 'Delete activity?')),
           content: Text(
-            'Sesi ${session.distanceText} km akan dihapus dari akun dan perangkat ini.',
+            _text('Sesi ${session.distanceText} km akan dihapus dari akun dan perangkat ini.', 'The ${session.distanceText} km session will be deleted from this account and device.'),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Batal'),
+              child: Text(_text('Batal', 'Cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Hapus'),
+              child: Text(_text('Hapus', 'Delete')),
             ),
           ],
         );
@@ -216,7 +212,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
               children: <Widget>[
                 const Spacer(),
                 IconButton(
-                  tooltip: 'Muat ulang',
+                  tooltip: _text('Muat ulang', 'Refresh'),
                   onPressed: reload,
                   icon: const Icon(Icons.refresh),
                 ),
@@ -231,10 +227,10 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Riwayat aktivitas'),
+        title: Text(_text('Riwayat aktivitas', 'Activity history')),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Muat ulang',
+            tooltip: _text('Muat ulang', 'Refresh'),
             onPressed: reload,
             icon: const Icon(Icons.refresh),
           ),
@@ -247,7 +243,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
 
   PopupMenuButton<String> _backupMenu() {
     return PopupMenuButton<String>(
-      tooltip: 'Cadangan dan diagnostik',
+      tooltip: _text('Cadangan dan diagnostik', 'Backup and diagnostics'),
       onSelected: (String value) {
         switch (value) {
           case 'export':
@@ -261,13 +257,13 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             break;
         }
       },
-      itemBuilder: (BuildContext context) => const <PopupMenuEntry<String>>[
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
         PopupMenuItem<String>(
           value: 'export',
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.download_outlined),
-            title: Text('Ekspor cadangan'),
+            title: Text(_text('Ekspor cadangan', 'Export backup')),
           ),
         ),
         PopupMenuItem<String>(
@@ -275,7 +271,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.upload_file_outlined),
-            title: Text('Pulihkan cadangan'),
+            title: Text(_text('Pulihkan cadangan', 'Restore backup')),
           ),
         ),
         PopupMenuItem<String>(
@@ -283,7 +279,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.storage_outlined),
-            title: Text('Info penyimpanan'),
+            title: Text(_text('Info penyimpanan', 'Storage diagnostics')),
           ),
         ),
       ],
@@ -304,12 +300,12 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         if (snapshot.hasError) {
           return _messageState(
             icon: Icons.storage_outlined,
-            title: 'Riwayat tidak dapat dibuka',
-            message: 'Penyimpanan lokal mengalami masalah.',
+            title: _text('Riwayat tidak dapat dibuka', 'Activity history is unavailable'),
+            message: _text('Penyimpanan lokal mengalami masalah.', 'Local storage reported a problem.'),
             action: FilledButton.icon(
               onPressed: reload,
               icon: const Icon(Icons.refresh),
-              label: const Text('Coba lagi'),
+              label: Text(_text('Coba lagi', 'Try again')),
             ),
           );
         }
@@ -318,10 +314,10 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             snapshot.data ?? const <RunSession>[];
         if (sessions.isEmpty) {
           return _messageState(
-            icon: Icons.directions_run,
-            title: 'Belum ada riwayat',
+            icon: Icons.history_rounded,
+            title: _text('Belum ada riwayat', 'No activity history yet'),
             message:
-                'Selesaikan satu aktivitas. Hasilnya akan disimpan ke akun dan salinan perangkat ini.',
+                _text('Selesaikan satu aktivitas. Hasilnya akan disimpan ke akun dan salinan perangkat ini.', 'Complete an activity to save it to your account and this device.'),
           );
         }
 
@@ -340,6 +336,17 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       },
     );
   }
+
+  String _activityLabel(RunSession session) {
+    if (session.activityType == RunActivityType.walk) return _text('Berjalan', 'Walk');
+    if (session.intervalPlan != null) return _text('Lari interval', 'Interval run');
+    return _text('Lari', 'Run');
+  }
+
+  String _environmentLabel(RunSession session) =>
+      session.environment == RunEnvironment.outdoor
+          ? _text('Luar ruangan', 'Outdoor')
+          : _text('Dalam ruangan', 'Indoor');
 
   Widget _sessionCard(RunSession session) {
     final DateTime localStart = session.startedAt.toLocal();
@@ -365,29 +372,21 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  CircleAvatar(
-                    backgroundColor: VoltWarna.surface,
-                    foregroundColor: VoltWarna.aksen,
-                    child: Icon(session.activityType == RunActivityType.walk
-                        ? Icons.directions_walk_rounded
-                        : Icons.directions_run_rounded),
-                  ),
-                  const SizedBox(width: 11),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          '${session.displayLabel} • ${session.distanceText} km',
+                          '${_activityLabel(session)} • ${session.distanceText} km',
                           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                         ),
                         const SizedBox(height: 3),
-                        Text(dateText, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+                        Text(dateText, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                       ],
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Hapus sesi',
+                    tooltip: _text('Hapus sesi', 'Delete session'),
                     onPressed: () => _deleteSession(session),
                     icon: const Icon(Icons.delete_outline),
                   ),
@@ -408,15 +407,15 @@ class RunHistoryPageState extends State<RunHistoryPage> {
               const SizedBox(height: 11),
               Row(
                 children: <Widget>[
-                  _compactMetric('Waktu', session.elapsedText),
+                  _compactMetric(_text('Waktu', 'Time'), session.elapsedText),
                   _compactMetric('Pace', '${session.averagePaceText}/km'),
-                  _compactMetric('Lokasi', session.environment.label),
+                  _compactMetric(_text('Lokasi', 'Location'), _environmentLabel(session)),
                 ],
               ),
               const SizedBox(height: 6),
-              const Align(
+              Align(
                 alignment: Alignment.centerRight,
-                child: Text('Lihat detail →', style: TextStyle(color: VoltWarna.aksen, fontSize: 11, fontWeight: FontWeight.w800)),
+                child: Text(_text('Lihat detail →', 'View details →'), style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w800)),
               ),
             ],
           ),
@@ -432,7 +431,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         children: <Widget>[
           Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
           const SizedBox(height: 2),
-          Text(label, style: const TextStyle(fontSize: 10, color: VoltWarna.teksAbu)),
+          Text(label, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ],
       ),
     );
@@ -450,7 +449,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 58, color: VoltWarna.aksen),
+            Icon(icon, size: 58, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 18),
             Text(
               title,
@@ -464,7 +463,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: VoltWarna.teksAbu),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             if (action != null) ...<Widget>[
               const SizedBox(height: 18),

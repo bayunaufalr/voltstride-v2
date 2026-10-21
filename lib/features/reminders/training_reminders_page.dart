@@ -80,15 +80,34 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       );
     } catch (_) {
       if (!mounted) return;
+      bool openedSettings = false;
+      try {
+        // Jika penyimpanan jadwal ditolak Android, arahkan pengguna langsung
+        // ke setelan izin yang belum aktif, bukan hanya menampilkan pesan umum.
+        if (!await ReminderService.areNotificationsEnabled()) {
+          await ReminderService.openAppSettings();
+          openedSettings = true;
+        } else if (result.style == ReminderStyle.notificationAndAlarm &&
+            !await ReminderService.isExactAlarmPermissionGranted()) {
+          await ReminderService.openExactAlarmSettings();
+          openedSettings = true;
+        }
+      } catch (_) {
+        // Pesan di bawah tetap menjelaskan langkah berikutnya jika setelan
+        // perangkat tidak dapat dibuka secara otomatis.
+      }
+      if (!mounted) return;
+      final String message = openedSettings
+          ? _text(
+              'Setelan izin sudah dibuka. Aktifkan izin yang diminta, kembali ke VoltStride, lalu simpan jadwal lagi.',
+              'Permission settings were opened. Enable the requested permission, return to VoltStride, and save the schedule again.',
+            )
+          : _text(
+              'Jadwal gagal disimpan. Periksa koneksi dan izin notifikasi/alarm, lalu coba lagi.',
+              'The schedule could not be saved. Check your connection and notification/alarm permissions, then try again.',
+            );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _text(
-              'Jadwal belum tersimpan. Periksa izin dan coba lagi.',
-              'Schedule was not saved. Check permissions and try again.',
-            ),
-          ),
-        ),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -249,7 +268,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      reminder.activity,
+                      _activityName(reminder.activity),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -352,6 +371,17 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     return Localizations.localeOf(context).languageCode == 'en'
         ? english[month - 1]
         : indonesia[month - 1];
+  }
+
+  String _activityName(String storedActivity) {
+    final String value = storedActivity.toLowerCase();
+    if (value.contains('kekuatan') || value.contains('strength')) {
+      return _text('Latihan kekuatan', 'Strength training');
+    }
+    if (value.contains('interval')) return _text('Lari interval', 'Interval run');
+    if (value.contains('jalan') || value.contains('walk')) return _text('Jalan', 'Walk');
+    if (value.contains('lari') || value.contains('run')) return _text('Lari', 'Run');
+    return storedActivity;
   }
 
   String _soundName(String sound) {
@@ -710,15 +740,15 @@ class _ReminderEditorState extends State<_ReminderEditor>
                   labelText: _text(context, 'Aktivitas', 'Activity'),
                 ),
                 items: const <DropdownMenuItem<String>>[
-                  DropdownMenuItem(value: 'Lari', child: Text('Lari')),
+                  DropdownMenuItem(value: 'Lari', child: Text(_text('Lari', 'Run'))),
                   DropdownMenuItem(
                     value: 'Lari interval',
-                    child: Text('Lari interval'),
+                    child: Text(_text('Lari interval', 'Interval run')),
                   ),
-                  DropdownMenuItem(value: 'Jalan', child: Text('Jalan')), 
+                  DropdownMenuItem(value: 'Jalan', child: Text(_text('Jalan', 'Walk'))), 
                   DropdownMenuItem(
                     value: 'Latihan kekuatan',
-                    child: Text('Latihan kekuatan'),
+                    child: Text(_text('Latihan kekuatan', 'Strength training')),
                   ),
                 ],
                 onChanged: _checkingPermission
@@ -806,10 +836,10 @@ class _ReminderEditorState extends State<_ReminderEditor>
                   decoration: InputDecoration(
                     labelText: _text(context, 'Suara alarm', 'Alarm sound'),
                   ),
-                  items: const <DropdownMenuItem<String>>[
-                    DropdownMenuItem(value: 'lembut', child: Text('Lembut')),
-                    DropdownMenuItem(value: 'digital', child: Text('Digital')),
-                    DropdownMenuItem(value: 'denyut', child: Text('Denyut')),
+                  items: <DropdownMenuItem<String>>[
+                    DropdownMenuItem(value: 'lembut', child: Text(_text(context, 'Lembut', 'Soft'))),
+                    const DropdownMenuItem(value: 'digital', child: Text('Digital')),
+                    DropdownMenuItem(value: 'denyut', child: Text(_text(context, 'Denyut', 'Pulse'))),
                   ],
                   onChanged: _checkingPermission
                       ? null

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import '../running/models/run_session.dart';
 import '../running/run_route_map_view.dart';
+import '../running/run_detail_page.dart';
 import '../running/services/run_history_repository.dart';
 
 class HomeDashboardPage extends StatefulWidget {
@@ -20,6 +22,8 @@ class HomeDashboardPage extends StatefulWidget {
 }
 
 class HomeDashboardPageState extends State<HomeDashboardPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
   Future<List<RunSession>> _sessionsFuture =
       RunHistoryRepository.instance.getAll();
 
@@ -86,7 +90,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                   const SizedBox(height: 18),
                   _recordButton(),
                   const SizedBox(height: 24),
-                  _sectionHeader('Aktivitas terbaru', 'Lihat semua', widget.onHistory),
+                  _sectionHeader(_text('Aktivitas terbaru', 'Recent activity'), _text('Lihat semua', 'View all'), widget.onHistory),
                   const SizedBox(height: 12),
                   if (sorted.isEmpty)
                     _emptyActivity()
@@ -102,10 +106,10 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   }
 
   Widget _header() {
-    return const Align(
+    return Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        'Beranda',
+        _text('Beranda', 'Home'),
         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
       ),
     );
@@ -115,10 +119,11 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     final Set<String> active = sessions
         .map((RunSession item) => _dayKey(item.startedAt.toLocal()))
         .toSet();
-    const List<String> names = <String>['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    final List<String> names = Localizations.localeOf(context).languageCode == 'en'
+        ? <String>['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : <String>['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
     final DateTime monday = DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1));
-    final int activeDays = active.length;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -131,8 +136,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Expanded(child: Text('Ritme minggu ini', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
-              Text('$activeDays/7 hari', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w800)),
+              Expanded(child: Text(_text('Aktivitas minggu ini', 'Activity this week'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
             ],
           ),
           const SizedBox(height: 16),
@@ -164,13 +168,6 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
               );
             }),
           ),
-          const SizedBox(height: 13),
-          Text(
-            activeDays == 0
-                ? 'Belum ada aktivitas minggu ini.'
-                : '$activeDays dari 7 hari memiliki aktivitas.',
-            style: TextStyle(color: Theme.of(context).hintColor, height: 1.35, fontSize: 12),
-          ),
         ],
       ),
     );
@@ -180,12 +177,12 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     return Row(
       children: <Widget>[
         Expanded(
-          child: _metricCard('Jarak', '${distanceKm.toStringAsFixed(2)} km'),
+          child: _metricCard(_text('Jarak', 'Distance'), '${distanceKm.toStringAsFixed(2)} km'),
         ),
         const SizedBox(width: 8),
-        Expanded(child: _metricCard('Waktu gerak', _shortDuration(duration))),
+        Expanded(child: _metricCard(_text('Waktu gerak', 'Moving time'), _shortDuration(duration))),
         const SizedBox(width: 8),
-        Expanded(child: _metricCard('Elevasi', '+${ascent.round()} m')),
+        Expanded(child: _metricCard(_text('Elevasi', 'Elevation'), '+${ascent.round()} m')),
       ],
     );
   }
@@ -227,13 +224,13 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         side: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 1.2),
       ),
-      child: const Row(
+      child: Row(
         children: <Widget>[
-          Icon(Icons.add_rounded, size: 27),
-          SizedBox(width: 10),
-          Text('Rekam aktivitas', style: TextStyle(fontSize: 16)),
-          Spacer(),
-          Icon(Icons.chevron_right),
+          const Icon(Icons.add_rounded, size: 27),
+          const SizedBox(width: 10),
+          Text(_text('Rekam aktivitas', 'Record activity'), style: const TextStyle(fontSize: 16)),
+          const Spacer(),
+          const Icon(Icons.chevron_right),
         ],
       ),
     );
@@ -248,57 +245,87 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     );
   }
 
+  String _activityLabel(RunSession session) {
+    if (session.activityType == RunActivityType.walk) return _text('Berjalan', 'Walk');
+    if (session.intervalPlan != null) return _text('Lari interval', 'Interval run');
+    return _text('Lari', 'Run');
+  }
+
+  String _environmentLabel(RunSession session) =>
+      session.environment == RunEnvironment.outdoor
+          ? _text('Luar ruangan', 'Outdoor')
+          : _text('Dalam ruangan', 'Indoor');
+
   Widget _activityCard(RunSession session) {
-    final String date = '${session.startedAt.day.toString().padLeft(2, '0')}/'
-        '${session.startedAt.month.toString().padLeft(2, '0')}/'
-        '${session.startedAt.year}';
+    final String date = '${session.startedAt.toLocal().day.toString().padLeft(2, '0')}/'
+        '${session.startedAt.toLocal().month.toString().padLeft(2, '0')}/'
+        '${session.startedAt.toLocal().year}';
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) => RunDetailPage(session: session),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
                   children: <Widget>[
-                    Text('${session.displayLabel} • ${session.environment.label}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text(date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            '${_activityLabel(session)} • ${_environmentLabel(session)}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          Text(date, style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ],
                 ),
-              ),
-            ],
-          ),
-          if (session.route.length > 1) ...<Widget>[
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.zero,
-              child: RunRouteMapView(
-                key: ValueKey<String>('home-map-${session.startedAt.toIso8601String()}'),
-                route: session.route,
-                laps: const <RunLap100m>[],
-                height: 150,
-              ),
+                if (session.route.length > 1) ...<Widget>[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: IgnorePointer(
+                      child: RunRouteMapView(
+                        key: ValueKey<String>('home-map-${session.startedAt.toIso8601String()}'),
+                        route: session.route,
+                        laps: const <RunLap100m>[],
+                        height: 150,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    _activityMetric(session.distanceText, _text('km', 'km')),
+                    _activityMetric(session.elapsedText, _text('waktu', 'time')),
+                    _activityMetric(session.averagePaceText, _text('pace/km', 'pace/km')),
+                    if (session.elevationStats.hasAltitudeData)
+                      _activityMetric('+${session.elevationStats.totalAscentMeters.round()} m', _text('Elevasi', 'Elevation')),
+                  ],
+                ),
+              ],
             ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: <Widget>[
-              _activityMetric(session.distanceText, 'km'),
-              _activityMetric(session.elapsedText, 'waktu'),
-              _activityMetric(session.averagePaceText, 'pace/km'),
-              if (session.elevationStats.hasAltitudeData)
-                _activityMetric('+${session.elevationStats.totalAscentMeters.round()} m', 'Elevasi'),
-            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -325,13 +352,13 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
       ),
       child: Column(
         children: <Widget>[
-          const Text(
-            'Belum ada aktivitas.',
+          Text(
+            _text('Belum ada aktivitas.', 'No activities yet.'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 5),
           Text(
-            'Aktivitas selesai akan muncul di sini.',
+            _text('Aktivitas selesai akan muncul di sini.', 'Completed activities will appear here.'),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(context).hintColor,
@@ -349,9 +376,9 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Text('Riwayat belum dapat dimuat.'),
+              Text(_text('Riwayat belum dapat dimuat.', 'Activity history could not be loaded.')),
               const SizedBox(height: 12),
-              FilledButton(onPressed: reload, child: const Text('Coba lagi')),
+              FilledButton(onPressed: reload, child: Text(_text('Coba lagi', 'Try again'))),
             ],
           ),
         ),
@@ -360,8 +387,17 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
   String _dayKey(DateTime value) => '${value.year}-${value.month}-${value.day}';
 
   String _shortDuration(Duration value) {
-    if (value.inHours > 0) return '${value.inHours}j ${value.inMinutes.remainder(60)}m';
-    if (value.inMinutes > 0) return '${value.inMinutes}m';
-    return '${value.inSeconds}d';
+    if (value.inHours > 0) {
+      final String jam = Localizations.localeOf(context).languageCode == 'en' ? 'h' : 'j';
+      final String menit = Localizations.localeOf(context).languageCode == 'en' ? 'min' : 'm';
+      return '${value.inHours}$jam ${value.inMinutes.remainder(60)}$menit';
+    }
+    if (value.inMinutes > 0) {
+      final String unit = Localizations.localeOf(context).languageCode == 'en' ? 'min' : 'm';
+      return '${value.inMinutes}$unit';
+    }
+    return Localizations.localeOf(context).languageCode == 'en'
+        ? '${value.inSeconds}s'
+        : '${value.inSeconds}d';
   }
 }

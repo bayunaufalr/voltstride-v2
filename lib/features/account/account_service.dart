@@ -180,7 +180,24 @@ class AccountService {
 }
 
 /// Pesan error yang lebih mudah dipahami pengguna aplikasi.
-String pesanErrorAkun(FirebaseAuthException error) {
+String pesanErrorAkun(FirebaseAuthException error, {bool english = false}) {
+  if (english) {
+    switch (error.code) {
+      case 'invalid-email': return 'Enter a valid email address.';
+      case 'email-already-in-use': return 'This email is already registered. Try signing in.';
+      case 'weak-password': return 'This password is too easy to guess. Use a stronger password.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential': return 'The email or password is incorrect.';
+      case 'too-many-requests': return 'There have been too many attempts. Wait a moment and try again.';
+      case 'network-request-failed': return 'Could not connect to the internet. Check your connection and try again.';
+      case 'operation-not-allowed': return 'Email and password sign-in is not enabled in Firebase Console.';
+      case 'requires-recent-login': return 'Sign in again before making this change.';
+      default: return error.message?.isNotEmpty == true
+          ? 'Could not process the account: ${error.message}'
+          : 'Could not process the account. Please try again shortly.';
+    }
+  }
   switch (error.code) {
     case 'invalid-email':
       return 'Format email belum benar. Periksa kembali alamat emailmu.';

@@ -2,7 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/app_language_service.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
@@ -103,6 +106,37 @@ class ReminderService {
   static bool _ready = false;
   static Future<void>? _initialization;
 
+  static bool get _english =>
+      AppLanguageService.localeNotifier.value.languageCode == 'en';
+
+  static String _activityName(String storedActivity) {
+    final String value = storedActivity.toLowerCase();
+    if (value.contains('kekuatan') || value.contains('strength')) {
+      return _english ? 'strength training' : 'latihan kekuatan';
+    }
+    if (value.contains('interval')) return _english ? 'interval run' : 'lari interval';
+    if (value.contains('jalan') || value.contains('walk')) return _english ? 'walk' : 'jalan';
+    if (value.contains('lari') || value.contains('run')) return _english ? 'run' : 'lari';
+    return storedActivity.toLowerCase();
+  }
+
+  static String _notificationTitle(TrainingReminder reminder) {
+    final String activity = _activityName(reminder.activity);
+    if (_english) {
+      return reminder.style == ReminderStyle.notificationAndAlarm
+          ? 'Time for $activity'
+          : 'Scheduled $activity';
+    }
+    return reminder.style == ReminderStyle.notificationAndAlarm
+        ? 'Waktunya $activity'
+        : 'Jadwal $activity';
+  }
+
+  static String _notificationBody(TrainingReminder reminder) => _english
+      ? 'Duration: ${reminder.durationMinutes} min.'
+      : 'Durasi ${reminder.durationMinutes} menit.';
+
+
   /// Hindari inisialisasi plugin ganda jika halaman dan proses pemulihan
   /// pengingat memanggil fungsi ini hampir bersamaan.
   static Future<void> initialize() {
@@ -158,10 +192,8 @@ class ReminderService {
       );
       await _plugin.zonedSchedule(
         notificationId,
-        reminder.style == ReminderStyle.notificationAndAlarm
-            ? 'Waktunya ${reminder.activity.toLowerCase()}'
-            : 'Jadwal ${reminder.activity.toLowerCase()}',
-        'Durasi ${reminder.durationMinutes} menit.',
+        _notificationTitle(reminder),
+        _notificationBody(reminder),
         nextDate,
         _details(reminder),
         payload: 'voltstride-reminder-${reminder.id}',
@@ -214,10 +246,8 @@ class ReminderService {
         for (final int day in reminder.weekdays.toSet()) {
           await _plugin.zonedSchedule(
             _notificationId(reminder.id, day),
-            reminder.style == ReminderStyle.notificationAndAlarm
-                ? 'Waktunya ${reminder.activity.toLowerCase()}'
-                : 'Jadwal ${reminder.activity.toLowerCase()}',
-            'Durasi ${reminder.durationMinutes} menit.',
+            _notificationTitle(reminder),
+            _notificationBody(reminder),
             _nextDate(
               weekday: day,
               hour: reminder.hour,
@@ -248,7 +278,28 @@ class ReminderService {
 
     await android.requestNotificationsPermission();
     allowed = await android.areNotificationsEnabled();
+    if (allowed != true) {
+      // Jika dialog sudah ditolak, buka halaman izin aplikasi, bukan sekadar
+      // menyuruh pengguna mencari setelan secara manual.
+      await permissions.openAppSettings();
+      allowed = await android.areNotificationsEnabled();
+    }
     return allowed == true;
+  }
+
+  /// Membaca izin notifikasi tanpa memunculkan dialog atau mengubah setelan.
+  static Future<bool> areNotificationsEnabled() async {
+    await initialize();
+    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    return await android.areNotificationsEnabled() == true;
+  }
+
+  /// Membuka halaman pengaturan VoltStride di Android.
+  static Future<void> openAppSettings() async {
+    await permissions.openAppSettings();
   }
 
   /// Membaca status izin alarm tepat setelah pengguna kembali dari Setelan.
@@ -269,7 +320,13 @@ class ReminderService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
-    await android.requestExactAlarmsPermission();
+    try {
+      // Plugin ini membuka halaman khusus izin alarm tepat di Android.
+      await android.requestExactAlarmsPermission();
+    } catch (_) {
+      // Beberapa varian Android menolak deep-link khusus. Buka setelan app.
+      await permissions.openAppSettings();
+    }
   }
 
   static Future<bool> areRequiredPermissionsGranted(

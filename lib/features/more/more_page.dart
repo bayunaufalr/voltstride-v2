@@ -35,7 +35,7 @@ class MorePageState extends State<MorePage> {
             _text('Timer latihan', 'Workout timer'),
             widget.onOpenTimer,
           ),
-          _menuItem('Coach', widget.onOpenCoach),
+          _menuItem(_text('Pelatih AI', 'AI coach'), widget.onOpenCoach),
           _menuItem(
             _text('Latihan kekuatan', 'Strength training'),
             widget.onOpenStrength,

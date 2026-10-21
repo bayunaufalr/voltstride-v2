@@ -8,10 +8,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:pedometer/pedometer.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'running_controller.dart';
 import 'services/run_history_repository.dart';
-import 'services/run_evaluation.dart';
 import 'run_route_map_view.dart';
 import 'services/personal_records_service.dart';
 import 'run_activity_charts.dart';
@@ -43,6 +43,9 @@ class RunningPage extends StatefulWidget {
 }
 
 class _RunningPageState extends State<RunningPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   late final RunningController _controller;
   final TextEditingController _workSecondsController =
       TextEditingController(text: '60');
@@ -270,8 +273,11 @@ class _RunningPageState extends State<RunningPage> {
           recovery == null || recovery < 5 || recovery > 3600 ||
           repetitions == null || repetitions < 1 || repetitions > 30) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Atur kerja 10-3600 detik, pemulihan 5-3600 detik, dan ulangan 1-30.'),
+          SnackBar(
+            content: Text(_text(
+              'Atur kerja 10–3600 detik, pemulihan 5–3600 detik, dan ulangan 1–30.',
+              'Set work intervals to 10–3600 seconds, rest to 5–3600 seconds, and repetitions to 1–30.',
+            )),
           ),
         );
         return;
@@ -292,8 +298,11 @@ class _RunningPageState extends State<RunningPage> {
           if (!mounted) return;
           if (!notificationStatus.isGranted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Izin notifikasi ditolak. Pelacakan tetap dicoba, tetapi notifikasi mungkin tidak tampil di panel.'),
+              SnackBar(
+                content: Text(_text(
+                  'Izin notifikasi ditolak. Pelacakan tetap berjalan, tetapi notifikasi mungkin tidak muncul.',
+                  'Notification permission was denied. Tracking can continue, but notifications may not appear.',
+                )),
               ),
             );
           }
@@ -331,8 +340,11 @@ class _RunningPageState extends State<RunningPage> {
       if (mounted) {
         setState(() => _countdownValue = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('VoltStride tidak dapat memulai aktivitas. Coba lagi setelah lokasi siap.'),
+          SnackBar(
+            content: Text(_text(
+              'VoltStride tidak dapat memulai aktivitas. Coba lagi setelah lokasi siap.',
+              'VoltStride could not start the activity. Try again when your location is ready.',
+            )),
           ),
         );
       }
@@ -363,23 +375,23 @@ class _RunningPageState extends State<RunningPage> {
 
   Widget _buildIdle() {
     return Scaffold(
-      appBar: AppBar(title: const Text('Rekam aktivitas')),
+      appBar: AppBar(title: Text(_text('Rekam aktivitas', 'Record activity'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(18),
           children: <Widget>[
-            const Icon(Icons.directions_run_rounded, size: 54, color: VoltWarna.aksen),
+            Icon(Icons.directions_run_rounded, size: 54, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 14),
-            const Text(
-              'Siap untuk bergerak?',
+            Text(
+              _text('Siap untuk bergerak?', 'Ready to move?'),
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               widget.environment == RunEnvironment.indoor
-                  ? 'Waktu direkam tanpa GPS. Jarak bisa dimasukkan saat sesi selesai.'
-                  : 'Pastikan izin lokasi aktif sebelum mulai di luar ruangan.',
-              style: const TextStyle(color: VoltWarna.teksAbu, height: 1.4),
+                  ? _text('Waktu direkam tanpa GPS. Jarak bisa dimasukkan saat sesi selesai.', 'Time is tracked without GPS. You can enter the distance when the session ends.')
+                  : _text('Pastikan izin lokasi aktif sebelum mulai di luar ruangan.', 'Make sure location permission is enabled before starting outdoors.'),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4),
             ),
             const SizedBox(height: 18),
             if (widget.initialIntervalPlan == null) _buildIntervalSettings(),
@@ -390,8 +402,10 @@ class _RunningPageState extends State<RunningPage> {
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.play_arrow_rounded),
               label: Text(_isStarting
-                  ? 'Menyiapkan aktivitas...'
-                  : (_intervalModeSelected ? 'Mulai interval' : 'Mulai aktivitas')),
+                  ? _text('Menyiapkan aktivitas...', 'Preparing activity...')
+                  : (_intervalModeSelected
+                      ? _text('Mulai interval', 'Start intervals')
+                      : _text('Mulai aktivitas', 'Start activity'))),
             ),
           ],
         ),
@@ -406,15 +420,15 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'MODE LATIHAN',
+            Text(
+              _text('MODE LATIHAN', 'WORKOUT MODE'),
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.9),
             ),
             const SizedBox(height: 8),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Lari interval'),
-              subtitle: const Text('Atur waktu lari cepat, pemulihan, dan jumlah ulangan.'),
+              title: Text(_text('Lari interval', 'Interval run')),
+              subtitle: Text(_text('Atur waktu lari cepat, pemulihan, dan jumlah ulangan.', 'Set the work interval, recovery time, and number of repetitions.')),
               value: _intervalModeSelected,
               onChanged: (bool value) => setState(() => _intervalModeSelected = value),
             ),
@@ -422,17 +436,17 @@ class _RunningPageState extends State<RunningPage> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  Expanded(child: _numberSettingField('Kerja (detik)', _workSecondsController)),
+                  Expanded(child: _numberSettingField(_text('Kerja (detik)', 'Work (sec)'), _workSecondsController)),
                   const SizedBox(width: 10),
-                  Expanded(child: _numberSettingField('Pemulihan (detik)', _recoverySecondsController)),
+                  Expanded(child: _numberSettingField(_text('Pemulihan (detik)', 'Recovery (sec)'), _recoverySecondsController)),
                 ],
               ),
               const SizedBox(height: 10),
-              _numberSettingField('Jumlah ulangan (1-30)', _repetitionsController),
+              _numberSettingField(_text('Jumlah ulangan (1–30)', 'Repetitions (1–30)'), _repetitionsController),
               const SizedBox(height: 8),
               Text(
-                'Contoh: 60 detik lari + 90 detik pemulihan, diulang 6 kali. Timer dimulai setelah GPS siap.',
-                style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12, height: 1.4),
+                _text('Contoh: 60 detik lari + 90 detik pemulihan, diulang 6 kali. Timer dimulai setelah GPS siap.', 'Example: 60 seconds of running + 90 seconds of recovery, repeated 6 times. The timer starts when GPS is ready.'),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4),
               ),
             ],
           ],
@@ -454,14 +468,17 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  String get _activityDisplayLabel =>
-      _activeIntervalPlan == null ? widget.activityType.label : 'Lari interval';
+  String get _activityDisplayLabel => _activeIntervalPlan != null
+      ? _text('Lari interval', 'Interval run')
+      : widget.activityType == RunActivityType.walk
+          ? _text('Berjalan', 'Walk')
+          : _text('Lari', 'Run');
 
   Widget _buildAcquiringGps() {
     final bool countingDown = _countdownValue != null;
     return Scaffold(
       appBar: AppBar(
-        title: Text(countingDown ? 'Mulai' : 'Bersiap'),
+        title: Text(countingDown ? _text('Mulai', 'Start') : _text('Bersiap', 'Get ready')),
       ),
       body: Center(
         child: Padding(
@@ -478,16 +495,16 @@ class _RunningPageState extends State<RunningPage> {
                         height: 160,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: VoltWarna.aksen.withValues(alpha: 0.14),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: VoltWarna.aksen,
+                            color: Theme.of(context).colorScheme.primary,
                             width: 3,
                           ),
                         ),
                         child: Text(
                           '$_countdownValue',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 92,
                             fontWeight: FontWeight.w900,
                           ),
@@ -502,9 +519,9 @@ class _RunningPageState extends State<RunningPage> {
               ),
               const SizedBox(height: 24),
               Text(
-                countingDown ? 'MULAI DALAM' : 'BERSIAP',
+                countingDown ? _text('MULAI DALAM', 'STARTING IN') : _text('BERSIAP', 'GET READY'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.4,
@@ -531,9 +548,9 @@ class _RunningPageState extends State<RunningPage> {
   Widget _buildIndoorLiveRun({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${_activityDisplayLabel} • Dalam ruangan'),
+        title: Text('$_activityDisplayLabel • ${_text('Dalam ruangan', 'Indoor')}'),
         leading: IconButton(
-          tooltip: 'Keluar dari aktivitas',
+          tooltip: _text('Keluar dari aktivitas', 'Exit activity'),
           onPressed: () => _confirmExitIndoor(paused: paused),
           icon: const Icon(Icons.close_rounded),
         ),
@@ -549,20 +566,20 @@ class _RunningPageState extends State<RunningPage> {
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.zero,
-                    color: VoltWarna.surface,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      const Icon(Icons.directions_run_rounded, size: 48, color: VoltWarna.aksen),
+                      Icon(Icons.directions_run_rounded, size: 48, color: Theme.of(context).colorScheme.primary),
                       const SizedBox(height: 16),
-                      Text(_formatDuration(_controller.elapsed), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
+                      Text(_formatDuration(_controller.elapsed), style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
-                      Text(paused ? 'Dijeda' : 'Aktivitas berlangsung', style: const TextStyle(color: VoltWarna.teksAbu)),
+                      Text(paused ? _text('Dijeda', 'Paused') : _text('Aktivitas berlangsung', 'Activity in progress'), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                       const SizedBox(height: 22),
-                      Text('${_controller.distanceKm.toStringAsFixed(2)} km', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+                      Text('${_controller.distanceKm.toStringAsFixed(2)} km', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 5),
-                      const Text('Jarak dimasukkan setelah selesai', style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12)),
+                      Text(_text('Jarak dimasukkan setelah selesai', 'Distance can be entered when you finish'), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                       if (_activeIntervalPlan != null) ...<Widget>[
                         const SizedBox(height: 20),
                         _intervalPhaseCard(_activeIntervalPlan!, _controller.elapsed),
@@ -578,7 +595,7 @@ class _RunningPageState extends State<RunningPage> {
                     child: OutlinedButton.icon(
                       onPressed: paused ? _controller.resumeRun : _controller.pauseRun,
                       icon: Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded),
-                      label: Text(paused ? 'Lanjutkan' : 'Jeda'),
+                      label: Text(paused ? _text('Lanjutkan', 'Resume') : _text('Jeda', 'Pause')),
                       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(54)),
                     ),
                   ),
@@ -587,7 +604,7 @@ class _RunningPageState extends State<RunningPage> {
                     child: FilledButton.icon(
                       onPressed: _finishRun,
                       icon: const Icon(Icons.stop_rounded),
-                      label: const Text('Selesai'),
+                      label: Text(_text('Selesai', 'Finish')),
                       style: FilledButton.styleFrom(backgroundColor: VoltWarna.merah),
                     ),
                   ),
@@ -604,11 +621,11 @@ class _RunningPageState extends State<RunningPage> {
     final bool? exit = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Akhiri aktivitas?'),
-        content: const Text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.'),
+        title: Text(_text('Akhiri aktivitas?', 'End activity?')),
+        content: Text(_text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.', 'An unfinished activity will not be saved to your history.')),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Kembali')),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Akhiri')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(_text('Kembali', 'Keep going'))),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(_text('Akhiri', 'End activity'))),
         ],
       ),
     );
@@ -656,7 +673,7 @@ class _RunningPageState extends State<RunningPage> {
                         color: Colors.black.withValues(alpha: 0.84),
                         shape: const CircleBorder(),
                         child: IconButton(
-                          tooltip: 'Tutup peta',
+                          tooltip: _text('Tutup peta', 'Close map'),
                           onPressed: () => setState(() => _liveMapExpanded = false),
                           icon: const Icon(
                             Icons.keyboard_arrow_down,
@@ -689,7 +706,7 @@ class _RunningPageState extends State<RunningPage> {
                               const SizedBox(width: 6),
                               Text(
                                 paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 11,
@@ -728,7 +745,7 @@ class _RunningPageState extends State<RunningPage> {
                         children: <Widget>[
                           Text(
                             _activityDisplayLabel.toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white70,
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
@@ -752,7 +769,7 @@ class _RunningPageState extends State<RunningPage> {
                                 speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
                                     ? '${speedKmh.toStringAsFixed(1)} km/jam'
                                     : '-- km/jam',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -767,7 +784,7 @@ class _RunningPageState extends State<RunningPage> {
                                       : 'Perubahan --',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,
@@ -785,7 +802,7 @@ class _RunningPageState extends State<RunningPage> {
                                 ' • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
@@ -866,7 +883,7 @@ class _RunningPageState extends State<RunningPage> {
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: Icon(paused ? Icons.play_arrow : Icons.pause),
-                              label: Text(paused ? 'Lanjut' : 'Jeda'),
+                              label: Text(paused ? _text('Lanjut', 'Resume') : _text('Jeda', 'Pause')),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -879,7 +896,7 @@ class _RunningPageState extends State<RunningPage> {
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: const Icon(Icons.stop),
-                              label: const Text('Selesai'),
+                              label: Text(_text('Selesai', 'Finish')),
                             ),
                           ),
                         ],
@@ -911,7 +928,7 @@ class _RunningPageState extends State<RunningPage> {
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontSize: 19,
               fontWeight: FontWeight.w900,
@@ -921,7 +938,7 @@ class _RunningPageState extends State<RunningPage> {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white70,
               fontSize: 10,
               fontWeight: FontWeight.w700,
@@ -941,7 +958,7 @@ class _RunningPageState extends State<RunningPage> {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.w900,
@@ -950,7 +967,7 @@ class _RunningPageState extends State<RunningPage> {
           const SizedBox(height: 3),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white60,
               fontSize: 9,
               fontWeight: FontWeight.w800,
@@ -1000,17 +1017,17 @@ class _RunningPageState extends State<RunningPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F4F4),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.aksen.withValues(alpha: 0.3)),
+        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'ESTIMASI PADA PACE SEKARANG',
+          Text(
+            _text('ESTIMASI PADA PACE SEKARANG', 'ESTIMATE AT CURRENT PACE'),
             style: TextStyle(
-              color: VoltWarna.aksen,
+              color: Theme.of(context).colorScheme.primary,
               fontSize: 10,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -1018,22 +1035,27 @@ class _RunningPageState extends State<RunningPage> {
           ),
           const SizedBox(height: 5),
           Text(
-            '${target.label} • sekitar ${_formatDuration(Duration(seconds: totalSeconds))}',
-            style: const TextStyle(
-              color: VoltWarna.aksen,
+            '${_targetLabel(target.km)} • ${_text('sekitar', 'about')} ${_formatDuration(Duration(seconds: totalSeconds))}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.w900,
               fontSize: 15,
             ),
           ),
           const SizedBox(height: 3),
           Text(
-            'Pace ${_formatPace(pace)}/km • sisa ${remainingKm.toStringAsFixed(2)} km'
-            ' atau ${_formatDuration(Duration(seconds: remainingSeconds))} perkiraan',
-            style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 10),
+            _text('Pace ${_formatPace(pace)}/km • sisa ${remainingKm.toStringAsFixed(2)} km atau ${_formatDuration(Duration(seconds: remainingSeconds))} perkiraan', 'Pace ${_formatPace(pace)}/km • ${remainingKm.toStringAsFixed(2)} km remaining, about ${_formatDuration(Duration(seconds: remainingSeconds))}'),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10),
           ),
         ],
       ),
     );
+  }
+
+  String _targetLabel(double distanceKm) {
+    if (distanceKm == 21.0975) return _text('Setengah maraton', 'Half marathon');
+    if (distanceKm == 42.195) return _text('Maraton', 'Marathon');
+    return '${distanceKm == distanceKm.roundToDouble() ? distanceKm.toInt() : distanceKm} km';
   }
 
   Widget _customTargetEstimateCard() {
@@ -1050,16 +1072,23 @@ class _RunningPageState extends State<RunningPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: achieved ? VoltWarna.hijau.withValues(alpha: 0.12) : const Color(0xFFF4F4F4),
+        color: achieved
+            ? VoltWarna.hijau.withValues(alpha: 0.12)
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: achieved ? VoltWarna.hijau : VoltWarna.border),
+        border: Border.all(color: achieved ? VoltWarna.hijau : Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(achieved ? 'TARGET HARI INI TERCAPAI' : 'TARGET HARI INI', style: TextStyle(color: achieved ? VoltWarna.hijau : VoltWarna.aksen, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
+          Text(achieved ? _text('TARGET HARI INI TERCAPAI', "TODAY'S TARGET REACHED") : _text('TARGET HARI INI', "TODAY'S TARGET"), style: TextStyle(color: achieved ? VoltWarna.hijau : Theme.of(context).colorScheme.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.8)),
           const SizedBox(height: 5),
-          Text(achieved ? 'Jarak ${targetKm.toStringAsFixed(2)} km tercapai.' : 'Perkiraan total ${_formatDuration(Duration(seconds: finishSeconds))} • sisa ${remainingKm.toStringAsFixed(2)} km', style: const TextStyle(color: VoltWarna.aksen, fontWeight: FontWeight.w800, fontSize: 12)),
+          Text(
+            achieved
+                ? _text('Jarak ${targetKm.toStringAsFixed(2)} km tercapai.', 'Target distance of ${targetKm.toStringAsFixed(2)} km reached.')
+                : _text('Perkiraan total ${_formatDuration(Duration(seconds: finishSeconds))} • sisa ${remainingKm.toStringAsFixed(2)} km', 'Estimated finish ${_formatDuration(Duration(seconds: finishSeconds))} • ${remainingKm.toStringAsFixed(2)} km remaining'),
+            style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w800, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -1077,14 +1106,14 @@ class _RunningPageState extends State<RunningPage> {
         currentPace <= 3600;
     final bool onTarget = enoughData && currentPace <= targetPace;
     final Color statusColor = !enoughData
-        ? VoltWarna.teksAbu
+        ? Theme.of(context).colorScheme.onSurfaceVariant
         : onTarget
             ? VoltWarna.hijau
             : VoltWarna.merah;
     final String currentPaceText = enoughData ? _formatPace(currentPace) : '--:--';
     final String advice = onTarget
-        ? 'Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.'
-        : 'Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.';
+        ? _text('Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.', 'You are meeting your pace target. Keep it comfortable.')
+        : _text('Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.', 'Your current pace is slower than the target. Adjust gradually only if it still feels comfortable.');
 
     return Container(
       width: double.infinity,
@@ -1098,7 +1127,11 @@ class _RunningPageState extends State<RunningPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            enoughData ? (onTarget ? 'PACE SESUAI TARGET' : 'PERHATIKAN PACE') : 'TARGET PACE',
+            enoughData
+                ? (onTarget
+                    ? _text('PACE SESUAI TARGET', 'ON-TARGET PACE')
+                    : _text('PERHATIKAN PACE', 'PACE CHECK'))
+                : _text('TARGET PACE', 'TARGET PACE'),
             style: TextStyle(
               color: statusColor,
               fontSize: 10,
@@ -1109,8 +1142,8 @@ class _RunningPageState extends State<RunningPage> {
           const SizedBox(height: 4),
           Text(
             enoughData
-                ? 'Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km'
-                : 'Target ${_formatPace(targetPace)}/km',
+                ? _text('Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km', 'Target ${_formatPace(targetPace)}/km  •  Current $currentPaceText/km')
+                : '${_text('Target', 'Target')} ${_formatPace(targetPace)}/km',
             style: TextStyle(
               color: statusColor,
               fontWeight: FontWeight.w900,
@@ -1121,8 +1154,8 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 4),
             Text(
               advice,
-              style: const TextStyle(
-                color: VoltWarna.teksAbu,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 10,
                 height: 1.35,
               ),
@@ -1136,7 +1169,7 @@ class _RunningPageState extends State<RunningPage> {
   Widget _buildLiveRunDetails({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(paused ? '$_activityDisplayLabel dijeda' : '$_activityDisplayLabel berlangsung'),
+        title: Text(paused ? '$_activityDisplayLabel ${_text('dijeda', 'paused')}' : '$_activityDisplayLabel ${_text('berlangsung', 'in progress')}'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -1171,7 +1204,7 @@ class _RunningPageState extends State<RunningPage> {
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
-                    label: 'WAKTU',
+                    label: _text('WAKTU', 'TIME'),
                     value: _formatDuration(_controller.elapsed),
                     icon: Icons.timer_outlined,
                   ),
@@ -1179,7 +1212,7 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _metricCard(
-                    label: 'AVG PACE',
+                    label: _text('PACE RATA-RATA', 'AVG PACE'),
                     value: _formatPace(_controller.averagePaceSecondsPerKm),
                     icon: Icons.speed,
                   ),
@@ -1199,7 +1232,7 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _metricCard(
-                    label: 'TITIK BERSIH',
+                    label: _text('TITIK BERSIH', 'VALID GPS POINTS'),
                     value: '${(_controller.gpsCleanRatio * 100).round()}%',
                     icon: Icons.filter_alt,
                   ),
@@ -1209,11 +1242,11 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 10),
             _liveMetricsBuilder(() => Row(
               children: <Widget>[
-                Expanded(child: _metricCard(label: 'LANGKAH', value: _stepsThisActivity.toString(), icon: Icons.directions_walk_rounded)),
+                Expanded(child: _metricCard(label: _text('LANGKAH', 'STEPS'), value: _stepsThisActivity.toString(), icon: Icons.directions_walk_rounded)),
                 const SizedBox(width: 10),
                 Expanded(child: _metricCard(label: 'CADENCE', value: _cadenceSamples.isEmpty ? '--' : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm', icon: Icons.speed_rounded)),
                 const SizedBox(width: 10),
-                Expanded(child: _metricCard(label: 'KALORI*', value: '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()}', icon: Icons.local_fire_department_outlined)),
+                Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()}', icon: Icons.local_fire_department_outlined)),
               ],
             )),
             const SizedBox(height: 12),
@@ -1235,7 +1268,7 @@ class _RunningPageState extends State<RunningPage> {
                     icon: Icon(
                       paused ? Icons.play_arrow : Icons.pause,
                     ),
-                    label: Text(paused ? 'Lanjut' : 'Jeda'),
+                    label: Text(paused ? _text('Lanjut', 'Resume') : _text('Jeda', 'Pause')),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1246,7 +1279,7 @@ class _RunningPageState extends State<RunningPage> {
                       backgroundColor: VoltWarna.merah,
                     ),
                     icon: const Icon(Icons.stop),
-                    label: const Text('Selesai'),
+                    label: Text(_text('Selesai', 'Finish')),
                   ),
                 ),
               ],
@@ -1266,18 +1299,18 @@ class _RunningPageState extends State<RunningPage> {
     }
 
     final String routeActivityLabel = session.activityType == RunActivityType.walk
-        ? 'Berjalan'
+        ? _text('Berjalan', 'Walk')
         : session.intervalPlan != null
-            ? 'Lari interval'
-            : 'Lari';
+            ? _text('Lari interval', 'Interval run')
+            : _text('Lari', 'Run');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Hasil aktivitas'),
+        title: Text(_text('Hasil aktivitas', 'Activity summary')),
         automaticallyImplyLeading: false,
         actions: <Widget>[
           IconButton(
-            tooltip: 'Bagikan aktivitas',
+            tooltip: _text('Bagikan aktivitas', 'Share activity'),
             icon: const Icon(Icons.share_rounded),
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => RunSharePage(session: session)),
@@ -1303,33 +1336,31 @@ class _RunningPageState extends State<RunningPage> {
               const SizedBox(height: 12),
               _infoCard(
                 icon: Icons.directions_run_rounded,
-                title: 'Aktivitas dalam ruangan',
-                text: 'Jarak dicatat dari nilai yang dimasukkan saat sesi selesai. Peta dan elevasi GPS tidak tersedia untuk sesi ini.',
+                title: _text('Aktivitas dalam ruangan', 'Indoor activity'),
+                text: _text('Jarak dicatat dari nilai yang dimasukkan saat sesi selesai. Peta dan elevasi GPS tidak tersedia untuk sesi ini.', 'Distance is based on the value entered at the end of the session. GPS maps and elevation are unavailable indoors.'),
               ),
             ],
             const SizedBox(height: 12),
             _elevationStatsCard(session.elevationStats),
             const SizedBox(height: 12),
-            _metricCard(label: 'JUMLAH LANGKAH', value: session.totalSteps?.toString() ?? 'Tidak tersedia', icon: Icons.directions_walk_rounded),
+            _metricCard(label: _text('JUMLAH LANGKAH', 'TOTAL STEPS'), value: session.totalSteps?.toString() ?? _text('Tidak tersedia', 'Unavailable'), icon: Icons.directions_walk_rounded),
             const SizedBox(height: 8),
             Row(children: <Widget>[
-              Expanded(child: _metricCard(label: 'CADENCE RATA-RATA', value: session.averageCadenceSpm == null ? '--' : '${session.averageCadenceSpm!.round()} spm', icon: Icons.speed_rounded)),
+              Expanded(child: _metricCard(label: _text('CADENCE RATA-RATA', 'AVERAGE CADENCE'), value: session.averageCadenceSpm == null ? '--' : '${session.averageCadenceSpm!.round()} spm', icon: Icons.speed_rounded)),
               const SizedBox(width: 10),
-              Expanded(child: _metricCard(label: 'KALORI*', value: '${session.estimatedCalories.round()} kcal', icon: Icons.local_fire_department_outlined)),
+              Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${session.estimatedCalories.round()} kcal', icon: Icons.local_fire_department_outlined)),
             ]),
             const SizedBox(height: 12),
-            const Padding(padding: EdgeInsets.only(left: 4), child: Text('GRAFIK AKTIVITAS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+            Padding(padding: const EdgeInsets.only(left: 4), child: Text(_text('GRAFIK AKTIVITAS', 'ACTIVITY CHARTS'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
             RunActivityCharts(session: session),
             const SizedBox(height: 12),
             _hundredMeterLapsCard(session),
-            const SizedBox(height: 12),
-            _evaluationCard(session),
             const SizedBox(height: 12),
             Row(
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
-                    label: 'MOVING',
+                    label: _text('WAKTU GERAK', 'MOVING TIME'),
                     value: session.movingTimeText,
                     icon: Icons.directions_run,
                   ),
@@ -1337,7 +1368,7 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _metricCard(
-                    label: 'AVG PACE',
+                    label: _text('PACE RATA-RATA', 'AVG PACE'),
                     value: session.averagePaceText,
                     icon: Icons.speed,
                   ),
@@ -1357,7 +1388,7 @@ class _RunningPageState extends State<RunningPage> {
                     ? null
                     : () => _persistSession(session),
                 icon: const Icon(Icons.save_outlined),
-                label: const Text('COBA SIMPAN LAGI'),
+                label: Text(_text('COBA SIMPAN LAGI', 'TRY SAVING AGAIN')),
               ),
             ],
             const SizedBox(height: 20),
@@ -1390,7 +1421,7 @@ class _RunningPageState extends State<RunningPage> {
   }) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rekam aktivitas'),
+        title: Text(_text('Rekam aktivitas', 'Record activity')),
       ),
       body: Center(
         child: Padding(
@@ -1404,8 +1435,8 @@ class _RunningPageState extends State<RunningPage> {
                 color: VoltWarna.merah,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'AKTIVITAS TIDAK DAPAT DIMULAI',
+              Text(
+                _text('AKTIVITAS TIDAK DAPAT DIMULAI', 'ACTIVITY COULD NOT START'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
@@ -1416,8 +1447,8 @@ class _RunningPageState extends State<RunningPage> {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: VoltWarna.teksAbu,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               if (allowReset) ...<Widget>[
@@ -1425,7 +1456,7 @@ class _RunningPageState extends State<RunningPage> {
                 FilledButton.icon(
                   onPressed: _controller.resetRun,
                   icon: const Icon(Icons.arrow_back),
-                  label: const Text('KEMBALI'),
+                  label: Text(_text('KEMBALI', 'BACK')),
                 ),
               ],
             ],
@@ -1447,25 +1478,25 @@ class _RunningPageState extends State<RunningPage> {
       final String? enteredKm = await showDialog<String>(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('Jarak aktivitas dalam ruangan'),
+          title: Text(_text('Jarak aktivitas dalam ruangan', 'Indoor activity distance')),
           content: TextField(
             controller: distanceController,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Jarak (km)',
-              hintText: 'Contoh: 3,50',
+            decoration: InputDecoration(
+              labelText: _text('Jarak (km)', 'Distance (km)'),
+              hintText: _text('Contoh: 3,50', 'Example: 3.50'),
             ),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Lanjutkan sesi'),
+              child: Text(_text('Lanjutkan sesi', 'Continue session')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext)
                   .pop(distanceController.text.trim()),
-              child: const Text('Selesai'),
+              child: Text(_text('Selesai', 'Finish')),
             ),
           ],
         ),
@@ -1480,7 +1511,7 @@ class _RunningPageState extends State<RunningPage> {
         if (shouldResumeOnCancel && mounted) _controller.resumeRun();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Masukkan jarak 0 sampai 300 km.')),
+            SnackBar(content: Text(_text('Masukkan jarak 0 sampai 300 km.', 'Enter a distance between 0 and 300 km.'))),
           );
         }
         return;
@@ -1502,7 +1533,7 @@ class _RunningPageState extends State<RunningPage> {
         context: context,
         barrierDismissible: false,
         builder: (BuildContext dialogContext) => AlertDialog(
-          title: const Text('Aktivitas terlalu singkat'),
+          title: Text(_text('Aktivitas terlalu singkat', 'Activity is too short')),
           content: const Text(
             'Aktivitas ini terlalu singkat dan tidak akan disimpan. '
             'Tetap hentikan aktivitas?',
@@ -1510,11 +1541,11 @@ class _RunningPageState extends State<RunningPage> {
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Lanjutkan aktivitas'),
+              child: Text(_text('Lanjutkan aktivitas', 'Continue activity')),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Hentikan tanpa menyimpan'),
+              child: Text(_text('Hentikan tanpa menyimpan', 'Stop without saving')),
             ),
           ],
         ),
@@ -1530,7 +1561,7 @@ class _RunningPageState extends State<RunningPage> {
       _controller.resetRun();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Aktivitas dihentikan tanpa disimpan.')),
+        SnackBar(content: Text(_text('Aktivitas dihentikan tanpa disimpan.', 'Activity stopped without saving.'))),
       );
       final VoidCallback? keluar = widget.onExit;
       if (keluar != null) keluar();
@@ -1580,7 +1611,7 @@ class _RunningPageState extends State<RunningPage> {
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.zero,
-        color: VoltWarna.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         border: Border.all(color: VoltWarna.hijau.withValues(alpha: 0.65)),
       ),
       child: Column(
@@ -1597,7 +1628,7 @@ class _RunningPageState extends State<RunningPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
-                    Expanded(child: Text(achievement, style: const TextStyle(fontWeight: FontWeight.w700))),
+                    Expanded(child: Text(achievement, style: TextStyle(fontWeight: FontWeight.w700))),
                   ],
                 ),
               )),
@@ -1680,10 +1711,10 @@ class _RunningPageState extends State<RunningPage> {
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
         child: Column(
           children: <Widget>[
-            const Text(
-              'JARAK',
+            Text(
+              _text('JARAK', 'DISTANCE'),
               style: TextStyle(
-                color: VoltWarna.teksAbu,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.4,
               ),
@@ -1691,16 +1722,16 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 4),
             Text(
               _controller.distanceKm.toStringAsFixed(2),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 64,
                 height: 0.95,
                 fontWeight: FontWeight.w900,
               ),
             ),
-            const Text(
+            Text(
               'km',
               style: TextStyle(
-                color: VoltWarna.aksen,
+                color: Theme.of(context).colorScheme.primary,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 1.1,
               ),
@@ -1717,13 +1748,13 @@ class _RunningPageState extends State<RunningPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: VoltWarna.aksen.withOpacity(0.12),
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
                     'PACE  ${_formatPace(_controller.currentPaceSecondsPerKm)} / km',
-                    style: const TextStyle(
-                      color: VoltWarna.aksen,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w900,
                       fontSize: 14,
                     ),
@@ -1740,7 +1771,7 @@ class _RunningPageState extends State<RunningPage> {
                   ),
                   child: Text(
                     'SPEED  ${_formatCurrentSpeed(_controller.currentPaceSecondsPerKm)} km/jam',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: VoltWarna.hijau,
                       fontWeight: FontWeight.w900,
                       fontSize: 14,
@@ -1796,7 +1827,7 @@ class _RunningPageState extends State<RunningPage> {
               paused
                   ? 'Aktivitas dijeda. Lanjutkan saat siap.'
                   : 'Aktivitas sedang direkam.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1822,13 +1853,13 @@ class _RunningPageState extends State<RunningPage> {
                 Icon(
                   icon,
                   size: 18,
-                  color: VoltWarna.aksen,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: VoltWarna.teksAbu,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                     letterSpacing: 0.6,
@@ -1839,7 +1870,7 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
               ),
@@ -1864,12 +1895,12 @@ class _RunningPageState extends State<RunningPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: VoltWarna.aksen.withOpacity(0.12),
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                 borderRadius: BorderRadius.zero,
               ),
               child: Icon(
                 icon,
-                color: VoltWarna.aksen,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(width: 12),
@@ -1879,15 +1910,15 @@ class _RunningPageState extends State<RunningPage> {
                 children: <Widget>[
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     text,
-                    style: const TextStyle(
-                      color: VoltWarna.teksAbu,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       height: 1.4,
                     ),
                   ),
@@ -1911,14 +1942,14 @@ class _RunningPageState extends State<RunningPage> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(
+                Icon(
                   Icons.flag_outlined,
-                  color: VoltWarna.aksen,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
-                const Text(
-                  'KILOMETER SPLIT',
-                  style: TextStyle(
+                Text(
+                  _text('SPLIT PER KILOMETER', 'KILOMETER SPLITS'),
+                  style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.7,
                   ),
@@ -1927,10 +1958,10 @@ class _RunningPageState extends State<RunningPage> {
             ),
             const SizedBox(height: 12),
             if (splits.isEmpty)
-              const Text(
-                'Belum menyelesaikan 1 km.',
+              Text(
+                _text('Belum menyelesaikan 1 km.', 'No full kilometre split yet.'),
                 style: TextStyle(
-                  color: VoltWarna.teksAbu,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               )
             else
@@ -1944,7 +1975,7 @@ class _RunningPageState extends State<RunningPage> {
                           width: 56,
                           child: Text(
                             'KM ${split.kilometer}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -1954,8 +1985,8 @@ class _RunningPageState extends State<RunningPage> {
                             value: 1,
                             minHeight: 7,
                             backgroundColor:
-                                VoltWarna.surface,
-                            color: VoltWarna.aksen,
+                                Theme.of(context).colorScheme.surfaceContainerHighest,
+                            color: Theme.of(context).colorScheme.primary,
                             borderRadius:
                                 BorderRadius.zero,
                           ),
@@ -1963,7 +1994,7 @@ class _RunningPageState extends State<RunningPage> {
                         const SizedBox(width: 12),
                         Text(
                           split.paceText,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -1995,7 +2026,7 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 8),
             Text(
               '${session.distanceText} km',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 54,
                 fontWeight: FontWeight.w900,
                 height: 0.95,
@@ -2004,8 +2035,8 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 10),
             Text(
               session.elapsedText,
-              style: const TextStyle(
-                color: VoltWarna.teksAbu,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2064,15 +2095,15 @@ class _RunningPageState extends State<RunningPage> {
       children: <Widget>[
         Text(
           label,
-          style: const TextStyle(
-            color: VoltWarna.teksAbu,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 11,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -2101,7 +2132,7 @@ class _RunningPageState extends State<RunningPage> {
       color: complete
           ? VoltWarna.hijau.withOpacity(0.12)
           : work
-              ? VoltWarna.aksen.withOpacity(0.12)
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
               : VoltWarna.kuning.withOpacity(0.12),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -2110,14 +2141,14 @@ class _RunningPageState extends State<RunningPage> {
             Icon(
               complete ? Icons.check_circle : work ? Icons.directions_run : Icons.self_improvement,
               size: 30,
-              color: complete ? VoltWarna.hijau : work ? VoltWarna.aksen : VoltWarna.kuning,
+              color: complete ? VoltWarna.hijau : work ? Theme.of(context).colorScheme.primary : VoltWarna.kuning,
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  Text(title, style: TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 4),
                   Text(complete
                       ? 'Selesai ${plan.repetitions} ulangan. Rekaman GPS tetap berjalan sampai kamu menekan Selesai.'
@@ -2127,7 +2158,7 @@ class _RunningPageState extends State<RunningPage> {
             ),
             if (!complete)
               Text(remainingLabel,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
           ],
         ),
       ),
@@ -2147,7 +2178,7 @@ class _RunningPageState extends State<RunningPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
-              'PETA RUTE ${activityLabel.toUpperCase()}',
+              _text('PETA RUTE ${activityLabel.toUpperCase()}', '${activityLabel.toUpperCase()} ROUTE MAP'),
               style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8),
             ),
           ),
@@ -2160,11 +2191,11 @@ class _RunningPageState extends State<RunningPage> {
               showIntervalSelector: true,
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(12),
+          Padding(
+            padding: const EdgeInsets.all(12),
             child: Text(
-              'Pilih jarak split melalui menu peta. Garis berwarna menunjukkan pace, sementara rute asli tetap tersimpan lokal.',
-              style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
+              _text('Pilih jarak split melalui menu peta. Garis berwarna menunjukkan pace, sementara rute asli tetap tersimpan lokal.', 'Choose a split distance from the map menu. Colored segments show pace; the original route remains saved on this device.'),
+              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -2178,18 +2209,18 @@ class _RunningPageState extends State<RunningPage> {
       child: Column(
         children: <Widget>[
           ListTile(
-            leading: const Icon(Icons.map_outlined, color: VoltWarna.aksen),
+            leading: Icon(Icons.map_outlined, color: Theme.of(context).colorScheme.primary),
             title: Text(
-              'PETA ${_activityDisplayLabel.toUpperCase()} • LIVE',
+              _text('PETA ${_activityDisplayLabel.toUpperCase()} • LIVE', '${_activityDisplayLabel.toUpperCase()} ROUTE • LIVE'),
               style: TextStyle(fontWeight: FontWeight.w900),
             ),
             subtitle: Text(
               paused
-                  ? 'Perekaman dijeda'
-                  : 'Rute dan titik kecepatan diperbarui saat GPS masuk',
+                  ? _text('Perekaman dijeda', 'Recording paused')
+                  : _text('Rute dan titik kecepatan diperbarui saat GPS masuk', 'Route and pace points update as GPS data arrives'),
             ),
             trailing: IconButton(
-              tooltip: _liveMapExpanded ? 'Tutup peta' : 'Buka peta',
+              tooltip: _liveMapExpanded ? _text('Tutup peta', 'Close map') : _text('Buka peta', 'Open map'),
               onPressed: () => setState(() => _liveMapExpanded = !_liveMapExpanded),
               icon: Icon(
                 _liveMapExpanded ? Icons.expand_less : Icons.expand_more,
@@ -2238,7 +2269,7 @@ class _RunningPageState extends State<RunningPage> {
               const SizedBox(height: 3),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 17,
                 ),
@@ -2255,7 +2286,7 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text('ELEVASI', style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(_text('ELEVASI', 'ELEVATION'), style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             if (!stats.hasAltitudeData)
               Text(
@@ -2293,30 +2324,30 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'PACE TIAP 100 METER',
-              style: TextStyle(fontWeight: FontWeight.w700),
+            Text(
+              _text('PACE TIAP 100 METER', 'PACE EVERY 100 METRES'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Pace, kecepatan, elevasi tiap 100 m.',
-              style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu),
+            Text(
+              _text('Pace, kecepatan, elevasi tiap 100 m.', 'Pace, speed, and elevation every 100 metres.'),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
             if (laps.isEmpty)
-              const Text('Belum ada segmen 100 m yang valid.')
+              Text(_text('Belum ada segmen 100 m yang valid.', 'No valid 100 m segments yet.'))
             else
               ...laps.map((RunLap100m lap) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     child: Row(
                       children: <Widget>[
-                        SizedBox(width: 62, child: Text('${lap.distanceMeters.round()} m', style: const TextStyle(fontWeight: FontWeight.w800))),
+                        SizedBox(width: 62, child: Text('${lap.distanceMeters.round()} m', style: TextStyle(fontWeight: FontWeight.w800))),
                         Expanded(child: Text(_formatDuration(Duration(milliseconds: lap.durationMilliseconds)))),
-                        SizedBox(width: 76, child: Text(lap.speedKmh == null ? '--' : '${lap.speedKmh!.toStringAsFixed(1)} km/h', textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w900))),
+                        SizedBox(width: 76, child: Text(lap.speedKmh == null ? '--' : '${lap.speedKmh!.toStringAsFixed(1)} km/h', textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.w900))),
                         const SizedBox(width: 10),
-                        SizedBox(width: 55, child: Text(lap.paceSecondsPerKm == null ? '--' : _formatPace(lap.paceSecondsPerKm), textAlign: TextAlign.end, style: const TextStyle(color: VoltWarna.teksAbu))),
+                        SizedBox(width: 55, child: Text(lap.paceSecondsPerKm == null ? '--' : _formatPace(lap.paceSecondsPerKm), textAlign: TextAlign.end, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
                         const SizedBox(width: 6),
-                        SizedBox(width: 48, child: Text(lap.altitudeMeters == null || elevasiAwal == null ? '--' : '${lap.altitudeMeters! - elevasiAwal >= 0 ? '+' : ''}${(lap.altitudeMeters! - elevasiAwal).round()} m', textAlign: TextAlign.end, style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 11))),
+                        SizedBox(width: 48, child: Text(lap.altitudeMeters == null || elevasiAwal == null ? '--' : '${lap.altitudeMeters! - elevasiAwal >= 0 ? '+' : ''}${(lap.altitudeMeters! - elevasiAwal).round()} m', textAlign: TextAlign.end, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11))),
                       ],
                     ),
                   )),
@@ -2326,40 +2357,6 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  Widget _evaluationCard(RunSession session) {
-    final RunEvaluation evaluation = evaluateRun(session);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const Icon(Icons.insights, color: VoltWarna.aksen),
-                const SizedBox(width: 8),
-                Expanded(child: Text('EVALUASI DAN SARAN', style: const TextStyle(fontWeight: FontWeight.w900))),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('PENGAMATAN', style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            ...evaluation.observations.map((String text) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[const Text('•  '), Expanded(child: Text(text))]),
-                )),
-            const SizedBox(height: 8),
-            const Text('SARAN SESI BERIKUTNYA', style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            ...evaluation.recommendations.map((String text) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[const Icon(Icons.arrow_right, size: 18, color: VoltWarna.aksen), Expanded(child: Text(text))]),
-                )),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _summarySplitsCard(RunSession session) {
     return Card(
@@ -2368,19 +2365,19 @@ class _RunningPageState extends State<RunningPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
-              'SPLIT PER KM',
-              style: TextStyle(
+            Text(
+              _text('SPLIT PER KM', 'KILOMETRE SPLITS'),
+              style: const TextStyle(
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.8,
               ),
             ),
             const SizedBox(height: 12),
             if (session.splits.isEmpty)
-              const Text(
-                'Belum mencapai 1 km.',
+              Text(
+                _text('Belum mencapai 1 km.', 'A full kilometre has not been completed yet.'),
                 style: TextStyle(
-                  color: VoltWarna.teksAbu,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               )
             else
@@ -2394,7 +2391,7 @@ class _RunningPageState extends State<RunningPage> {
                           width: 60,
                           child: Text(
                             'KM ${split.kilometer}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -2406,14 +2403,14 @@ class _RunningPageState extends State<RunningPage> {
                                 seconds: split.durationSeconds,
                               ),
                             ),
-                            style: const TextStyle(
-                              color: VoltWarna.teksAbu,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
                         Text(
                           split.paceText,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w900,
                           ),
                         ),

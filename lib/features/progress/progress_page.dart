@@ -2,15 +2,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../services/app_language_service.dart';
+
 import '../running/models/run_session.dart';
 import '../running/services/personal_records_service.dart';
 import '../running/services/run_history_repository.dart';
 
 class ProgressPage extends StatefulWidget {
-  const ProgressPage({super.key, this.embedded = false});
+  const ProgressPage({super.key, this.embedded = false, this.belowWeeklyChart});
 
   // true: tampilkan isi kemajuan di dalam halaman Anda tanpa Scaffold/halaman baru.
   final bool embedded;
+  final Widget? belowWeeklyChart;
 
   @override
   ProgressPageState createState() => ProgressPageState();
@@ -21,6 +24,9 @@ class ProgressPageState extends State<ProgressPage> {
       RunHistoryRepository.instance.getAll();
   int _selectedWeekIndex = 11;
   _WeekChartMetric _chartMetric = _WeekChartMetric.distance;
+
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
 
   Future<void> reload() async {
     final Future<List<RunSession>> next = RunHistoryRepository.instance.getAll();
@@ -50,7 +56,7 @@ class ProgressPageState extends State<ProgressPage> {
             child: Center(
               child: FilledButton(
                 onPressed: reload,
-                child: const Text('Muat ulang'),
+                child: Text(AppLanguageService.text(context, 'Muat ulang', 'Reload')),
               ),
             ),
           );
@@ -70,37 +76,41 @@ class ProgressPageState extends State<ProgressPage> {
 
         final List<Widget> bagianKemajuan = <Widget>[
           _weeklyBars(weeks, selectedIndex),
+          if (widget.belowWeeklyChart != null) ...<Widget>[
+            const SizedBox(height: 12),
+            widget.belowWeeklyChart!,
+          ],
           const SizedBox(height: 16),
           _predictionSection(sessions),
           const SizedBox(height: 20),
-          _sectionTitle('Minggu ini'),
+          _sectionTitle(AppLanguageService.text(context, 'Aktivitas minggu ini', 'Activity this week')),
           const SizedBox(height: 10),
           Row(
             children: <Widget>[
               Expanded(
                 child: _summaryMetric(
-                  'Jarak',
+                  AppLanguageService.text(context, 'Jarak', 'Distance'),
                   '${thisWeek.distanceKm.toStringAsFixed(1)} km',
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _summaryMetric(
-                  'Waktu gerak',
+                  AppLanguageService.text(context, 'Waktu gerak', 'Moving time'),
                   _durationText(thisWeek.movingTime),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _summaryMetric(
-                  'Aktivitas',
+                  AppLanguageService.text(context, 'Aktivitas', 'Activities'),
                   thisWeek.activityCount.toString(),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 22),
-          _sectionTitle('Pencapaian'),
+          _sectionTitle(AppLanguageService.text(context, 'Pencapaian', 'Personal records')),
           const SizedBox(height: 10),
           ...PersonalRecordsService.distances.map(
             (DistanceRecordDefinition definition) => _recordTextRow(
@@ -110,28 +120,28 @@ class ProgressPageState extends State<ProgressPage> {
             ),
           ),
           const SizedBox(height: 16),
-          _sectionTitle('Pencapaian lain'),
+          _sectionTitle(AppLanguageService.text(context, 'Pencapaian lain', 'Other milestones')),
           const SizedBox(height: 10),
           _plainRecord(
-            'Lari terjauh',
+            AppLanguageService.text(context, 'Lari terjauh', 'Longest activity'),
             longest == null
                 ? '--'
                 : '${longest.distanceKm.toStringAsFixed(2)} km',
-            longest == null ? 'Belum ada data' : _dateText(longest.startedAt),
+            longest == null ? AppLanguageService.text(context, 'Belum ada data', 'No data yet') : _dateText(longest.startedAt),
           ),
           const SizedBox(height: 8),
           _plainRecord(
-            'Elevasi total terbesar',
+            AppLanguageService.text(context, 'Elevasi total terbesar', 'Greatest elevation gain'),
             mostClimb == null
                 ? '--'
                 : '+${mostClimb.elevationStats.totalAscentMeters.round()} m',
             mostClimb == null
-                ? 'Belum ada data elevasi'
+                ? AppLanguageService.text(context, 'Belum ada data elevasi', 'No elevation data')
                 : _dateText(mostClimb.startedAt),
           ),
           const SizedBox(height: 16),
           Text(
-            '${sessions.length} aktivitas tersimpan.',
+            AppLanguageService.text(context, '${sessions.length} aktivitas tersimpan.', '${sessions.length} activities saved.'),
             style: TextStyle(
               color: Theme.of(context).hintColor,
               fontSize: 12,
@@ -164,7 +174,7 @@ class ProgressPageState extends State<ProgressPage> {
     if (widget.embedded) return isiKemajuan;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Kemajuan')),
+      appBar: AppBar(title: Text(_text('Kemajuan', 'Progress'))),
       body: isiKemajuan,
     );
   }
@@ -220,7 +230,7 @@ class ProgressPageState extends State<ProgressPage> {
     final double difference = currentValue - previousValue;
     final String comparison = previous == null
         ? ''
-        : '${_formatSelisih(difference, _chartMetric)} dibanding minggu sebelumnya';
+        : '${_formatSelisih(difference, _chartMetric)} ${_text('dibanding minggu sebelumnya', 'vs previous week')}';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
@@ -231,8 +241,8 @@ class ProgressPageState extends State<ProgressPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            '12 minggu terakhir',
+          Text(
+            AppLanguageService.text(context, '12 minggu terakhir', 'Last 12 weeks'),
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
@@ -240,10 +250,10 @@ class ProgressPageState extends State<ProgressPage> {
             spacing: 6,
             runSpacing: 6,
             children: <Widget>[
-              _pilihanGrafik('Jarak', _WeekChartMetric.distance),
-              _pilihanGrafik('Elevasi', _WeekChartMetric.elevation),
-              _pilihanGrafik('Waktu', _WeekChartMetric.time),
-              _pilihanGrafik('Aktivitas', _WeekChartMetric.activities),
+              _pilihanGrafik(_text('Jarak', 'Distance'), _WeekChartMetric.distance),
+              _pilihanGrafik(_text('Elevasi', 'Elevation'), _WeekChartMetric.elevation),
+              _pilihanGrafik(_text('Waktu', 'Time'), _WeekChartMetric.time),
+              _pilihanGrafik(_text('Aktivitas', 'Activities'), _WeekChartMetric.activities),
             ],
           ),
           const SizedBox(height: 12),
@@ -262,7 +272,7 @@ class ProgressPageState extends State<ProgressPage> {
           if (_chartMetric == _WeekChartMetric.distance ||
               _chartMetric == _WeekChartMetric.elevation)
             Text(
-              '${selected.activityCount} aktivitas · ${_durationText(selected.movingTime)} waktu gerak',
+              '${selected.activityCount} ${_text('aktivitas', 'activities')} · ${_durationText(selected.movingTime)} ${_text('waktu gerak', 'moving time')}',
               style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
             ),
           if (comparison.isNotEmpty) ...<Widget>[
@@ -354,7 +364,7 @@ class ProgressPageState extends State<ProgressPage> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Pilih batang untuk melihat nilai tiap minggu.',
+            AppLanguageService.text(context, 'Pilih batang untuk melihat nilai tiap minggu.', 'Select a bar to view that week’s value.'),
             style: TextStyle(color: Theme.of(context).hintColor, fontSize: 11),
           ),
         ],
@@ -401,12 +411,12 @@ class ProgressPageState extends State<ProgressPage> {
       case _WeekChartMetric.distance:
         return '$tanda${value.toStringAsFixed(1)} km';
       case _WeekChartMetric.elevation:
-        return 'Elevasi $tanda${value.round()} m';
+        return '${_text('Elevasi', 'Elevation')} $tanda${value.round()} m';
       case _WeekChartMetric.time:
         final int menit = value.round();
         return '$tanda${_durationText(Duration(minutes: menit))}';
       case _WeekChartMetric.activities:
-        return '$tanda${value.round()} aktivitas';
+        return '$tanda${value.round()} ${_text('aktivitas', 'activities')}';
     }
   }
 
@@ -415,11 +425,11 @@ class ProgressPageState extends State<ProgressPage> {
       case _WeekChartMetric.distance:
         return '${value.toStringAsFixed(1)} km';
       case _WeekChartMetric.elevation:
-        return 'Elevasi +${value.round()} m';
+        return '${_text('Elevasi', 'Elevation')} +${value.round()} m';
       case _WeekChartMetric.time:
         return _durationText(Duration(minutes: value.round()));
       case _WeekChartMetric.activities:
-        return '${value.round()} aktivitas';
+        return '${value.round()} ${_text('aktivitas', 'activities')}';
     }
   }
 
@@ -430,7 +440,9 @@ class ProgressPageState extends State<ProgressPage> {
       case _WeekChartMetric.elevation:
         return value >= 1000 ? '${(value / 1000).toStringAsFixed(1)}k' : value.round().toString();
       case _WeekChartMetric.time:
-        return value >= 60 ? '${(value / 60).toStringAsFixed(0)}j' : value.round().toString();
+        return value >= 60
+            ? '${(value / 60).toStringAsFixed(0)}${_text('j', 'h')}'
+            : value.round().toString();
       case _WeekChartMetric.activities:
         return value.round().toString();
     }
@@ -447,8 +459,8 @@ class ProgressPageState extends State<ProgressPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Prediksi waktu lomba',
+          Text(
+            AppLanguageService.text(context, 'Prediksi waktu lomba', 'Race time estimates'),
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 10),
@@ -463,7 +475,7 @@ class ProgressPageState extends State<ProgressPage> {
                 ),
                 Text(
                   prediction.seconds == null
-                      ? 'Belum cukup data'
+                      ? AppLanguageService.text(context, 'Belum cukup data', 'Not enough data yet')
                       : '~${_formatRaceTime(prediction.seconds!)}',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
@@ -473,7 +485,7 @@ class ProgressPageState extends State<ProgressPage> {
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 7),
                 child: Text(
-                  'Perkiraan dari lari ${prediction.sourceDistanceKm!.toStringAsFixed(1)} km',
+                  AppLanguageService.text(context, 'Perkiraan dari lari ${prediction.sourceDistanceKm!.toStringAsFixed(1)} km', 'Estimated from a ${prediction.sourceDistanceKm!.toStringAsFixed(1)} km run'),
                   style: TextStyle(
                     color: Theme.of(context).hintColor,
                     fontSize: 10,
@@ -544,9 +556,13 @@ class ProgressPageState extends State<ProgressPage> {
     final int minutes = (seconds % 3600) ~/ 60;
     final int remainder = seconds % 60;
     if (hours > 0) {
-      return '${hours}j ${minutes.toString().padLeft(2, '0')}m';
+      return Localizations.localeOf(context).languageCode == 'en'
+          ? '${hours}h ${minutes.toString().padLeft(2, '0')}m'
+          : '${hours}j ${minutes.toString().padLeft(2, '0')}m';
     }
-    return '${minutes}m ${remainder.toString().padLeft(2, '0')}d';
+    return Localizations.localeOf(context).languageCode == 'en'
+        ? '${minutes}m ${remainder.toString().padLeft(2, '0')}s'
+        : '${minutes}m ${remainder.toString().padLeft(2, '0')}d';
   }
 
   Widget _sectionTitle(String title) => Text(
@@ -611,7 +627,7 @@ class ProgressPageState extends State<ProgressPage> {
           : 0;
       if (deltaPace > 0) {
         perubahan = 'Δ −${PersonalRecordsService.formatPace(deltaPace)}/km'
-            ' · ${deltaPersen.toStringAsFixed(1)}% lebih cepat';
+            ' · ${deltaPersen.toStringAsFixed(1)}% ${_text('lebih cepat', 'faster')}';
       }
     }
 
@@ -739,15 +755,20 @@ class ProgressPageState extends State<ProgressPage> {
 
   String _durationText(Duration value) {
     if (value.inHours > 0) {
-      return '${value.inHours}j ${value.inMinutes.remainder(60)}m';
+      return Localizations.localeOf(context).languageCode == 'en'
+          ? '${value.inHours}h ${value.inMinutes.remainder(60)}m'
+          : '${value.inHours}j ${value.inMinutes.remainder(60)}m';
     }
     return '${value.inMinutes}m';
   }
 
-  String _monthShort(int month) => const <String>[
-        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
-      ][month - 1];
+  String _monthShort(int month) {
+    final bool english = Localizations.localeOf(context).languageCode == 'en';
+    final List<String> names = english
+        ? <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        : <String>['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    return names[month - 1];
+  }
 }
 
 enum _WeekChartMetric { distance, elevation, time, activities }

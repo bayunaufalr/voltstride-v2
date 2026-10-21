@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 
 /// Petunjuk singkat jika aplikasi belum bisa terhubung ke Firebase.
 class FirebaseSetupPage extends StatelessWidget {
@@ -11,50 +11,54 @@ class FirebaseSetupPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Firebase belum terhubung')),
+      appBar: AppBar(title: Text(AppLanguageService.text(context, 'Firebase belum terhubung', 'Firebase is not connected'))),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: <Widget>[
-          const Text(
-            'Periksa pengaturan berikut di Firebase dan GitHub.',
-            style: TextStyle(fontSize: 16, height: 1.4),
+          Text(
+            AppLanguageService.text(context, 'Periksa pengaturan berikut di Firebase dan GitHub.', 'Check the following settings in Firebase and GitHub.'),
+            style: const TextStyle(fontSize: 16, height: 1.4),
           ),
           const SizedBox(height: 18),
           _langkah(
+            context,
             '1',
-            'ID aplikasi Android',
-            'Pastikan ID aplikasi adalah com.example.voltstride.',
+            AppLanguageService.text(context, 'ID aplikasi Android', 'Android application ID'),
+            AppLanguageService.text(context, 'Pastikan ID aplikasi adalah com.example.voltstride.', 'Make sure the application ID is com.example.voltstride.'),
           ),
           _langkah(
+            context,
             '2',
-            'Login email',
-            'Di Firebase Console, buka Authentication → Sign-in method, lalu pastikan Email/Password aktif.',
+            AppLanguageService.text(context, 'Login email', 'Email sign-in'),
+            AppLanguageService.text(context, 'Di Firebase Console, buka Authentication → Sign-in method, lalu pastikan Email/Password aktif.', 'In Firebase Console, open Authentication → Sign-in method and enable Email/Password.'),
           ),
           _langkah(
+            context,
             '3',
             'Database',
-            'Pastikan Cloud Firestore sudah dibuat dan aturan dari firestore.rules sudah diterbitkan.',
+            AppLanguageService.text(context, 'Pastikan Cloud Firestore sudah dibuat dan aturan dari firestore.rules sudah diterbitkan.', 'Make sure Cloud Firestore is created and the rules in firestore.rules have been published.'),
           ),
           _langkah(
+            context,
             '4',
             'GitHub Secrets',
-            'Periksa empat VOLTSTRIDE_FIREBASE_* secrets, lalu jalankan ulang workflow Build VoltStride APK di tab Actions.',
+            AppLanguageService.text(context, 'Periksa empat VOLTSTRIDE_FIREBASE_* secrets, lalu jalankan ulang workflow Build VoltStride APK di tab Actions.', 'Check the four VOLTSTRIDE_FIREBASE_* secrets, then rerun Build VoltStride APK in the Actions tab.'),
           ),
           const SizedBox(height: 14),
-          const Text(
-            'Setelah memperbaiki pengaturan, push perubahan dan unduh APK hasil build yang terbaru.',
-            style: TextStyle(color: VoltWarna.teksAbu, height: 1.45),
+          Text(
+            AppLanguageService.text(context, 'Setelah memperbaiki pengaturan, push perubahan dan unduh APK hasil build yang terbaru.', 'After fixing the settings, push your changes and download the latest APK build.'),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.45),
           ),
           if (detailError != null && detailError!.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 18),
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
-              title: const Text('Detail error'),
+              title: Text(AppLanguageService.text(context, 'Detail error', 'Error details')),
               children: <Widget>[
                 SelectableText(
                   detailError!,
-                  style: const TextStyle(
-                    color: VoltWarna.teksAbu,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -66,13 +70,13 @@ class FirebaseSetupPage extends StatelessWidget {
     );
   }
 
-  Widget _langkah(String nomor, String judul, String keterangan) {
+  Widget _langkah(BuildContext context, String nomor, String judul, String keterangan) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

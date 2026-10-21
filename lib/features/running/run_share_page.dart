@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 
 enum _PosterLayout { routeFocus, statsFirst, splitFocus, minimal, editorial }
@@ -51,41 +52,35 @@ class _ShareMetric {
 class _RunSharePageState extends State<RunSharePage> {
   final GlobalKey _posterKey = GlobalKey();
 
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   static const List<_ShareTheme> _themes = <_ShareTheme>[
     _ShareTheme(
       name: 'Gelap',
-      background: Color(0xFF111111),
-      card: Color(0xFF292929),
-      accent: Color(0xFFD0D0D0),
-      text: Colors.white,
-      muted: Color(0xFFB5B5B5),
+      background: Color(0xFF121B16),
+      card: Color(0xFF26342B),
+      accent: Color(0xFF9AC8AC),
+      text: Color(0xFFE7EFE8),
+      muted: Color(0xFFB1C0B5),
     ),
     _ShareTheme(
       name: 'Terang',
-      background: Color(0xFFFFFFFF),
-      card: Color(0xFFF2F2F2),
-      accent: Color(0xFF222222),
-      text: Color(0xFF111111),
-      muted: Color(0xFF666666),
+      background: Color(0xFFF3F6F3),
+      card: Color(0xFFFCFDFC),
+      accent: Color(0xFF356B54),
+      text: Color(0xFF23362B),
+      muted: Color(0xFF66776B),
     ),
     _ShareTheme(
       name: 'Abu-abu',
-      background: Color(0xFFE5E5E5),
-      card: Color(0xFFFFFFFF),
-      accent: Color(0xFF444444),
-      text: Color(0xFF111111),
-      muted: Color(0xFF666666),
+      background: Color(0xFFE9EDE9),
+      card: Color(0xFFF8FAF8),
+      accent: Color(0xFF607E6B),
+      text: Color(0xFF26352B),
+      muted: Color(0xFF69796D),
     ),
   ];
-
-  static const Map<_PosterLayout, String> _layoutNames =
-      <_PosterLayout, String>{
-    _PosterLayout.routeFocus: 'Rute utama',
-    _PosterLayout.statsFirst: 'Statistik dahulu',
-    _PosterLayout.splitFocus: 'Split kilometer',
-    _PosterLayout.minimal: 'Minimalis',
-    _PosterLayout.editorial: 'Editorial',
-  };
 
   int _selectedTheme = 0;
   _PosterLayout _layout = _PosterLayout.routeFocus;
@@ -105,7 +100,7 @@ class _RunSharePageState extends State<RunSharePage> {
   Widget build(BuildContext context) {
     final _ShareTheme theme = _themes[_selectedTheme];
     return Scaffold(
-      appBar: AppBar(title: const Text('Bagikan aktivitas')),
+      appBar: AppBar(title: Text(_text('Bagikan aktivitas', 'Share activity'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         children: <Widget>[
@@ -116,8 +111,8 @@ class _RunSharePageState extends State<RunSharePage> {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Tampilan',
+          Text(
+            _text('Tampilan', 'Appearance'),
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
           ),
           const SizedBox(height: 10),
@@ -127,7 +122,7 @@ class _RunSharePageState extends State<RunSharePage> {
             children: List<Widget>.generate(_themes.length, (int index) {
               final _ShareTheme item = _themes[index];
               return ChoiceChip(
-                label: Text(item.name),
+                label: Text(_text(item.name, item.name == 'Gelap' ? 'Dark' : item.name == 'Terang' ? 'Light' : 'Soft grey')),
                 selected: _selectedTheme == index,
                 onSelected: (_) => setState(() => _selectedTheme = index),
                 avatar: CircleAvatar(backgroundColor: item.accent, radius: 7),
@@ -135,8 +130,8 @@ class _RunSharePageState extends State<RunSharePage> {
             }),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Pilih susunan template',
+          Text(
+            _text('Pilih susunan template', 'Choose a layout'),
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
           ),
           const SizedBox(height: 10),
@@ -145,7 +140,7 @@ class _RunSharePageState extends State<RunSharePage> {
             runSpacing: 8,
             children: _PosterLayout.values.map((_PosterLayout layout) {
               return ChoiceChip(
-                label: Text(_layoutNames[layout]!),
+                label: Text(_layoutName(layout)),
                 selected: _layout == layout,
                 onSelected: (_) => setState(() {
                   _layout = layout;
@@ -155,30 +150,30 @@ class _RunSharePageState extends State<RunSharePage> {
             }).toList(growable: false),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Atur data yang ditampilkan',
+          Text(
+            _text('Atur data yang ditampilkan', 'Choose which details to show'),
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Aktifkan hanya informasi yang ingin dimasukkan ke gambar.',
-            style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+          Text(
+            _text('Aktifkan hanya informasi yang ingin dimasukkan ke gambar.', 'Select only the details you want included in the image.'),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
           ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 4,
             children: <Widget>[
-              _contentChip('Jarak', _showDistance, (bool v) => _showDistance = v),
-              _contentChip('Durasi', _showDuration, (bool v) => _showDuration = v),
+              _contentChip(_text('Jarak', 'Distance'), _showDistance, (bool v) => _showDistance = v),
+              _contentChip(_text('Durasi', 'Duration'), _showDuration, (bool v) => _showDuration = v),
               _contentChip('Pace', _showPace, (bool v) => _showPace = v),
-              _contentChip('Peta rute', _showMap, (bool v) => _showMap = v),
-              _contentChip('Elevasi', _showElevation, (bool v) => _showElevation = v),
-              _contentChip('Jumlah langkah', _showSteps, (bool v) => _showSteps = v),
+              _contentChip(_text('Peta rute', 'Route map'), _showMap, (bool v) => _showMap = v),
+              _contentChip(_text('Elevasi', 'Elevation'), _showElevation, (bool v) => _showElevation = v),
+              _contentChip(_text('Jumlah langkah', 'Steps'), _showSteps, (bool v) => _showSteps = v),
               _contentChip('Cadence', _showCadence, (bool v) => _showCadence = v),
-              _contentChip('Kalori', _showCalories, (bool v) => _showCalories = v),
-              _contentChip('Tanggal', _showDate, (bool v) => _showDate = v),
-              _contentChip('Split per km', _showSplits, (bool v) {
+              _contentChip(_text('Kalori', 'Calories'), _showCalories, (bool v) => _showCalories = v),
+              _contentChip(_text('Tanggal', 'Date'), _showDate, (bool v) => _showDate = v),
+              _contentChip(_text('Split per km', 'Kilometre splits'), _showSplits, (bool v) {
                 _showSplits = v;
                 if (v) _layout = _PosterLayout.splitFocus;
               }),
@@ -195,18 +190,33 @@ class _RunSharePageState extends State<RunSharePage> {
                   )
                 : const Icon(Icons.share_rounded),
             label: Text(
-              _sharing ? 'Menyiapkan gambar…' : 'Bagikan gambar aktivitas',
+              _sharing ? _text('Menyiapkan gambar…', 'Preparing image…') : _text('Bagikan gambar aktivitas', 'Share activity image'),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Gambar dibuat di perangkat. Tidak perlu akun atau layanan berbayar.',
+            _text('Gambar dibuat di perangkat. Tidak perlu akun atau layanan berbayar.', 'The image is created on your device. No account or paid service is needed.'),
             textAlign: TextAlign.center,
             style: TextStyle(color: theme.muted, fontSize: 11),
           ),
         ],
       ),
     );
+  }
+
+  String _layoutName(_PosterLayout layout) {
+    switch (layout) {
+      case _PosterLayout.routeFocus:
+        return _text('Rute utama', 'Route first');
+      case _PosterLayout.statsFirst:
+        return _text('Statistik dahulu', 'Stats first');
+      case _PosterLayout.splitFocus:
+        return _text('Split kilometer', 'Kilometre splits');
+      case _PosterLayout.minimal:
+        return _text('Minimalis', 'Minimal');
+      case _PosterLayout.editorial:
+        return 'Editorial';
+    }
   }
 
   Widget _contentChip(
@@ -226,7 +236,7 @@ class _RunSharePageState extends State<RunSharePage> {
     final RunElevationStats elevation = session.elevationStats;
     final List<_ShareMetric> metrics = <_ShareMetric>[];
     if (_showDuration) {
-      metrics.add(_ShareMetric('duration', 'DURASI', session.elapsedText));
+      metrics.add(_ShareMetric('duration', _text('DURASI', 'DURATION'), session.elapsedText));
     }
     if (_showPace) {
       metrics.add(_ShareMetric(
@@ -240,7 +250,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showElevation) {
       metrics.add(_ShareMetric(
         'elevation',
-        'ELEVASI +',
+        _text('ELEVASI +', 'ELEVATION +'),
         elevation.hasAltitudeData
             ? '${elevation.totalAscentMeters.round()} m'
             : '--',
@@ -249,7 +259,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showSteps) {
       metrics.add(_ShareMetric(
         'steps',
-        'LANGKAH',
+        _text('LANGKAH', 'STEPS'),
         session.totalSteps?.toString() ?? '--',
       ));
     }
@@ -265,7 +275,7 @@ class _RunSharePageState extends State<RunSharePage> {
     if (_showCalories) {
       metrics.add(_ShareMetric(
         'calories',
-        'KALORI*',
+        _text('KALORI*', 'CALORIES*'),
         '${session.estimatedCalories.round()} kcal',
       ));
     }
@@ -275,10 +285,10 @@ class _RunSharePageState extends State<RunSharePage> {
   Widget _poster(_ShareTheme theme) {
     final RunSession session = widget.session;
     final String activityLabel = session.intervalPlan != null
-        ? 'LARI INTERVAL'
+        ? _text('LARI INTERVAL', 'INTERVAL RUN')
         : session.activityType == RunActivityType.walk
-            ? 'BERJALAN'
-            : 'BERLARI';
+            ? _text('BERJALAN', 'WALK')
+            : _text('BERLARI', 'RUN');
     final double aspectRatio = _layout == _PosterLayout.minimal ? 0.76 : 0.64;
 
     return AspectRatio(
@@ -333,7 +343,7 @@ class _RunSharePageState extends State<RunSharePage> {
               Text(
                 '${session.startedAt.toLocal().day.toString().padLeft(2, '0')}/'
                 '${session.startedAt.toLocal().month.toString().padLeft(2, '0')}/'
-                '${session.startedAt.toLocal().year} • ${session.environment.label}',
+                '${session.startedAt.toLocal().year} • ${session.environment == RunEnvironment.outdoor ? _text('Luar ruangan', 'Outdoor') : _text('Dalam ruangan', 'Indoor')}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: theme.muted, fontSize: 9),
@@ -342,7 +352,7 @@ class _RunSharePageState extends State<RunSharePage> {
             if (_showCalories) ...<Widget>[
               const SizedBox(height: 3),
               Text(
-                '*Kalori merupakan perkiraan.',
+                _text('*Kalori merupakan perkiraan.', '*Calories are an estimate.'),
                 style: TextStyle(color: theme.muted, fontSize: 8),
               ),
             ],
@@ -384,7 +394,7 @@ class _RunSharePageState extends State<RunSharePage> {
           ),
         ),
         Text(
-          'KILOMETER',
+          _text('KILOMETER', 'KILOMETRES'),
           style: TextStyle(
             color: theme.muted,
             fontSize: 9,
@@ -406,7 +416,7 @@ class _RunSharePageState extends State<RunSharePage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
-              Text('WAKTU', style: TextStyle(color: theme.muted, fontSize: 8)),
+              Text(_text('WAKTU', 'TIME'), style: TextStyle(color: theme.muted, fontSize: 8)),
               Text(
                 widget.session.elapsedText,
                 style: TextStyle(
@@ -419,7 +429,7 @@ class _RunSharePageState extends State<RunSharePage> {
           ),
         if (!_showDistance && !_showDuration)
           Text(
-            'AKTIVITAS',
+            _text('AKTIVITAS', 'ACTIVITY'),
             style: TextStyle(color: theme.text, fontSize: 23, fontWeight: FontWeight.w900),
           ),
       ],
@@ -511,7 +521,7 @@ class _RunSharePageState extends State<RunSharePage> {
           Icon(Icons.bolt_rounded, color: theme.accent, size: 38),
           const SizedBox(height: 8),
           Text(
-            'SETIAP LANGKAH BERARTI',
+            _text('SETIAP LANGKAH BERARTI', 'EVERY STEP COUNTS'),
             textAlign: TextAlign.center,
             style: TextStyle(
               color: theme.text,
@@ -542,7 +552,7 @@ class _RunSharePageState extends State<RunSharePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'SPLIT PER KM',
+            _text('SPLIT PER KM', 'SPLITS PER KM'),
             style: TextStyle(
               color: theme.text,
               fontSize: 10,
@@ -619,14 +629,14 @@ class _RunSharePageState extends State<RunSharePage> {
       await SharePlus.instance.share(
         ShareParams(
           files: <XFile>[XFile(file.path, mimeType: 'image/png')],
-          title: 'Bagikan aktivitas VoltStride',
+          title: _text('Bagikan aktivitas VoltStride', 'Share VoltStride activity'),
           text: _shareText(),
         ),
       );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membagikan gambar: $error')),
+          SnackBar(content: Text(_text('Gagal membagikan gambar: $error', 'Could not share image: $error'))),
         );
       }
     } finally {
@@ -644,7 +654,7 @@ class _RunSharePageState extends State<RunSharePage> {
       details.add('Elevasi +${session.elevationStats.totalAscentMeters.round()} m');
     }
     if (_showCalories) details.add('sekitar ${session.estimatedCalories.round()} kcal');
-    return <String>['Aktivitas VoltStride', ...details].join(' • ');
+    return <String>[_text('Aktivitas VoltStride', 'VoltStride activity'), ...details].join(' • ');
   }
 }
 
@@ -668,7 +678,7 @@ class _PosterRoutePainter extends CustomPainter {
     if (valid.length < 2 || size.width <= 0 || size.height <= 0) {
       final TextPainter text = TextPainter(
         text: TextSpan(
-          text: 'Rute belum tersedia',
+          text: AppLanguageService.textForCode(AppLanguageService.localeNotifier.value.languageCode, 'Rute belum tersedia', 'Route unavailable'),
           style: TextStyle(color: color, fontSize: 12),
         ),
         textDirection: TextDirection.ltr,

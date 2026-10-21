@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart' as permissions;
+
+import '../../services/app_language_service.dart';
 
 import '../../services/lokasi_service.dart';
 import 'models/run_session.dart';
@@ -34,6 +37,8 @@ class ActivitySetupPage extends StatefulWidget {
 }
 
 class ActivitySetupPageState extends State<ActivitySetupPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
   RunEnvironment _environment = RunEnvironment.outdoor;
   _ActivityMode _mode = _ActivityMode.run;
   IntervalMeasure _intervalMeasure = IntervalMeasure.time;
@@ -70,18 +75,20 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     try {
       final bool enabled = await LokasiService.cekLayananAktif();
       if (!enabled) {
-        if (mounted) setState(() => _locationMessage = 'Aktifkan lokasi perangkat untuk melihat posisi saat ini.');
+        if (mounted) setState(() => _locationMessage = _text('Aktifkan lokasi perangkat untuk melihat posisi saat ini.', 'Turn on your device location to see your current position.'));
+        await Geolocator.openLocationSettings();
         return;
       }
       final bool permission = await LokasiService.mintaIzin();
       if (!permission) {
-        if (mounted) setState(() => _locationMessage = 'Izin lokasi diperlukan untuk aktivitas luar ruangan.');
+        if (mounted) setState(() => _locationMessage = _text('Izin lokasi diperlukan untuk aktivitas luar ruangan.', 'Location permission is required for outdoor activities.'));
+        await permissions.openAppSettings();
         return;
       }
       final Position? position = await LokasiService.ambilSatuTitik();
       if (!mounted) return;
       if (position == null || !position.latitude.isFinite || !position.longitude.isFinite) {
-        setState(() => _locationMessage = 'Posisi belum tersedia. Coba di area terbuka.');
+        setState(() => _locationMessage = _text('Posisi belum tersedia. Coba di area terbuka.', 'Your position is unavailable. Try an open area.'));
         return;
       }
       setState(() {
@@ -93,10 +100,10 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
           altitudeMeters: position.altitude.isFinite ? position.altitude : null,
           startsNewSegment: true,
         );
-        _locationMessage = 'Lokasi ditemukan • akurasi ±${position.accuracy.round()} m';
+        _locationMessage = _text('Lokasi ditemukan • akurasi ±${position.accuracy.round()} m', 'Location found • accuracy ±${position.accuracy.round()} m');
       });
     } catch (_) {
-      if (mounted) setState(() => _locationMessage = 'Tidak dapat membaca lokasi. Coba lagi.');
+      if (mounted) setState(() => _locationMessage = _text('Tidak dapat membaca lokasi. Coba lagi.', 'Unable to read location. Try again.'));
     } finally {
       if (mounted) setState(() => _loadingLocation = false);
     }
@@ -107,13 +114,13 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     final bool indoor = _environment == RunEnvironment.indoor;
     final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
-      appBar: AppBar(title: const Text('Rekam aktivitas')),
+      appBar: AppBar(title: Text(_text('Rekam aktivitas', 'Record activity'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
           children: <Widget>[
-            const Text(
-              'Pilih aktivitas',
+            Text(
+              _text('Pilih aktivitas', 'Choose an activity'),
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 18),
@@ -132,9 +139,9 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  Expanded(child: Text(_locationMessage ?? 'Peta dan posisi GPS sebelum mulai.', style: TextStyle(color: teksSekunder, fontSize: 12))),
+                  Expanded(child: Text(_locationMessage ?? _text('Peta dan posisi GPS sebelum mulai.', 'Map and GPS position before you start.'), style: TextStyle(color: teksSekunder, fontSize: 12))),
                   IconButton(
-                    tooltip: 'Perbarui lokasi',
+                    tooltip: _text('Perbarui lokasi', 'Refresh location'),
                     onPressed: _loadingLocation ? null : loadLocation,
                     icon: _loadingLocation
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
@@ -144,13 +151,13 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               ),
             ],
             const SizedBox(height: 20),
-            _sectionTitle('Lokasi aktivitas'),
+            _sectionTitle(_text('Lokasi aktivitas', 'Activity location')),
             const SizedBox(height: 10),
             Row(
               children: <Widget>[
                 Expanded(child: _choiceCard(
                   selected: _environment == RunEnvironment.outdoor,
-                  title: 'Luar ruangan',
+                  title: _text('Luar ruangan', 'Outdoor'),
                   subtitle: 'GPS',
                   onTap: () {
                     setState(() => _environment = RunEnvironment.outdoor);
@@ -160,8 +167,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 const SizedBox(width: 10),
                 Expanded(child: _choiceCard(
                   selected: _environment == RunEnvironment.indoor,
-                  title: 'Dalam ruangan',
-                  subtitle: 'Jarak manual',
+                  title: _text('Dalam ruangan', 'Indoor'),
+                  subtitle: _text('Jarak manual', 'Manual distance'),
                   onTap: () => setState(() {
                     _environment = RunEnvironment.indoor;
                     _currentLocation = null;
@@ -171,33 +178,33 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               ],
             ),
             const SizedBox(height: 20),
-            _sectionTitle('Jenis aktivitas'),
+            _sectionTitle(_text('Jenis aktivitas', 'Activity type')),
             const SizedBox(height: 10),
             _choiceCard(
               selected: _mode == _ActivityMode.run,
-              title: 'Lari biasa',
-              subtitle: 'Jarak, pace, rute, dan elevasi.',
+              title: _text('Lari biasa', 'Run'),
+              subtitle: _text('Jarak, pace, rute, dan elevasi.', 'Distance, pace, route, and elevation.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.run),
             ),
             const SizedBox(height: 9),
             _choiceCard(
               selected: _mode == _ActivityMode.interval,
-              title: 'Lari interval',
-              subtitle: 'Atur kerja dan pemulihan.',
+              title: _text('Lari interval', 'Interval run'),
+              subtitle: _text('Atur kerja dan pemulihan.', 'Set work and recovery intervals.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.interval),
             ),
             const SizedBox(height: 9),
             _choiceCard(
               selected: _mode == _ActivityMode.walk,
-              title: 'Berjalan',
-              subtitle: 'Rekam perjalanan berjalan.',
+              title: _text('Berjalan', 'Walk'),
+              subtitle: _text('Rekam perjalanan berjalan.', 'Track a walking session.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
             const SizedBox(height: 20),
-            _sectionTitle('Target aktivitas (opsional)'),
+            _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(15),
@@ -210,7 +217,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Opsional. Isi jarak dan pace target.',
+                    _text('Opsional. Isi jarak dan pace target.', 'Optional. Set a target distance and pace.'),
                     style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -226,8 +233,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Jarak target (km)',
+                          decoration: InputDecoration(
+                            labelText: _text('Jarak target (km)', 'Target distance (km)'),
                             hintText: '5,0',
                             isDense: true,
                           ),
@@ -244,8 +251,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.onSurface,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Pace target (m:ss/km)',
+                          decoration: InputDecoration(
+                            labelText: _text('Pace target (m:ss/km)', 'Target pace (m:ss/km)'),
                             hintText: '6:00',
                             isDense: true,
                           ),
@@ -268,8 +275,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text(
-                      'Pengaturan interval',
+                    Text(
+                      _text('Pengaturan interval', 'Interval settings'),
                       style: TextStyle(fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 10),
@@ -300,14 +307,14 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                           ),
                         ),
                       ),
-                      segments: const <ButtonSegment<IntervalMeasure>>[
+                      segments: <ButtonSegment<IntervalMeasure>>[
                         ButtonSegment<IntervalMeasure>(
                           value: IntervalMeasure.time,
-                          label: Text('Berdasarkan waktu'),
+                          label: Text(_text('Berdasarkan waktu', 'By time')),
                         ),
                         ButtonSegment<IntervalMeasure>(
                           value: IntervalMeasure.distance,
-                          label: Text('Berdasarkan jarak'),
+                          label: Text(_text('Berdasarkan jarak', 'By distance')),
                         ),
                       ],
                       selected: <IntervalMeasure>{_intervalMeasure},
@@ -319,43 +326,43 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                     if (_intervalMeasure == IntervalMeasure.time) ...<Widget>[
                       Row(
                         children: <Widget>[
-                          Expanded(child: _numberField('Kerja (detik)', _workSeconds)),
+                          Expanded(child: _numberField(_text('Kerja (detik)', 'Work (seconds)'), _workSeconds)),
                           const SizedBox(width: 10),
-                          Expanded(child: _numberField('Pulih (detik)', _recoverySeconds)),
+                          Expanded(child: _numberField(_text('Pulih (detik)', 'Recovery (seconds)'), _recoverySeconds)),
                         ],
                       ),
                     ] else ...<Widget>[
                       if (indoor)
                         Text(
-                          'Interval berbasis jarak membutuhkan jarak GPS selama sesi. Pilih Luar ruangan untuk memakai mode ini.',
+                          _text('Interval berbasis jarak membutuhkan jarak GPS selama sesi. Pilih Luar ruangan untuk memakai mode ini.', 'Distance-based intervals need GPS distance during the session. Select Outdoor to use this mode.'),
                           style: TextStyle(color: teksSekunder, fontSize: 12),
                         )
                       else
                         Row(
                           children: <Widget>[
-                            Expanded(child: _numberField('Kerja (meter)', _workDistance)),
+                            Expanded(child: _numberField(_text('Kerja (meter)', 'Work (meters)'), _workDistance)),
                             const SizedBox(width: 10),
-                            Expanded(child: _numberField('Pulih (meter)', _recoveryDistance)),
+                            Expanded(child: _numberField(_text('Pulih (meter)', 'Recovery (meters)'), _recoveryDistance)),
                           ],
                         ),
                     ],
                     const SizedBox(height: 10),
-                    _numberField('Jumlah ulangan', _repetitions),
+                    _numberField(_text('Jumlah ulangan', 'Repetitions'), _repetitions),
                   ],
                 ),
               ),
             ],
             if (indoor) ...<Widget>[
               const SizedBox(height: 12),
-              Text('Mode dalam ruangan tidak meminta GPS. Saat selesai, masukkan jarak dari treadmill atau alat yang digunakan.', style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4)),
+              Text(_text('Mode dalam ruangan tidak meminta GPS. Saat selesai, masukkan jarak dari treadmill atau alat yang digunakan.', 'Indoor mode does not use GPS. Enter the distance from your treadmill or equipment when you finish.'), style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4)),
             ],
             const SizedBox(height: 20),
             FilledButton(
               onPressed: _start,
-              child: const Text('Mulai aktivitas'),
+              child: Text(_text('Mulai aktivitas', 'Start activity')),
             ),
             const SizedBox(height: 8),
-            Text('Untuk GPS yang lebih akurat, mulai di area terbuka.', textAlign: TextAlign.center, style: TextStyle(color: teksSekunder, fontSize: 11, height: 1.4)),
+            Text(_text('Untuk GPS yang lebih akurat, mulai di area terbuka.', 'For better GPS accuracy, start in an open area.'), textAlign: TextAlign.center, style: TextStyle(color: teksSekunder, fontSize: 11, height: 1.4)),
           ],
         ),
       ),
@@ -377,7 +384,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           Text(
-            'Mode dalam ruangan',
+            _text('Mode dalam ruangan', 'Indoor mode'),
             style: TextStyle(
               color: teks,
               fontSize: 18,
@@ -386,7 +393,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'GPS dinonaktifkan. Waktu tetap direkam; jarak dapat dimasukkan saat selesai.',
+            _text('GPS dinonaktifkan. Waktu tetap direkam; jarak dapat dimasukkan saat selesai.', 'GPS is disabled. Time is still recorded; distance can be entered when you finish.'),
             textAlign: TextAlign.center,
             style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
           ),
@@ -488,7 +495,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     if (targetDistanceText.isNotEmpty || targetPaceText.isNotEmpty) {
       if (targetDistanceText.isEmpty || targetPaceText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Isi jarak dan pace target, atau kosongkan keduanya.')),
+          SnackBar(content: Text(_text('Isi jarak dan pace target, atau kosongkan keduanya.', 'Enter both target distance and pace, or leave both empty.'))),
         );
         return;
       }
@@ -500,7 +507,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
           targetDistanceKm > 100 ||
           targetPaceSecondsPerKm == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Jarak target harus 0,1–100 km dan pace gunakan format m:ss/km, misalnya 6:00.')),
+          SnackBar(content: Text(_text('Jarak target harus 0,1–100 km dan pace gunakan format m:ss/km, misalnya 6:00.', 'Target distance must be 0.1–100 km and pace must use m:ss/km, for example 6:00.'))),
         );
         return;
       }
@@ -511,7 +518,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       final int? repetitions = int.tryParse(_repetitions.text.trim());
       if (repetitions == null || repetitions < 1 || repetitions > 30) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Jumlah ulangan harus 1–30.')),
+          SnackBar(content: Text(_text('Jumlah ulangan harus 1–30.', 'Repetitions must be between 1 and 30.'))),
         );
         return;
       }
@@ -522,8 +529,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         if (work == null || work < 10 || work > 3600 ||
             recovery == null || recovery < 5 || recovery > 3600) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Kerja harus 10–3600 detik, pemulihan 5–3600 detik.'),
+            SnackBar(
+              content: Text(_text('Kerja harus 10–3600 detik, pemulihan 5–3600 detik.', 'Work must be 10–3600 seconds and recovery 5–3600 seconds.')),
             ),
           );
           return;
@@ -539,8 +546,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         final double? recoveryMeters = double.tryParse(_recoveryDistance.text.trim());
         if (_environment == RunEnvironment.indoor) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Interval berbasis jarak saat ini membutuhkan GPS luar ruangan.'),
+            SnackBar(
+              content: Text(_text('Interval berbasis jarak saat ini membutuhkan GPS luar ruangan.', 'Distance-based intervals require outdoor GPS.')),
             ),
           );
           return;
@@ -548,8 +555,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         if (workMeters == null || workMeters < 50 || workMeters > 20000 ||
             recoveryMeters == null || recoveryMeters < 0 || recoveryMeters > 20000) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Jarak kerja 50–20.000 m dan pemulihan 0–20.000 m.'),
+            SnackBar(
+              content: Text(_text('Jarak kerja 50–20.000 m dan pemulihan 0–20.000 m.', 'Work distance must be 50–20,000 m and recovery distance 0–20,000 m.')),
             ),
           );
           return;

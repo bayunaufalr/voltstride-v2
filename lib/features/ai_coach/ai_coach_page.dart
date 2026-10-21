@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
 import 'ai_coach_service.dart';
@@ -13,6 +14,9 @@ class AiCoachPage extends StatefulWidget {
 }
 
 class _AiCoachPageState extends State<AiCoachPage> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final AiCoachService _service = const AiCoachService();
@@ -58,6 +62,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
       final String reply = await _service.sendMessage(
         conversation: nextConversation,
         recentRuns: recentRuns,
+        languageCode: Localizations.localeOf(context).languageCode,
       );
 
       _conversation
@@ -77,7 +82,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
           _visibleMessages.add(
             _ChatBubbleData(
               role: 'error',
-              text: 'Pesan belum terkirim. $error',
+              text: _text('Pesan belum terkirim. $error', 'Message was not sent. $error'),
             ),
           );
         });
@@ -103,10 +108,10 @@ class _AiCoachPageState extends State<AiCoachPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Coach'),
+        title: Text(_text('Pelatih AI', 'AI coach')),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Percakapan baru',
+            tooltip: _text('Percakapan baru', 'New conversation'),
             onPressed: _isSending
                 ? null
                 : () {
@@ -115,9 +120,12 @@ class _AiCoachPageState extends State<AiCoachPage> {
                       _visibleMessages
                         ..clear()
                         ..add(
-                          const _ChatBubbleData(
+                          _ChatBubbleData(
                             role: 'assistant',
-                            text: 'Tanyakan pace, split, target lomba, atau latihan dari riwayat larimu.',
+                            text: _text(
+                              'Tanyakan pace, split, target lomba, atau latihan dari riwayat larimu.',
+                              'Ask about pace, splits, race goals, or training based on your running history.',
+                            ),
                           ),
                         );
                     });
@@ -136,9 +144,21 @@ class _AiCoachPageState extends State<AiCoachPage> {
                 itemCount: _visibleMessages.length + (_isSending ? 1 : 0),
                 itemBuilder: (BuildContext context, int index) {
                   if (_isSending && index == _visibleMessages.length) {
-                    return const _TypingIndicator();
+                    return _TypingIndicator(
+                      label: _text('Coach sedang berpikir...', 'The coach is thinking...'),
+                    );
                   }
-                  return _ChatBubble(message: _visibleMessages[index]);
+                  final _ChatBubbleData message =
+                      _conversation.isEmpty && index == 0
+                          ? _ChatBubbleData(
+                              role: 'assistant',
+                              text: _text(
+                                'Tanyakan pace, split, target lomba, atau latihan dari riwayat larimu.',
+                                'Ask about pace, splits, race goals, or training based on your running history.',
+                              ),
+                            )
+                          : _visibleMessages[index];
+                  return _ChatBubble(message: message);
                 },
               ),
             ),
@@ -153,9 +173,9 @@ class _AiCoachPageState extends State<AiCoachPage> {
 
   Widget _suggestionChips() {
     final List<String> suggestions = <String>[
-      'Analisis lari terakhir saya',
-      'Bantu rencanakan 10K sub-50',
-      'Bagaimana membaca split saya?',
+      _text('Analisis lari terakhir saya', 'Analyse my last run'),
+      _text('Bantu rencanakan 10K sub-50', 'Plan a 10K under 50 minutes'),
+      _text('Bagaimana membaca split saya?', 'How do I read my splits?'),
     ];
 
     return SizedBox(
@@ -190,7 +210,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
               enabled: !_isSending,
               onSubmitted: (_) => _sendMessage(),
               decoration: InputDecoration(
-                hintText: 'Tanyakan soal latihan, pace, split, atau target lomba...',
+                hintText: _text('Tanyakan tentang latihan, pace, split, atau target lomba...', 'Ask about training, pace, splits, or race goals...'),
                 filled: true,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.zero,
@@ -242,7 +262,7 @@ class _ChatBubble extends StatelessWidget {
         ? VoltWarna.aksen.withValues(alpha: 0.18)
         : isError
             ? VoltWarna.merah.withValues(alpha: 0.12)
-            : VoltWarna.kartu;
+            : Theme.of(context).colorScheme.surface;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -263,7 +283,7 @@ class _ChatBubble extends StatelessWidget {
               border: Border.all(
                 color: isError
                     ? VoltWarna.merah.withValues(alpha: 0.35)
-                    : VoltWarna.surface,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
             ),
             child: SelectableText(message.text),
@@ -275,27 +295,29 @@ class _ChatBubble extends StatelessWidget {
 }
 
 class _TypingIndicator extends StatelessWidget {
-  const _TypingIndicator();
+  const _TypingIndicator({required this.label});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Card(
           child: Padding(
-            padding: EdgeInsets.all(14),
+            padding: const EdgeInsets.all(14),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                SizedBox(
+                const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-                SizedBox(width: 10),
-                Text('Coach sedang berpikir...'),
+                const SizedBox(width: 10),
+                Text(label),
               ],
             ),
           ),

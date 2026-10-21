@@ -12,18 +12,27 @@ class AppLanguageService {
       ValueNotifier<Locale>(const Locale('id'));
 
   static Future<void> load() async {
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
-    final String saved = preferences.getString(_storageKey) ?? 'id';
-    localeNotifier.value = Locale(saved == 'en' ? 'en' : 'id');
+    try {
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+      final String saved = preferences.getString(_storageKey) ?? 'id';
+      localeNotifier.value = Locale(saved == 'en' ? 'en' : 'id');
+    } catch (_) {
+      // Preferensi bahasa yang gagal dibaca tidak boleh mencegah runApp().
+      localeNotifier.value = const Locale('id');
+    }
   }
 
   static Future<void> setLanguage(Locale locale) async {
     final String code = locale.languageCode == 'en' ? 'en' : 'id';
     localeNotifier.value = Locale(code);
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
-    await preferences.setString(_storageKey, code);
+    try {
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+      await preferences.setString(_storageKey, code);
+    } catch (_) {
+      // Bahasa langsung berganti pada sesi ini meski tidak dapat disimpan.
+    }
   }
 
   /// Terjemahan untuk bagian yang telah mendukung Bahasa Indonesia dan Inggris.

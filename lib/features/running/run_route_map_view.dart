@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'run_segment_data.dart';
 
@@ -287,21 +288,24 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     return splits.isEmpty ? null : splits.last;
   }
 
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   @override
   Widget build(BuildContext context) {
     final List<RunPoint> validRoute = _validRoute();
     if (validRoute.isEmpty) {
       return SizedBox(
         height: widget.height,
-        child: const Center(
+        child: Center(
           child: Padding(
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(Icons.gps_not_fixed, size: 38, color: VoltWarna.teksAbu),
-                SizedBox(height: 8),
-                Text('Rute akan tampil setelah beberapa titik GPS masuk.', textAlign: TextAlign.center),
+                Icon(Icons.gps_not_fixed, size: 38, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(height: 8),
+                Text(_text('Rute akan tampil setelah beberapa titik GPS masuk.', 'The route will appear after GPS records a few points.'), textAlign: TextAlign.center),
               ],
             ),
           ),
@@ -372,6 +376,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
                     if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
                     MarkerLayer(markers: markers),
                     const RichAttributionWidget(
+                      showFlutterMapAttribution: false,
                       attributions: <SourceAttribution>[
                         TextSourceAttribution('© OpenStreetMap contributors'),
                       ],
@@ -562,7 +567,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
           'Elevasi dari awal: $altitude',
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Tutup')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(AppLanguageService.text(context, 'Tutup', 'Close'))),
         ],
       ),
     );

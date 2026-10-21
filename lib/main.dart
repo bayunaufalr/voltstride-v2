@@ -206,26 +206,28 @@ class _RootShellState extends State<RootShell> {
   List<Widget> get _pages => <Widget>[
         HomeDashboardPage(
           key: _homeKey,
-          onRecord: () => _selectTab(1),
+          onRecord: () => _selectTab(2),
           onHistory: () => _openAccountSection(1),
         ),
+        RoutePlannerPage(active: _index == 1),
         ActivitySetupPage(
           key: _activityKey,
           onStart: _startActivity,
         ),
-        RoutePlannerPage(active: _index == 2),
-        AccountPage(key: _accountKey),
         MorePage(
           key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
           onOpenCoach: () => _openPage(const AiCoachPage()),
           onOpenStrength: () => _openPage(const MusclePage()),
         ),
+        AccountPage(key: _accountKey),
       ];
 
   List<NavigationDestination> _destinations(BuildContext context) {
     String text(String id, String en) =>
         AppLanguageService.text(context, id, en);
+    final Color accent = Theme.of(context).colorScheme.primary;
+    final Color onAccent = Theme.of(context).colorScheme.onPrimary;
     return <NavigationDestination>[
       NavigationDestination(
         icon: const Icon(Icons.home_outlined),
@@ -233,24 +235,42 @@ class _RootShellState extends State<RootShell> {
         label: text('Beranda', 'Home'),
       ),
       NavigationDestination(
-        icon: const Icon(Icons.add_rounded),
-        selectedIcon: const Icon(Icons.add_rounded),
-        label: text('Rekam', 'Record'),
-      ),
-      NavigationDestination(
-        icon: const Icon(Icons.route_outlined),
-        selectedIcon: const Icon(Icons.route_rounded),
+        icon: const Icon(Icons.map_outlined),
+        selectedIcon: const Icon(Icons.map_rounded),
         label: text('Rute', 'Routes'),
       ),
       NavigationDestination(
-        icon: const Icon(Icons.person_outline_rounded),
-        selectedIcon: const Icon(Icons.person_rounded),
-        label: text('Anda', 'You'),
+        icon: Container(
+          width: 42,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.add_rounded, color: onAccent, size: 27),
+        ),
+        selectedIcon: Container(
+          width: 44,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(Icons.add_rounded, color: onAccent, size: 29),
+        ),
+        label: text('Rekam', 'Record'),
       ),
       NavigationDestination(
         icon: const Icon(Icons.more_horiz_rounded),
         selectedIcon: const Icon(Icons.more_horiz_rounded),
         label: text('Lainnya', 'More'),
+      ),
+      NavigationDestination(
+        icon: const Icon(Icons.person_outline_rounded),
+        selectedIcon: const Icon(Icons.person_rounded),
+        label: text('Saya', 'Me'),
       ),
     ];
   }
@@ -262,22 +282,22 @@ class _RootShellState extends State<RootShell> {
         unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
         break;
       case 1:
-        unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
-        break;
-      case 2:
         // Perencana rute meminta lokasi ketika tab ini dibuka.
         break;
+      case 2:
+        unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
+        break;
       case 3:
-        unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
+        unawaited(_moreKey.currentState?.reload() ?? Future<void>.value());
         break;
       case 4:
-        unawaited(_moreKey.currentState?.reload() ?? Future<void>.value());
+        unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
         break;
     }
   }
 
   void _openAccountSection(int section) {
-    _selectTab(3);
+    _selectTab(4);
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       _accountKey.currentState?.openSection(section);
     });

@@ -1,7 +1,102 @@
 import 'package:flutter/material.dart';
 
 import '../models/latihan.dart';
-import '../theme/volt_theme.dart';
+import '../services/app_language_service.dart';
+
+
+bool _isEnglish(BuildContext context) =>
+    Localizations.localeOf(context).languageCode == 'en';
+
+String _categoryName(String name, bool english) {
+  if (!english) return name;
+  switch (name) {
+    case 'Lengan': return 'Arms';
+    case 'Bahu': return 'Shoulders';
+    case 'Dada': return 'Chest';
+    case 'Core': return 'Core';
+    case 'Paha': return 'Legs';
+    default: return name;
+  }
+}
+
+String _categoryDescription(KategoriOtot category, bool english) {
+  if (!english) return category.deskripsi;
+  switch (category.nama) {
+    case 'Lengan': return 'Build and define the upper and lower arms.';
+    case 'Bahu': return 'Build shoulder strength and joint stability for an upright posture.';
+    case 'Dada': return 'Strengthen the chest for pushing power and an upright running posture.';
+    case 'Core': return 'Build core stability to support efficient running form.';
+    case 'Paha': return 'Build leg strength for propulsion and endurance.';
+    default: return category.deskripsi;
+  }
+}
+
+String _exerciseName(GerakanLatihan exercise, bool english) =>
+    english ? exercise.namaInggris : exercise.nama;
+
+String _targetMuscles(GerakanLatihan exercise, bool english) => english
+    ? exercise.targetOtot.replaceAll(' dan ', ' and ')
+    : exercise.targetOtot;
+
+String _repText(GerakanLatihan exercise, bool english) {
+  if (!english) return exercise.repetisi;
+  return exercise.repetisi
+      .replaceAll(' detik', ' seconds')
+      .replaceAll('per kaki', 'per leg')
+      .replaceAll('per sisi', 'per side')
+      .replaceAll('x (', ' reps (')
+      .replaceAll(RegExp(r'x$'), ' reps');
+}
+
+String _setText(GerakanLatihan exercise, bool english) =>
+    english ? exercise.set.replaceAll('set', 'sets') : exercise.set;
+
+String _levelText(GerakanLatihan exercise, bool english) {
+  if (!english) return exercise.levelTeks;
+  switch (exercise.level) {
+    case 3: return 'Advanced';
+    case 2: return 'Intermediate';
+    default: return 'Beginner';
+  }
+}
+
+String _exerciseInstruction(GerakanLatihan exercise, bool english) {
+  if (!english) return exercise.petunjuk;
+  switch (exercise.nama) {
+    case 'Biceps Curl':
+      return 'Stand with a dumbbell in each hand. Bend your elbows to lift the weights toward your chest without swinging your body.';
+    case 'Triceps Pushdown':
+      return 'Stand at a cable machine and press the bar down until your arms are straight. Control the bar as it returns.';
+    case 'Hammer Curl':
+      return 'Hold the dumbbells with a neutral grip. Bend your elbows while keeping them close to your sides.';
+    case 'Shoulder Press':
+      return 'Sit upright and press the dumbbells overhead until your arms are nearly straight. Avoid leaning backward.';
+    case 'Lateral Raise':
+      return 'Raise the dumbbells out to the sides to shoulder height with slightly bent elbows. Avoid swinging the weights.';
+    case 'Face Pull':
+      return 'Pull the cable rope toward your face with your elbows raised. Keep the movement controlled and your shoulders stable.';
+    case 'Push Up':
+      return 'Start in a plank with your hands about shoulder-width apart. Lower your chest while keeping your body in a straight line.';
+    case 'Bench Press Dumbbell':
+      return 'Lie on a bench, lower the dumbbells beside your chest, then press them up until your arms are straight.';
+    case 'Fly Machine':
+      return 'Bring the handles together in front of your chest with slightly bent elbows, then return slowly to the starting position.';
+    case 'Plank':
+      return 'Support yourself on your forearms and keep your body in a straight line from head to heels. Keep your hips level.';
+    case 'Russian Twist':
+      return 'Sit with your knees bent and rotate your torso from side to side in a controlled motion.';
+    case 'Leg Raise':
+      return 'Hang from a pull-up bar and lift your legs toward hip height without swinging your body.';
+    case 'Squat':
+      return 'Stand with feet about shoulder-width apart. Lower your hips, then push through your feet to stand up.';
+    case 'Lunges':
+      return 'Step forward and lower your back knee toward the floor. Push through the front foot to return to standing.';
+    case 'Glute Bridge':
+      return 'Lie on your back with your knees bent and feet flat. Lift your hips until your shoulders, hips, and knees form a line.';
+    default:
+      return exercise.petunjuk;
+  }
+}
 
 /// ============================================================
 /// MUSCLE PAGE: KATALOG LATIHAN KEKUATAN
@@ -88,24 +183,24 @@ class _MusclePageState extends State<MusclePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'OTOT & STRENGTH',
+                    _isEnglish(context) ? 'STRENGTH TRAINING' : 'LATIHAN KEKUATAN',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      color: VoltWarna.teksPutih,
-                      letterSpacing: 1,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      letterSpacing: 0.6,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    'Katalog latihan kekuatan untuk melengkapi program lari',
-                    style: TextStyle(fontSize: 12, color: VoltWarna.teksAbu),
+                    AppLanguageService.text(context, 'Katalog latihan kekuatan untuk melengkapi program lari', 'A strength exercise library to complement your running plan.'),
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -176,16 +271,16 @@ class _MusclePageState extends State<MusclePage> {
           icon: const Icon(Icons.arrow_back),
           onPressed: _kembaliKeKatalog,
         ),
-        title: Text('${kategori.ikon} ${kategori.nama}'),
+        title: Text('${kategori.ikon} ${_categoryName(kategori.nama, _isEnglish(context))}'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           // Deskripsi kategori.
           Text(
-            kategori.deskripsi,
-            style: const TextStyle(
-              color: VoltWarna.teksAbu,
+            _categoryDescription(kategori, _isEnglish(context)),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 13,
               height: 1.5,
             ),
@@ -193,13 +288,13 @@ class _MusclePageState extends State<MusclePage> {
           const SizedBox(height: 20),
 
           // Header "Pilih gerakan".
-          const Text(
-            'PILIH GERAKAN',
+          Text(
+            AppLanguageService.text(context, 'PILIH GERAKAN', 'CHOOSE AN EXERCISE'),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: VoltWarna.teksRedup,
-              letterSpacing: 2,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              letterSpacing: 1.2,
             ),
           ),
           const SizedBox(height: 12),
@@ -224,7 +319,7 @@ class _MusclePageState extends State<MusclePage> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.zero,
           side: BorderSide(
-            color: terpilih ? VoltWarna.aksen : VoltWarna.border,
+            color: terpilih ? Theme.of(context).colorScheme.primary : Theme.of(context).dividerColor,
             width: terpilih ? 2 : 1,
           ),
         ),
@@ -241,11 +336,11 @@ class _MusclePageState extends State<MusclePage> {
                   children: <Widget>[
                     Expanded(
                       child: Text(
-                        gerak.nama,
-                        style: const TextStyle(
+                        _exerciseName(gerak, _isEnglish(context)),
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
-                          color: VoltWarna.teksPutih,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -253,19 +348,19 @@ class _MusclePageState extends State<MusclePage> {
                     AnimatedRotation(
                       turns: terpilih ? 0.5 : 0,
                       duration: const Duration(milliseconds: 250),
-                      child: const Icon(
+                      child: Icon(
                         Icons.expand_more,
-                        color: VoltWarna.aksen,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${gerak.targetOtot}  |  ${gerak.levelTeks}',
-                  style: const TextStyle(
+                  '${_targetMuscles(gerak, _isEnglish(context))}  |  ${_levelText(gerak, _isEnglish(context))}',
+                  style: TextStyle(
                     fontSize: 11,
-                    color: VoltWarna.teksRedup,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -273,9 +368,9 @@ class _MusclePageState extends State<MusclePage> {
                 // Chip repetisi dan set.
                 Row(
                   children: <Widget>[
-                    _ChipInfo(ikon: Icons.repeat, teks: gerak.repetisi),
+                    _ChipInfo(ikon: Icons.repeat, teks: _repText(gerak, _isEnglish(context))),
                     const SizedBox(width: 8),
-                    _ChipInfo(ikon: Icons.layers, teks: gerak.set),
+                    _ChipInfo(ikon: Icons.layers, teks: _setText(gerak, _isEnglish(context))),
                   ],
                 ),
 
@@ -331,19 +426,19 @@ class _KartuKategori extends StatelessWidget {
               Text(kategori.ikon, style: const TextStyle(fontSize: 36)),
               const SizedBox(height: 10),
               Text(
-                kategori.nama,
-                style: const TextStyle(
+                _categoryName(kategori.nama, _isEnglish(context)),
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: VoltWarna.teksPutih,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                '${kategori.gerakan.length} gerakan',
-                style: const TextStyle(
+                '${kategori.gerakan.length} ${AppLanguageService.text(context, 'gerakan', 'exercises')}',
+                style: TextStyle(
                   fontSize: 10,
-                  color: VoltWarna.teksAbu,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -369,19 +464,19 @@ class _ChipInfo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: VoltWarna.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.zero,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(ikon, size: 12, color: VoltWarna.aksen),
+          Icon(ikon, size: 12, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 5),
           Text(
             teks,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: VoltWarna.teksAbu,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -416,9 +511,9 @@ class _PlaceholderVideo extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(top: 14),
       decoration: BoxDecoration(
-        color: VoltWarna.latar,
-        borderRadius: BorderRadius.zero,
-        border: Border.all(color: VoltWarna.border),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -435,13 +530,13 @@ class _PlaceholderVideo extends StatelessWidget {
                     width: 64,
                     height: 64,
                     decoration: BoxDecoration(
-                      color: VoltWarna.aksen.withOpacity(0.15),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.play_arrow,
                       size: 36,
-                      color: VoltWarna.aksen,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ),
@@ -455,14 +550,14 @@ class _PlaceholderVideo extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: VoltWarna.latar.withOpacity(0.85),
-                      borderRadius: BorderRadius.zero,
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       gerak.durasiTeks,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: VoltWarna.teksPutih,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -478,14 +573,14 @@ class _PlaceholderVideo extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: VoltWarna.aksen,
-                      borderRadius: BorderRadius.zero,
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
-                      '${gerak.set} x ${gerak.repetisi}',
-                      style: const TextStyle(
+                      '${_setText(gerak, _isEnglish(context))} x ${_repText(gerak, _isEnglish(context))}',
+                      style: TextStyle(
                         fontSize: 10,
-                        color: VoltWarna.latar,
+                        color: Theme.of(context).colorScheme.onPrimary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -501,38 +596,38 @@ class _PlaceholderVideo extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Row(
+                Row(
                   children: <Widget>[
                     Icon(Icons.info_outline,
-                        size: 14, color: VoltWarna.aksen),
-                    SizedBox(width: 6),
+                        size: 14, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 6),
                     Text(
-                      'Cara Eksekusi',
+                      AppLanguageService.text(context, 'Cara melakukan', 'How to perform'),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: VoltWarna.aksen,
-                        letterSpacing: 1,
+                        color: Theme.of(context).colorScheme.primary,
+                        letterSpacing: 0.6,
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  gerak.petunjuk,
-                  style: const TextStyle(
+                  _exerciseInstruction(gerak, _isEnglish(context)),
+                  style: TextStyle(
                     fontSize: 12,
-                    color: VoltWarna.teksAbu,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.5,
                   ),
                 ),
                 const SizedBox(height: 10),
                 // Nama Latin sebagai referensi pencarian.
                 Text(
-                  'Referensi: ${gerak.namaInggris}',
-                  style: const TextStyle(
+                  '${AppLanguageService.text(context, 'Referensi', 'Reference')}: ${gerak.namaInggris}',
+                  style: TextStyle(
                     fontSize: 10,
-                    color: VoltWarna.teksRedup,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontStyle: FontStyle.italic,
                   ),
                 ),

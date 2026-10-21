@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 
 enum _MetricKind { elevation, pace, cadence }
@@ -45,10 +46,10 @@ class RunActivityCharts extends StatelessWidget {
       children: <Widget>[
         _InteractiveMetricChart(
           key: const ValueKey<String>('elevation-chart'),
-          title: 'Elevasi',
-          subtitle: 'Elevasi relatif • meter',
+          title: AppLanguageService.text(context, 'Elevasi', 'Elevation'),
+          subtitle: AppLanguageService.text(context, 'Elevasi relatif • meter', 'Relative elevation • metres'),
           points: elevation,
-          emptyText: 'Data elevasi belum cukup.',
+          emptyText: AppLanguageService.text(context, 'Data elevasi belum cukup.', 'Not enough elevation data yet.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFF0F0F0)
               : const Color(0xFF222222),
@@ -58,9 +59,9 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('pace-chart'),
           title: 'Pace',
-          subtitle: 'Menit per kilometer',
+          subtitle: AppLanguageService.text(context, 'Menit per kilometer', 'Minutes per kilometre'),
           points: pace,
-          emptyText: 'Belum ada split 100 m yang lengkap.',
+          emptyText: AppLanguageService.text(context, 'Belum ada split 100 m yang lengkap.', 'No complete 100 m splits yet.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFBDBDBD)
               : const Color(0xFF555555),
@@ -71,9 +72,9 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
           title: 'Cadence',
-          subtitle: 'Langkah per menit',
+          subtitle: AppLanguageService.text(context, 'Langkah per menit', 'Steps per minute'),
           points: cadence,
-          emptyText: 'Cadence belum tersedia.',
+          emptyText: AppLanguageService.text(context, 'Cadence belum tersedia.', 'Cadence is not available yet.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFF858585)
               : const Color(0xFF888888),
@@ -157,6 +158,9 @@ class _InteractiveMetricChart extends StatefulWidget {
 }
 
 class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   static const double _plotLeft = 54;
   static const double _plotRightInset = 12;
 
@@ -223,11 +227,11 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
   String _metricName() {
     switch (widget.kind) {
       case _MetricKind.pace:
-        return 'Pace pada jarak ini';
+        return _text('Pace pada jarak ini', 'Pace at this distance');
       case _MetricKind.elevation:
-        return 'Elevasi relatif';
+        return _text('Elevasi relatif', 'Relative elevation');
       case _MetricKind.cadence:
-        return 'Cadence pada jarak ini';
+        return _text('Cadence pada jarak ini', 'Cadence at this distance');
     }
   }
 
@@ -237,11 +241,11 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
     final double high = values.reduce((double a, double b) => a > b ? a : b);
     switch (widget.kind) {
       case _MetricKind.pace:
-        return 'Rentang ${_valueText(low)} – ${_valueText(high)}';
+        return '${_text('Range', 'Range')} ${_valueText(low)} – ${_valueText(high)}';
       case _MetricKind.elevation:
-        return 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}';
+        return '${_text('Terendah', 'Lowest')} ${_valueText(low)} • ${_text('tertinggi', 'highest')} ${_valueText(high)}';
       case _MetricKind.cadence:
-        return 'Rentang ${low.round()}–${high.round()} spm';
+        return '${_text('Rentang', 'Range')} ${low.round()}–${high.round()} spm';
     }
   }
 
@@ -283,9 +287,9 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
             const SizedBox(height: 4),
             Text(
               widget.subtitle,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: VoltWarna.teksAbu,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
@@ -294,8 +298,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                 padding: const EdgeInsets.symmetric(vertical: 22),
                 child: Text(
                   widget.emptyText,
-                  style: const TextStyle(
-                    color: VoltWarna.teksAbu,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -303,9 +307,9 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
             else ...<Widget>[
               Text(
                 _rangeText(points),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: VoltWarna.teksAbu,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 4),
@@ -372,8 +376,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                           ),
                           Text(
                             _metricName(),
-                            style: const TextStyle(
-                              color: VoltWarna.teksAbu,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               fontSize: 10,
                             ),
                           ),
@@ -392,10 +396,13 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                 ),
               ),
               const SizedBox(height: 5),
-              const Text(
-                'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.',
+              Text(
+                _text(
+                  'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.',
+                  'Tap or drag the chart to inspect values at specific distances.',
+                ),
                 style: TextStyle(
-                  color: VoltWarna.teksAbu,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 10,
                 ),
               ),
