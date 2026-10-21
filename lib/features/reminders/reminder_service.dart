@@ -226,7 +226,7 @@ class ReminderService {
               _notificationTitle(reminder),
               _notificationBody(reminder),
               nextDate,
-              _details(reminder),
+              _details(reminder, useCustomSound: false),
               payload: 'voltstride-reminder-${reminder.id}',
               androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
               matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
@@ -252,7 +252,10 @@ class ReminderService {
   static Future<void> delete(TrainingReminder reminder) async {
     // Penghapusan lokal tidak bergantung pada plugin notifikasi yang mungkin
     // sedang bermasalah. Jadwal dihapus dahulu, kemudian alarm lama dibatalkan.
-    final List<TrainingReminder> updated = await getAll();
+    final List<TrainingReminder> updated = List<TrainingReminder>.of(
+      await getAll(),
+      growable: true,
+    );
     updated.removeWhere((TrainingReminder item) => item.id == reminder.id);
     await _write(updated);
 
@@ -288,25 +291,41 @@ class ReminderService {
     await initialize();
     final List<TrainingReminder> saved = await getAll();
     for (final TrainingReminder reminder in saved) {
-      try {
-        for (final int day in reminder.weekdays.toSet()) {
+      for (final int day in reminder.weekdays.toSet()) {
+        final int notificationId = _notificationId(reminder.id, day);
+        final timezone.TZDateTime nextDate = _nextDate(
+          weekday: day,
+          hour: reminder.hour,
+          minute: reminder.minute,
+        );
+        try {
           await _plugin.zonedSchedule(
-            _notificationId(reminder.id, day),
+            notificationId,
             _notificationTitle(reminder),
             _notificationBody(reminder),
-            _nextDate(
-              weekday: day,
-              hour: reminder.hour,
-              minute: reminder.minute,
-            ),
+            nextDate,
             _details(reminder),
             payload: 'voltstride-reminder-${reminder.id}',
             androidScheduleMode: _scheduleMode(reminder),
             matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
           );
+        } catch (_) {
+          if (reminder.style != ReminderStyle.notificationAndAlarm) continue;
+          try {
+            await _plugin.zonedSchedule(
+              notificationId,
+              _notificationTitle(reminder),
+              _notificationBody(reminder),
+              nextDate,
+              _details(reminder, useCustomSound: false),
+              payload: 'voltstride-reminder-${reminder.id}',
+              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+              matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+            );
+          } catch (_) {
+            // Satu alarm bermasalah tidak boleh membatalkan pemulihan jadwal lain.
+          }
         }
-      } catch (_) {
-        // Satu jadwal yang tidak bisa dipasang tidak membatalkan jadwal lain.
       }
     }
   }
@@ -439,11 +458,20 @@ class ReminderService {
     );
   }
 
-  static NotificationDetails _details(TrainingReminder reminder) {
+  static NotificationDetails _details(
+    TrainingReminder reminder, {
+    bool useCustomSound = true,
+  }) {
     final bool withAlarm =
         reminder.style == ReminderStyle.notificationAndAlarm;
+    final bool customSoundEnabled = withAlarm && useCustomSound;
+    final String channelId = !withAlarm
+        ? 'voltstride_notice_v2'
+        : customSoundEnabled
+            ? 'voltstride_alarm_v2_${reminder.sound}'
+            : 'voltstride_alarm_fallback_v2';
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      withAlarm ? 'voltstride_alarm_${reminder.sound}' : 'voltstride_notice',
+      channelId,
       withAlarm ? 'Alarm latihan' : 'Pengingat latihan',
       channelDescription: withAlarm
           ? 'Pengingat latihan dengan suara pilihan pengguna.'
@@ -451,7 +479,7 @@ class ReminderService {
       importance: withAlarm ? Importance.max : Importance.defaultImportance,
       priority: withAlarm ? Priority.max : Priority.defaultPriority,
       playSound: true,
-      sound: withAlarm
+      sound: customSoundEnabled
           ? RawResourceAndroidNotificationSound(_soundResource(reminder.sound))
           : null,
       audioAttributesUsage:

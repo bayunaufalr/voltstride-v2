@@ -477,6 +477,7 @@ class RunSession {
   final int? totalSteps;
   final double? averageCadenceSpm;
   final double? maxCadenceSpm;
+  final int? averageHeartRateBpm;
   final List<RunCadenceSample> cadenceSamples;
 
   const RunSession({
@@ -499,8 +500,33 @@ class RunSession {
     this.totalSteps,
     this.averageCadenceSpm,
     this.maxCadenceSpm,
+    this.averageHeartRateBpm,
     this.cadenceSamples = const <RunCadenceSample>[],
   });
+
+  RunSession copyWith({int? averageHeartRateBpm}) => RunSession(
+        startedAt: startedAt,
+        finishedAt: finishedAt,
+        distanceMeters: distanceMeters,
+        elapsed: elapsed,
+        movingTime: movingTime,
+        averagePaceSecondsPerKm: averagePaceSecondsPerKm,
+        currentPaceSecondsPerKm: currentPaceSecondsPerKm,
+        gpsAccuracyMeters: gpsAccuracyMeters,
+        acceptedPoints: acceptedPoints,
+        rejectedPoints: rejectedPoints,
+        route: route,
+        splits: splits,
+        hundredMeterLaps: hundredMeterLaps,
+        intervalPlan: intervalPlan,
+        activityType: activityType,
+        environment: environment,
+        totalSteps: totalSteps,
+        averageCadenceSpm: averageCadenceSpm,
+        maxCadenceSpm: maxCadenceSpm,
+        averageHeartRateBpm: averageHeartRateBpm ?? this.averageHeartRateBpm,
+        cadenceSamples: cadenceSamples,
+      );
 
   String get displayLabel =>
       intervalPlan == null ? activityType.label : 'Lari interval';
@@ -560,6 +586,7 @@ class RunSession {
         'totalSteps': totalSteps,
         'averageCadenceSpm': averageCadenceSpm,
         'maxCadenceSpm': maxCadenceSpm,
+        'averageHeartRateBpm': averageHeartRateBpm,
         'cadenceSamples': cadenceSamples
             .map((RunCadenceSample sample) => sample.toJson())
             .toList(growable: false),
@@ -655,6 +682,7 @@ class RunSession {
       totalSteps: (metrics['totalSteps'] as num?)?.toInt(),
       averageCadenceSpm: (metrics['averageCadenceSpm'] as num?)?.toDouble(),
       maxCadenceSpm: (metrics['maxCadenceSpm'] as num?)?.toDouble(),
+      averageHeartRateBpm: (metrics['averageHeartRateBpm'] as num?)?.toInt(),
       cadenceSamples: cadenceJson
           .map((dynamic item) => RunCadenceSample.fromJson(
                 Map<String, dynamic>.from(item as Map),

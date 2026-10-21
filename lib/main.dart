@@ -312,6 +312,7 @@ class _RootShellState extends State<RootShell> {
           initialIntervalPlan: config.intervalPlan,
           targetDistanceKm: config.targetDistanceKm,
           targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
+          paceNotificationsEnabled: config.paceNotificationsEnabled,
           autoStart: true,
           onExit: () => Navigator.of(routeContext).pop(),
         ),

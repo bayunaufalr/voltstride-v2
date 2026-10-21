@@ -16,6 +16,8 @@ import 'run_route_map_view.dart';
 import 'services/personal_records_service.dart';
 import 'run_activity_charts.dart';
 import 'run_share_page.dart';
+import 'services/heart_rate_service.dart';
+import 'services/running_notification_service.dart';
 
 /// Perekaman aktivitas dan ringkasan sesi pengguna.
 class RunningPage extends StatefulWidget {
@@ -26,6 +28,7 @@ class RunningPage extends StatefulWidget {
     this.initialIntervalPlan,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
+    this.paceNotificationsEnabled = false,
     this.autoStart = false,
     this.onExit,
   });
@@ -35,6 +38,7 @@ class RunningPage extends StatefulWidget {
   final IntervalRunPlan? initialIntervalPlan;
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
+  final bool paceNotificationsEnabled;
   final bool autoStart;
   final VoidCallback? onExit;
 
@@ -78,6 +82,11 @@ class _RunningPageState extends State<RunningPage> {
   int _stepsThisActivity = 0;
   double _maxCadenceSpm = 0;
   final List<RunCadenceSample> _cadenceSamples = <RunCadenceSample>[];
+  final List<int> _heartRateSamples = <int>[];
+  StreamSubscription<int>? _heartRateSubscription;
+  int? _latestHeartRateBpm;
+  int _lastPacerMinute = 0;
+  RunSession? _completedSessionOverride;
 
   @override
   void initState() {
@@ -85,6 +94,20 @@ class _RunningPageState extends State<RunningPage> {
     _controller = RunningController();
     _lastObservedStatus = _controller.status;
     _controller.addListener(_onControllerChanged);
+    _heartRateSubscription = HeartRateService.instance.heartRateStream.listen(
+      (int bpm) {
+        if (!mounted) return;
+        _latestHeartRateBpm = bpm;
+        if (_controller.status == RunStatus.running ||
+            _controller.status == RunStatus.paused) {
+          _heartRateSamples.add(bpm);
+        }
+        _liveMetricsRevision.value++;
+      },
+      onError: (Object _) {
+        // Sensor HR opsional; perekaman GPS tidak bergantung padanya.
+      },
+    );
     if (widget.initialIntervalPlan != null) {
       final IntervalRunPlan plan = widget.initialIntervalPlan!;
       _intervalModeSelected = true;
@@ -104,6 +127,7 @@ class _RunningPageState extends State<RunningPage> {
   void dispose() {
     _controller.removeListener(_onControllerChanged);
     unawaited(_stepSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_heartRateSubscription?.cancel() ?? Future<void>.value());
     _mapRefreshTimer?.cancel();
     _liveMetricsRevision.dispose();
     _liveMapRoute.dispose();
@@ -119,6 +143,18 @@ class _RunningPageState extends State<RunningPage> {
     final RunStatus currentStatus = _controller.status;
     final bool statusChanged = currentStatus != _lastObservedStatus;
     _lastObservedStatus = currentStatus;
+
+    if (currentStatus == RunStatus.paused) {
+      _lastPacerMinute = _controller.elapsed.inMinutes;
+    } else if (currentStatus == RunStatus.running &&
+        widget.paceNotificationsEnabled &&
+        widget.targetPaceSecondsPerKm != null) {
+      final int minute = _controller.elapsed.inMinutes;
+      if (minute > 0 && minute > _lastPacerMinute) {
+        _lastPacerMinute = minute;
+        unawaited(_sendPacerUpdate(minute));
+      }
+    }
 
     final IntervalRunPlan? plan = _activeIntervalPlan;
     if (plan != null && currentStatus == RunStatus.running) {
@@ -290,6 +326,9 @@ class _RunningPageState extends State<RunningPage> {
     }
 
     setState(() => _isStarting = true);
+    _heartRateSamples.clear();
+    _lastPacerMinute = 0;
+    _completedSessionOverride = null;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         try {
@@ -366,7 +405,7 @@ class _RunningPageState extends State<RunningPage> {
         return _buildLiveRun(paused: true);
       case RunStatus.finished:
         return _buildSummary(
-          _controller.lastFinishedSession,
+          _completedSessionOverride ?? _controller.lastFinishedSession,
         );
       case RunStatus.error:
         return _buildError();
@@ -760,6 +799,24 @@ class _RunningPageState extends State<RunningPage> {
                               _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
                             ],
                           ),
+                          if (_latestHeartRateBpm != null) ...<Widget>[
+                            const SizedBox(height: 8),
+                            Row(
+                              children: <Widget>[
+                                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 17),
+                                const SizedBox(width: 7),
+                                Text(
+                                  _text('DETAK JANTUNG', 'HEART RATE'),
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${_latestHeartRateBpm!} bpm',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           Row(
                             children: <Widget>[
@@ -1224,6 +1281,16 @@ class _RunningPageState extends State<RunningPage> {
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
+                    label: _text('DETAK JANTUNG', 'HEART RATE'),
+                    value: _latestHeartRateBpm == null
+                        ? _text('Belum tersedia', 'Unavailable')
+                        : '${_latestHeartRateBpm!} bpm',
+                    icon: Icons.favorite_outline_rounded,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _metricCard(
                     label: 'GPS',
                     value: _formatAccuracy(_controller.gpsAccuracyMeters),
                     icon: Icons.gps_fixed,
@@ -1344,6 +1411,14 @@ class _RunningPageState extends State<RunningPage> {
             _elevationStatsCard(session.elevationStats),
             const SizedBox(height: 12),
             _metricCard(label: _text('JUMLAH LANGKAH', 'TOTAL STEPS'), value: session.totalSteps?.toString() ?? _text('Tidak tersedia', 'Unavailable'), icon: Icons.directions_walk_rounded),
+            const SizedBox(height: 8),
+            _metricCard(
+              label: _text('DETAK JANTUNG RATA-RATA', 'AVERAGE HEART RATE'),
+              value: session.averageHeartRateBpm == null
+                  ? _text('Tidak tersedia', 'Not recorded')
+                  : '${session.averageHeartRateBpm} bpm',
+              icon: Icons.favorite_outline_rounded,
+            ),
             const SizedBox(height: 8),
             Row(children: <Widget>[
               Expanded(child: _metricCard(label: _text('CADENCE RATA-RATA', 'AVERAGE CADENCE'), value: session.averageCadenceSpm == null ? '--' : '${session.averageCadenceSpm!.round()} spm', icon: Icons.speed_rounded)),
@@ -1592,18 +1667,124 @@ class _RunningPageState extends State<RunningPage> {
       return;
     }
 
+    final int? sensorAverageHeartRate = _heartRateSamples.isEmpty
+        ? null
+        : (_heartRateSamples.reduce((int a, int b) => a + b) /
+                _heartRateSamples.length)
+            .round();
+    final int? averageHeartRateBpm = await _askAverageHeartRateBpm(
+      initialBpm: sensorAverageHeartRate,
+    );
+    if (!mounted) return;
+    final RunSession sessionWithHeartRate = session.copyWith(
+      averageHeartRateBpm: averageHeartRateBpm,
+    );
+    _completedSessionOverride = sessionWithHeartRate;
+    setState(() {});
+
     try {
       final List<RunSession> previous =
           await RunHistoryRepository.instance.getAll();
       final List<String> achievements =
-          PersonalRecordsService.achievementsFor(session, previous);
+          PersonalRecordsService.achievementsFor(sessionWithHeartRate, previous);
       if (mounted) {
         setState(() => _personalRecordAchievements = achievements);
       }
     } catch (_) {
       // Sesi tetap disimpan bila pembacaan riwayat lama gagal.
     }
-    await _persistSession(session, alreadySaving: true);
+    await _persistSession(sessionWithHeartRate, alreadySaving: true);
+  }
+
+  Future<int?> _askAverageHeartRateBpm({int? initialBpm}) async {
+    final TextEditingController controller = TextEditingController(
+      text: initialBpm?.toString() ?? '',
+    );
+    final int? result = await showDialog<int?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Detak jantung rata-rata', 'Average heart rate')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              initialBpm == null
+                  ? _text(
+                      'Masukkan nilai rata-rata HR dari jam/smart band jika tersedia. Bagian ini boleh dilewati.',
+                      'Enter the average HR shown by your watch or band, if available. You can skip this field.',
+                    )
+                  : _text(
+                      'Nilai awal dihitung dari sampel sensor Bluetooth. Anda dapat mengoreksinya.',
+                      'The initial value is calculated from Bluetooth sensor samples. You can edit it.',
+                    ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+              ],
+              decoration: InputDecoration(
+                labelText: _text('Rata-rata HR (bpm)', 'Average HR (bpm)'),
+                hintText: '60–220',
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(initialBpm),
+            child: Text(_text('Lewati', 'Skip')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final String raw = controller.text.trim();
+              if (raw.isEmpty) {
+                Navigator.of(dialogContext).pop(initialBpm);
+                return;
+              }
+              final int? bpm = int.tryParse(raw);
+              if (bpm == null || bpm < 30 || bpm > 240) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _text(
+                        'Masukkan nilai HR antara 30 dan 240 bpm.',
+                        'Enter an HR value between 30 and 240 bpm.',
+                      ),
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.of(dialogContext).pop(bpm);
+            },
+            child: Text(_text('Simpan', 'Save')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _sendPacerUpdate(int elapsedMinutes) async {
+    final double? target = widget.targetPaceSecondsPerKm;
+    if (target == null) return;
+    try {
+      await RunningNotificationService.showPacerUpdate(
+        targetPaceSecondsPerKm: target,
+        currentPaceSecondsPerKm: _controller.currentPaceSecondsPerKm ??
+            _controller.averagePaceSecondsPerKm,
+        elapsedMinutes: elapsedMinutes,
+      );
+    } catch (_) {
+      // Notifikasi pacer opsional; sensor GPS dan stopwatch tetap berjalan.
+    }
   }
 
   Widget _personalRecordCard() {
@@ -1668,6 +1849,7 @@ class _RunningPageState extends State<RunningPage> {
     if (_isSavingSession) return;
     setState(() {
       _saveError = null;
+      _completedSessionOverride = null;
       _activeIntervalPlan = null;
       _lastIntervalPhaseKey = null;
     });

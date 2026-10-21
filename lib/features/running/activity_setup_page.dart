@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart' as permissions;
 import '../../services/app_language_service.dart';
 
 import '../../services/lokasi_service.dart';
+import 'services/heart_rate_service.dart';
 import 'models/run_session.dart';
 import 'run_route_map_view.dart';
 
@@ -15,6 +16,7 @@ class ActivityStartConfig {
   final IntervalRunPlan? intervalPlan;
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
+  final bool paceNotificationsEnabled;
 
   const ActivityStartConfig({
     required this.activityType,
@@ -22,6 +24,7 @@ class ActivityStartConfig {
     required this.intervalPlan,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
+    this.paceNotificationsEnabled = false,
   });
 }
 
@@ -53,6 +56,15 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   final TextEditingController _recoveryDistance = TextEditingController(text: '200');
   final TextEditingController _targetDistanceKm = TextEditingController();
   final TextEditingController _targetPace = TextEditingController();
+  bool _paceNotificationsEnabled = false;
+  bool _searchingHeartRate = false;
+  String? _heartRateDeviceName;
+
+  @override
+  void initState() {
+    super.initState();
+    _heartRateDeviceName = HeartRateService.instance.connectedDeviceName.value;
+  }
 
   @override
   void dispose() {
@@ -260,8 +272,53 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _paceNotificationsEnabled,
+                    onChanged: (bool value) => setState(
+                      () => _paceNotificationsEnabled = value,
+                    ),
+                    title: Text(_text('Pacer setiap menit', 'Minute-by-minute pacer')),
+                    subtitle: Text(
+                      _text(
+                        'Notifikasi pace target muncul setiap menit selama aktivitas berjalan. Isi jarak dan pace target untuk memakai fitur ini.',
+                        'Get a pace-target notification every minute while tracking. Enter both a target distance and pace to use this feature.',
+                      ),
+                      style: TextStyle(color: teksSekunder, fontSize: 12),
+                    ),
+                  ),
                 ],
               ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _searchingHeartRate ? null : _toggleHeartRateDevice,
+              icon: _searchingHeartRate
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      HeartRateService.instance.isConnected
+                          ? Icons.bluetooth_connected_rounded
+                          : Icons.favorite_border_rounded,
+                    ),
+              label: Text(
+                _searchingHeartRate
+                    ? _text('Mencari perangkat HR...', 'Scanning for HR devices...')
+                    : HeartRateService.instance.isConnected
+                        ? _text('Putuskan ${_heartRateDeviceName ?? 'sensor HR'}', 'Disconnect ${_heartRateDeviceName ?? 'HR sensor'}')
+                        : _text('Sambungkan sensor HR Bluetooth', 'Connect a Bluetooth HR sensor'),
+              ),
+            ),
+            Text(
+              _text(
+                'Mendukung sensor Bluetooth yang menyediakan layanan Heart Rate standar. Sebagian jam pintar perlu menyalakan fitur siaran detak jantung.',
+                'Supports Bluetooth sensors exposing the standard Heart Rate service. Some smartwatches require heart-rate broadcast to be enabled.',
+              ),
+              style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.35),
             ),
             if (_mode == _ActivityMode.interval) ...<Widget>[
               const SizedBox(height: 12),
@@ -487,6 +544,89 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     return totalSeconds.toDouble();
   }
 
+  Future<void> _toggleHeartRateDevice() async {
+    final HeartRateService service = HeartRateService.instance;
+    if (service.isConnected) {
+      await service.disconnect();
+      if (mounted) {
+        setState(() => _heartRateDeviceName = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Sensor HR terputus.', 'HR sensor disconnected.'))),
+        );
+      }
+      return;
+    }
+
+    setState(() => _searchingHeartRate = true);
+    try {
+      final List<HeartRateDevice> devices = await service.scanForDevices();
+      if (!mounted) return;
+      if (devices.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text(
+                'Sensor tidak ditemukan. Pastikan sensor aktif dan menyiarkan Heart Rate Bluetooth.',
+                'No sensor found. Make sure it is on and advertising Bluetooth Heart Rate.',
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+
+      final HeartRateDevice? selected = await showModalBottomSheet<HeartRateDevice>(
+        context: context,
+        showDragHandle: true,
+        builder: (BuildContext sheetContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(16),
+            children: <Widget>[
+              Text(
+                _text('Pilih sensor detak jantung', 'Choose a heart-rate sensor'),
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              ...devices.map(
+                (HeartRateDevice device) => ListTile(
+                  leading: const Icon(Icons.bluetooth_rounded),
+                  title: Text(device.name),
+                  subtitle: Text('Signal ${device.rssi} dBm'),
+                  onTap: () => Navigator.of(sheetContext).pop(device),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+
+      await service.connect(selected);
+      if (!mounted) return;
+      setState(() => _heartRateDeviceName = selected.name);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text('Terhubung ke ${selected.name}.', 'Connected to ${selected.name}.'),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _text('Sensor HR gagal disambungkan: $error', 'Could not connect to the HR sensor: $error'),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _searchingHeartRate = false);
+    }
+  }
+
   void _start() {
     double? targetDistanceKm;
     double? targetPaceSecondsPerKm;
@@ -511,6 +651,20 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         );
         return;
       }
+    }
+
+    if (_paceNotificationsEnabled && targetPaceSecondsPerKm == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              'Isi jarak dan pace target untuk mengaktifkan pacer.',
+              'Enter a target distance and pace to enable the pacer.',
+            ),
+          ),
+        ),
+      );
+      return;
     }
 
     IntervalRunPlan? plan;
@@ -577,6 +731,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       intervalPlan: plan,
       targetDistanceKm: targetDistanceKm,
       targetPaceSecondsPerKm: targetPaceSecondsPerKm,
+      paceNotificationsEnabled: _paceNotificationsEnabled,
     ));
   }
 

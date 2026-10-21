@@ -5,6 +5,7 @@ import '../../services/app_language_service.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
 import 'ai_coach_service.dart';
+import 'training_data_export_service.dart';
 
 class AiCoachPage extends StatefulWidget {
   const AiCoachPage({super.key});
@@ -94,6 +95,33 @@ class _AiCoachPageState extends State<AiCoachPage> {
     }
   }
 
+  Future<void> _exportTrainingData() async {
+    try {
+      final int count =
+          await TrainingDataExportService.shareAllSessions();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              'Ekspor berisi $count sesi latihan. Pilih ChatGPT atau aplikasi AI lain pada menu berbagi.',
+              'Export contains $count training sessions. Choose ChatGPT or another AI app in the share sheet.',
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text('Ekspor data gagal: $error', 'Training data export failed: $error'),
+          ),
+        ),
+      );
+    }
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -111,6 +139,11 @@ class _AiCoachPageState extends State<AiCoachPage> {
       appBar: AppBar(
         title: Text(_text('Pelatih AI', 'AI coach')),
         actions: <Widget>[
+          IconButton(
+            tooltip: _text('Ekspor data latihan untuk AI', 'Export training data for AI'),
+            onPressed: _isSending ? null : _exportTrainingData,
+            icon: const Icon(Icons.file_upload_outlined),
+          ),
           IconButton(
             tooltip: _text('Percakapan baru', 'New conversation'),
             onPressed: _isSending
