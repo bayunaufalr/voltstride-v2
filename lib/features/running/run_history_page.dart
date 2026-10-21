@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'services/run_history_repository.dart';
@@ -100,6 +99,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
       if (selected == null || !mounted) return;
 
       final Uint8List bytes = await selected.readAsBytes();
+      if (!mounted) return;
       final String contents = utf8.decode(bytes);
 
       final bool? confirmed = await showDialog<bool>(

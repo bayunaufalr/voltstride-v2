@@ -217,10 +217,10 @@ class ProfileTrainingSummary extends StatelessWidget {
                           ),
                           validator: (String? value) {
                             if (value == null || value.trim().isEmpty) {
-                              return AppLanguageService.text(dialogContext, 'Bio wajib diisi.', 'Bio is required.') as String;
+                              return AppLanguageService.text(dialogContext, 'Bio wajib diisi.', 'Bio is required.');
                             }
                             if (value.trim().length < 3) {
-                              return AppLanguageService.text(dialogContext, 'Bio terlalu singkat.', 'Bio is too short.') as String;
+                              return AppLanguageService.text(dialogContext, 'Bio terlalu singkat.', 'Bio is too short.');
                             }
                             return null;
                           },

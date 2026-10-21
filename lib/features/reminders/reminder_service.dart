@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -179,10 +178,25 @@ class ReminderService {
   }
 
   static Future<void> save(TrainingReminder reminder) async {
-    await initialize();
+    // Simpan jadwal lokal lebih dahulu supaya jadwal tidak hilang dari aplikasi
+    // hanya karena Android gagal memasang salah satu notifikasi.
     final List<TrainingReminder> existing = await getAll();
+    final List<TrainingReminder> updated = <TrainingReminder>[
+      ...existing.where((TrainingReminder item) => item.id != reminder.id),
+      reminder,
+    ]..sort((TrainingReminder a, TrainingReminder b) => a.hour != b.hour
+        ? a.hour.compareTo(b.hour)
+        : a.minute.compareTo(b.minute));
+
+    await _write(updated);
+
+    // Penyimpanan jadwal tidak bergantung pada keberhasilan inisialisasi plugin.
+    // Dengan begitu, jadwal tetap dapat dilihat dan dihapus bila plugin Android
+    // gagal disiapkan; detail kegagalannya akan ditampilkan ke pengguna.
+    await initialize();
     await _cancelReminderNotifications(reminder.id);
 
+    final List<String> failures = <String>[];
     for (final int day in reminder.weekdays.toSet()) {
       final int notificationId = _notificationId(reminder.id, day);
       final timezone.TZDateTime nextDate = _nextDate(
@@ -190,33 +204,65 @@ class ReminderService {
         hour: reminder.hour,
         minute: reminder.minute,
       );
-      await _plugin.zonedSchedule(
-        notificationId,
-        _notificationTitle(reminder),
-        _notificationBody(reminder),
-        nextDate,
-        _details(reminder),
-        payload: 'voltstride-reminder-${reminder.id}',
-        androidScheduleMode: _scheduleMode(reminder),
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
+
+      try {
+        await _plugin.zonedSchedule(
+          notificationId,
+          _notificationTitle(reminder),
+          _notificationBody(reminder),
+          nextDate,
+          _details(reminder),
+          payload: 'voltstride-reminder-${reminder.id}',
+          androidScheduleMode: _scheduleMode(reminder),
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        );
+      } catch (error) {
+        // Jika alarm tepat ditolak oleh versi/varian Android, coba jadwalkan
+        // ulang sebagai alarm inexact. Suara alarm tetap mengikuti pilihan.
+        if (reminder.style == ReminderStyle.notificationAndAlarm) {
+          try {
+            await _plugin.zonedSchedule(
+              notificationId,
+              _notificationTitle(reminder),
+              _notificationBody(reminder),
+              nextDate,
+              _details(reminder),
+              payload: 'voltstride-reminder-${reminder.id}',
+              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+              matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+            );
+            continue;
+          } catch (fallbackError) {
+            failures.add('Hari $day: $fallbackError (awal: $error)');
+          }
+        } else {
+          failures.add('Hari $day: $error');
+        }
+      }
     }
 
-    final List<TrainingReminder> updated = <TrainingReminder>[
-      ...existing.where((TrainingReminder item) => item.id != reminder.id),
-      reminder,
-    ]..sort((TrainingReminder a, TrainingReminder b) => a.hour != b.hour
-        ? a.hour.compareTo(b.hour)
-        : a.minute.compareTo(b.minute));
-    await _write(updated);
+    if (failures.isNotEmpty) {
+      throw StateError(
+        'Jadwal disimpan, tetapi notifikasi gagal dipasang: '
+        '${failures.join('; ')}',
+      );
+    }
   }
 
   static Future<void> delete(TrainingReminder reminder) async {
-    await initialize();
-    await _cancelReminderNotifications(reminder.id);
+    // Penghapusan lokal tidak bergantung pada plugin notifikasi yang mungkin
+    // sedang bermasalah. Jadwal dihapus dahulu, kemudian alarm lama dibatalkan.
     final List<TrainingReminder> updated = await getAll();
     updated.removeWhere((TrainingReminder item) => item.id == reminder.id);
     await _write(updated);
+
+    try {
+      await initialize();
+      await _cancelReminderNotifications(reminder.id);
+    } catch (_) {
+      // Data jadwal sudah terhapus. Jika Android menolak pembatalan alarm lama,
+      // jangan kembalikan jadwal yang sudah dihapus ke daftar aplikasi.
+    }
   }
 
   static Future<void> setOccurrenceCompleted({
@@ -456,7 +502,12 @@ class ReminderService {
 
   static Future<void> _cancelReminderNotifications(int reminderId) async {
     for (int day = DateTime.monday; day <= DateTime.sunday; day++) {
-      await _plugin.cancel(_notificationId(reminderId, day));
+      try {
+        await _plugin.cancel(_notificationId(reminderId, day));
+      } catch (_) {
+        // Penghapusan lokal tetap berhasil jika Android tidak bisa membatalkan
+        // salah satu notifikasi yang sebelumnya sudah terdaftar.
+      }
     }
   }
 

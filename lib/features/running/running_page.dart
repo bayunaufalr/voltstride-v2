@@ -1748,7 +1748,7 @@ class _RunningPageState extends State<RunningPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
@@ -1766,7 +1766,7 @@ class _RunningPageState extends State<RunningPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: VoltWarna.hijau.withOpacity(0.12),
+                    color: VoltWarna.hijau.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
@@ -1806,13 +1806,13 @@ class _RunningPageState extends State<RunningPage> {
       ),
       decoration: BoxDecoration(
         color: paused
-            ? VoltWarna.kuning.withOpacity(0.12)
-            : VoltWarna.hijau.withOpacity(0.12),
+            ? VoltWarna.kuning.withValues(alpha: 0.12)
+            : VoltWarna.hijau.withValues(alpha: 0.12),
         borderRadius: BorderRadius.zero,
         border: Border.all(
           color: paused
-              ? VoltWarna.kuning.withOpacity(0.4)
-              : VoltWarna.hijau.withOpacity(0.4),
+              ? VoltWarna.kuning.withValues(alpha: 0.4)
+              : VoltWarna.hijau.withValues(alpha: 0.4),
         ),
       ),
       child: Row(
@@ -1895,7 +1895,7 @@ class _RunningPageState extends State<RunningPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.zero,
               ),
               child: Icon(
@@ -2130,10 +2130,10 @@ class _RunningPageState extends State<RunningPage> {
         : '${(phase.distanceRemainingMeters ?? 0).round()} m';
     return Card(
       color: complete
-          ? VoltWarna.hijau.withOpacity(0.12)
+          ? VoltWarna.hijau.withValues(alpha: 0.12)
           : work
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
-              : VoltWarna.kuning.withOpacity(0.12),
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
+              : VoltWarna.kuning.withValues(alpha: 0.12),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(

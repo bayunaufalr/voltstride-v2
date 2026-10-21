@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'run_route_map_view.dart';

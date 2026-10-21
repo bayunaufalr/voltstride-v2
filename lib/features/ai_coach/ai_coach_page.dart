@@ -45,6 +45,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
     final String text = (suggestedText ?? _inputController.text).trim();
     if (text.isEmpty) return;
 
+    final String languageCode = Localizations.localeOf(context).languageCode;
     _inputController.clear();
     final List<AiCoachMessage> nextConversation = <AiCoachMessage>[
       ..._conversation,
@@ -62,7 +63,7 @@ class _AiCoachPageState extends State<AiCoachPage> {
       final String reply = await _service.sendMessage(
         conversation: nextConversation,
         recentRuns: recentRuns,
-        languageCode: Localizations.localeOf(context).languageCode,
+        languageCode: languageCode,
       );
 
       _conversation

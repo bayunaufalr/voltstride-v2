@@ -287,7 +287,7 @@ class _TrackerPageState extends State<TrackerPage> {
     });
 
     // Getaran saat mulai merekam.
-    HapticFeedback.mediumImpact();
+    unawaited(HapticFeedback.mediumImpact());
   }
 
   /// Menghentikan perekaman GPS.
@@ -307,7 +307,7 @@ class _TrackerPageState extends State<TrackerPage> {
     });
 
     // Getaran selesai.
-    HapticFeedback.mediumImpact();
+    unawaited(HapticFeedback.mediumImpact());
   }
 
   // ------------------------------------------------------------
@@ -334,7 +334,7 @@ class _TrackerPageState extends State<TrackerPage> {
         _simulator.status != StatusSimulasi.selesai) {
       _simulator.lanjut();
       setState(() {});
-      HapticFeedback.mediumImpact();
+      unawaited(HapticFeedback.mediumImpact());
       return;
     }
 
@@ -353,7 +353,7 @@ class _TrackerPageState extends State<TrackerPage> {
       },
     );
 
-    HapticFeedback.mediumImpact();
+    unawaited(HapticFeedback.mediumImpact());
   }
 
   // ------------------------------------------------------------
@@ -527,9 +527,7 @@ class _TrackerPageState extends State<TrackerPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          error == null
-              ? 'Activity berhasil dikirim ke Strava.'
-              : error,
+          error ?? 'Activity berhasil dikirim ke Strava.',
         ),
         backgroundColor: error == null ? VoltWarna.hijau : VoltWarna.merah,
       ),
@@ -724,21 +722,21 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Target Pace',
                     nilai: _fmtPace(p.targetPaceAdaptifDetik),
                     satuan: '/km',
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Skor Fitness',
                     nilai: p.skorKebugaran.toStringAsFixed(0),
                     satuan: '/100',
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Est. Finish',
                     nilai: _fmtDurasi(p.estimasiDurasiDetik),
                     satuan: '',
@@ -751,11 +749,11 @@ class _TrackerPageState extends State<TrackerPage> {
             const SizedBox(height: 12),
 
             // Detail zona.
-            _BarisDetail('Zona Tempo', p.zonaTempo.rentangTeks),
-            _BarisDetail('HR Max', '${p.hrMaxEstimasi} BPM'),
-            _BarisDetail('Skor Kebugaran', '${p.skorKebugaran.toStringAsFixed(1)} / 100'),
-            _BarisDetail('Selisih vs Target', '${p.selisihVsTarget} detik'),
-            _BarisDetail('Peta Zona', p.petaZona.ringkasan),
+            _barisDetail('Zona Tempo', p.zonaTempo.rentangTeks),
+            _barisDetail('HR Max', '${p.hrMaxEstimasi} BPM'),
+            _barisDetail('Skor Kebugaran', '${p.skorKebugaran.toStringAsFixed(1)} / 100'),
+            _barisDetail('Selisih vs Target', '${p.selisihVsTarget} detik'),
+            _barisDetail('Peta Zona', p.petaZona.ringkasan),
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 12),
@@ -804,7 +802,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: _gpsAktif
-                        ? VoltWarna.hijau.withOpacity(0.2)
+                        ? VoltWarna.hijau.withValues(alpha: 0.2)
                         : VoltWarna.surface,
                     borderRadius: BorderRadius.zero,
                   ),
@@ -852,21 +850,21 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Waktu',
                     nilai: _fmtDurasi(_swGps.elapsed.inSeconds),
                     satuan: '',
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Pace',
                     nilai: pace == null ? '--' : _fmtPace(pace.round()),
                     satuan: '/km',
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Kecepatan',
                     nilai: _pelacak.kecepatanRataRataKmh.toStringAsFixed(1),
                     satuan: 'km/h',
@@ -878,7 +876,7 @@ class _TrackerPageState extends State<TrackerPage> {
 
             // Panel akurasi GPS. Ini yang membedakan versi yang
             // memakai filter Kalman dari yang tidak.
-            _PanelAkurasiGps(pelacak: _pelacak),
+            _panelAkurasiGps(pelacak: _pelacak),
             const SizedBox(height: 16),
 
             // Pesan error bila ada.
@@ -887,7 +885,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: VoltWarna.merah.withOpacity(0.15),
+                  color: VoltWarna.merah.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Text(
@@ -937,7 +935,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: _warnaFase.withOpacity(0.15),
+                  color: _warnaFase.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Row(
@@ -962,14 +960,14 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Jarak',
                     nilai: _simulator.jarakTotalKm.toStringAsFixed(2),
                     satuan: 'KM',
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Pace',
                     nilai: _simulator.paceKmBerjalan == null
                         ? '--'
@@ -978,7 +976,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   ),
                 ),
                 Expanded(
-                  child: _StatistikBox(
+                  child: _statistikBox(
                     label: 'Fase',
                     nilai: _simulator.labelFase,
                     satuan: '',
@@ -1089,7 +1087,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: VoltWarna.violet.withOpacity(0.2),
+                    color: VoltWarna.violet.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
@@ -1326,7 +1324,7 @@ class _TrackerPageState extends State<TrackerPage> {
   }
 
   /// Widget statistik kecil: label besar di atas, nilai di bawah.
-  Widget _StatistikBox({
+  Widget _statistikBox({
     required String label,
     required String nilai,
     required String satuan,
@@ -1371,7 +1369,7 @@ class _TrackerPageState extends State<TrackerPage> {
   }
 
   /// Baris detail label: nilai.
-  Widget _BarisDetail(String label, String nilai) {
+  Widget _barisDetail(String label, String nilai) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1404,7 +1402,7 @@ class _TrackerPageState extends State<TrackerPage> {
   /// Widget ini menunjukkan data yang hanya bisa ada kalau
   /// pemrosesan GPS memakai filter: jumlah titik diterima, ditolak,
   /// dan rasio penerimaan.
-  Widget _PanelAkurasiGps({required PelacakLari pelacak}) {
+  Widget _panelAkurasiGps({required PelacakLari pelacak}) {
     final int total = pelacak.titikDiterima + pelacak.titikDitolak;
     final double rasio = total == 0 ? 0 : pelacak.titikDiterima / total * 100;
 

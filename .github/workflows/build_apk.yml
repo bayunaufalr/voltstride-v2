@@ -100,7 +100,7 @@ jobs:
         run: flutter pub get
 
       - name: Check code quality
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze --fatal-infos
 
       - name: Run automated tests
         run: flutter test

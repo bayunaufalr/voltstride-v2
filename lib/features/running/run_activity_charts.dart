@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 

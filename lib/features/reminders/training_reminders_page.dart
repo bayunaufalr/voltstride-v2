@@ -28,7 +28,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   @override
   void initState() {
     super.initState();
-    _categoryController = TabController(length: 2, vsync: this);
+    _categoryController = TabController(length: 3, vsync: this);
     _loadReminders();
   }
 
@@ -78,12 +78,15 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_text('Jadwal disimpan.', 'Schedule saved.'))),
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      // Muat ulang karena jadwal lokal mungkin sudah tersimpan meski salah satu
+      // alarm Android gagal dipasang.
+      await _loadReminders();
+      if (!mounted) return;
+
       bool openedSettings = false;
       try {
-        // Jika penyimpanan jadwal ditolak Android, arahkan pengguna langsung
-        // ke setelan izin yang belum aktif, bukan hanya menampilkan pesan umum.
         if (!await ReminderService.areNotificationsEnabled()) {
           await ReminderService.openAppSettings();
           openedSettings = true;
@@ -93,21 +96,20 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           openedSettings = true;
         }
       } catch (_) {
-        // Pesan di bawah tetap menjelaskan langkah berikutnya jika setelan
-        // perangkat tidak dapat dibuka secara otomatis.
+        // Tampilkan detail kegagalan jika Android tidak bisa membuka Setelan.
       }
       if (!mounted) return;
       final String message = openedSettings
           ? _text(
-              'Setelan izin sudah dibuka. Aktifkan izin yang diminta, kembali ke VoltStride, lalu simpan jadwal lagi.',
-              'Permission settings were opened. Enable the requested permission, return to VoltStride, and save the schedule again.',
+              'Setelan izin dibuka. Aktifkan izin yang diminta, lalu kembali ke VoltStride.',
+              'Permission settings were opened. Enable the requested permission, then return to VoltStride.',
             )
           : _text(
-              'Jadwal gagal disimpan. Periksa koneksi dan izin notifikasi/alarm, lalu coba lagi.',
-              'The schedule could not be saved. Check your connection and notification/alarm permissions, then try again.',
+              'Jadwal tersimpan di daftar, tetapi notifikasi gagal dijadwalkan. Detail: $error',
+              'The schedule is saved in the list, but Android could not schedule its notifications. Details: $error',
             );
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 8)),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -115,19 +117,156 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   }
 
   Future<void> _deleteReminder(TrainingReminder reminder) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Hapus jadwal?', 'Delete schedule?')),
+        content: Text(
+          _text(
+            'Jadwal rutin ini akan dihapus dari VoltStride.',
+            'This recurring schedule will be removed from VoltStride.',
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_text('Batal', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_text('Hapus', 'Delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       await ReminderService.delete(reminder);
       await _loadReminders();
-    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('Jadwal berhasil dihapus.', 'Schedule deleted.')),
+        ),
+      );
+    } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _text('Jadwal belum berhasil dihapus.', 'Could not delete schedule.'),
+            _text('Jadwal gagal dihapus: $error', 'Could not delete schedule: $error'),
           ),
         ),
       );
     }
+  }
+
+  Widget _savedScheduleList() {
+    if (_reminders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _text('Belum ada jadwal rutin. Tekan Tambah jadwal untuk membuatnya.',
+                'No recurring schedules yet. Tap Add schedule to create one.'),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadReminders,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 92),
+        itemCount: _reminders.length,
+        separatorBuilder: (BuildContext context, int index) =>
+            const SizedBox(height: 8),
+        itemBuilder: (BuildContext context, int index) =>
+            _savedScheduleCard(_reminders[index]),
+      ),
+    );
+  }
+
+  Widget _savedScheduleCard(TrainingReminder reminder) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final List<int> days = reminder.weekdays.toList()..sort();
+    final String daysText = days.map(_shortWeekdayName).join(' · ');
+    final bool alarm = reminder.style == ReminderStyle.notificationAndAlarm;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.secondaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              alarm ? Icons.alarm_rounded : Icons.notifications_active_outlined,
+              color: colors.onSecondaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  _activityName(reminder.activity),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 3),
+                Text('$daysText  ·  ${reminder.timeText}'),
+                const SizedBox(height: 3),
+                Text(
+                  '${reminder.durationMinutes} ${_text('menit', 'min')} · '
+                  '${alarm ? _text('Alarm', 'Alarm') : _text('Notifikasi', 'Notification')}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: _text('Ubah jadwal', 'Edit schedule'),
+            onPressed: _saving ? null : () => _editReminder(reminder: reminder),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: _text('Hapus jadwal', 'Delete schedule'),
+            onPressed: _saving ? null : () => _deleteReminder(reminder),
+            icon: Icon(Icons.delete_outline, color: colors.error),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortWeekdayName(int weekday) {
+    const List<String> indonesia = <String>[
+      'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min',
+    ];
+    const List<String> english = <String>[
+      'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+    ];
+    return Localizations.localeOf(context).languageCode == 'en'
+        ? english[weekday - 1]
+        : indonesia[weekday - 1];
   }
 
   Future<void> _setCompleted(
@@ -404,7 +543,8 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: <Widget>[
-            Tab(text: _text('Belum selesai', 'Upcoming')),
+            Tab(text: _text('Jadwal rutin', 'Schedules')),
+            Tab(text: _text('Minggu ini', 'This week')),
             Tab(text: _text('Selesai', 'Completed')),
           ],
         ),
@@ -413,6 +553,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           child: TabBarView(
             controller: _categoryController,
             children: <Widget>[
+              _savedScheduleList(),
               _categoryList(completed: false),
               _categoryList(completed: true),
             ],
@@ -816,29 +957,36 @@ class _ReminderEditorState extends State<_ReminderEditor>
               ),
               const SizedBox(height: 14),
               Text(_text(context, 'Pengingat', 'Reminder')),
-              RadioListTile<ReminderStyle>(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(_text(context, 'Notifikasi saja', 'Notification only')),
-                value: ReminderStyle.notificationOnly,
+              RadioGroup<ReminderStyle>(
                 groupValue: _style,
-                onChanged: _checkingPermission
-                    ? null
-                    : (ReminderStyle? value) {
-                        if (value != null) setState(() => _style = value);
-                      },
-              ),
-              RadioListTile<ReminderStyle>(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(_text(context, 'Notifikasi dan alarm', 'Notification and alarm')),
-                value: ReminderStyle.notificationAndAlarm,
-                groupValue: _style,
-                onChanged: _checkingPermission
-                    ? null
-                    : (ReminderStyle? value) {
-                        if (value != null) setState(() => _style = value);
-                      },
+                onChanged: (ReminderStyle? value) {
+                  if (!_checkingPermission && value != null) {
+                    setState(() => _style = value);
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    RadioListTile<ReminderStyle>(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      enabled: !_checkingPermission,
+                      title: Text(
+                        _text(context, 'Notifikasi saja', 'Notification only'),
+                      ),
+                      value: ReminderStyle.notificationOnly,
+                    ),
+                    RadioListTile<ReminderStyle>(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      enabled: !_checkingPermission,
+                      title: Text(
+                        _text(context, 'Notifikasi dan alarm', 'Notification and alarm'),
+                      ),
+                      value: ReminderStyle.notificationAndAlarm,
+                    ),
+                  ],
+                ),
               ),
               if (_style == ReminderStyle.notificationAndAlarm) ...<Widget>[
                 DropdownButtonFormField<String>(

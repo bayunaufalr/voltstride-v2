@@ -38,38 +38,38 @@ Future<void> saveVoltThemeMode(ThemeMode mode) async {
 class VoltWarna {
   VoltWarna._();
 
-  static const Color latar = Color(0xFFF3F6F3);
-  static const Color kartu = Color(0xFFFCFDFC);
-  static const Color surface = Color(0xFFE8EEE9);
-  static const Color border = Color(0xFFD5DED7);
+  static const Color latar = Color(0xFFF5F5F1);
+  static const Color kartu = Color(0xFFFFFEFC);
+  static const Color surface = Color(0xFFEBEEE9);
+  static const Color border = Color(0xFFD9DED8);
 
-  static const Color aksen = Color(0xFF356B54);
-  static const Color aksenGelap = Color(0xFF244A39);
-  static const Color hijau = Color(0xFF446B52);
-  static const Color kuning = Color(0xFF80602B);
-  static const Color merah = Color(0xFF924F4B);
-  static const Color violet = Color(0xFF665781);
+  static const Color aksen = Color(0xFF477561);
+  static const Color aksenGelap = Color(0xFF315444);
+  static const Color hijau = Color(0xFF587B63);
+  static const Color kuning = Color(0xFF806A3D);
+  static const Color merah = Color(0xFF99564F);
+  static const Color violet = Color(0xFF716681);
 
   static const Color teksPutih = Color(0xFFFFFFFF);
-  static const Color teksAbu = Color(0xFF66776B);
-  static const Color teksRedup = Color(0xFF87958B);
+  static const Color teksAbu = Color(0xFF69746D);
+  static const Color teksRedup = Color(0xFF8C968F);
 }
 
 ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
   final bool gelap = brightness == Brightness.dark;
   // Hijau-abu yang lembut mengurangi silau tanpa membuat teks kehilangan kontras.
-  final Color latar = gelap ? const Color(0xFF121B16) : const Color(0xFFF3F6F3);
-  final Color permukaan = gelap ? const Color(0xFF1B2720) : const Color(0xFFFCFDFC);
+  final Color latar = gelap ? const Color(0xFF171B19) : const Color(0xFFF5F5F1);
+  final Color permukaan = gelap ? const Color(0xFF202622) : const Color(0xFFFFFEFC);
   final Color permukaanLembut =
-      gelap ? const Color(0xFF26342B) : const Color(0xFFE8EEE9);
-  final Color teks = gelap ? const Color(0xFFE7EFE8) : const Color(0xFF23362B);
+      gelap ? const Color(0xFF29312C) : const Color(0xFFEBEEE9);
+  final Color teks = gelap ? const Color(0xFFE9EDE9) : const Color(0xFF29342D);
   final Color teksSekunder =
-      gelap ? const Color(0xFFB1C0B5) : const Color(0xFF66776B);
-  final Color garis = gelap ? const Color(0xFF3A4B40) : const Color(0xFFD5DED7);
-  final Color primer = gelap ? const Color(0xFF9AC8AC) : const Color(0xFF356B54);
-  final Color teksDiPrimer = gelap ? const Color(0xFF17251C) : Colors.white;
+      gelap ? const Color(0xFFB3BDB6) : const Color(0xFF69746D);
+  final Color garis = gelap ? const Color(0xFF3C4640) : const Color(0xFFD9DED8);
+  final Color primer = gelap ? const Color(0xFFA5C7B2) : const Color(0xFF477561);
+  final Color teksDiPrimer = gelap ? const Color(0xFF202A23) : Colors.white;
   final Color permukaanTinggi =
-      gelap ? const Color(0xFF2C3B31) : const Color(0xFFE5ECE6);
+      gelap ? const Color(0xFF303833) : const Color(0xFFE5ECE6);
 
   final ColorScheme skema = ColorScheme.fromSeed(
     seedColor: primer,
@@ -77,8 +77,8 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
   ).copyWith(
     primary: primer,
     onPrimary: teksDiPrimer,
-    secondary: gelap ? const Color(0xFFB5C9BA) : const Color(0xFF607E6B),
-    onSecondary: gelap ? const Color(0xFF18251C) : Colors.white,
+    secondary: gelap ? const Color(0xFFB5C9BA) : const Color(0xFF647E6C),
+    onSecondary: gelap ? const Color(0xFF222B25) : Colors.white,
     surface: permukaan,
     onSurface: teks,
     surfaceContainerHighest: permukaanTinggi,
@@ -166,7 +166,7 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: latar,
-      indicatorColor: gelap ? const Color(0xFF2B4033) : const Color(0xFFDCE9DF),
+      indicatorColor: gelap ? const Color(0xFF2B4033) : const Color(0xFFE0E8E0),
       indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       surfaceTintColor: Colors.transparent,
       elevation: 0,
@@ -188,9 +188,9 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
     ),
     dividerTheme: DividerThemeData(color: garis, thickness: 1),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: gelap ? const Color(0xFFE7EFE8) : const Color(0xFF244A39),
+      backgroundColor: gelap ? const Color(0xFFE9EDE9) : const Color(0xFF315444),
       contentTextStyle: TextStyle(
-        color: gelap ? const Color(0xFF20352A) : Colors.white,
+        color: gelap ? const Color(0xFF27362D) : Colors.white,
       ),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
