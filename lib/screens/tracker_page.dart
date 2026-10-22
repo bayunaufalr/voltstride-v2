@@ -804,7 +804,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: _gpsAktif
-                        ? VoltWarna.hijau.withOpacity(0.2)
+                        ? VoltWarna.hijau.withValues(alpha: 0.2)
                         : VoltWarna.surface,
                     borderRadius: BorderRadius.zero,
                   ),
@@ -887,7 +887,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: VoltWarna.merah.withOpacity(0.15),
+                  color: VoltWarna.merah.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Text(
@@ -937,7 +937,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: _warnaFase.withOpacity(0.15),
+                  color: _warnaFase.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Row(
@@ -1089,7 +1089,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: VoltWarna.violet.withOpacity(0.2),
+                    color: VoltWarna.violet.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(

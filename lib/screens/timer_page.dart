@@ -380,7 +380,7 @@ class _TimerPageState extends State<TimerPage> {
                         ? [
                             BoxShadow(
                               color: _warnaFase
-                                  .withOpacity(0.35),
+                                  .withValues(alpha: 0.35),
                               blurRadius: 40,
                               spreadRadius: 4,
                             ),
@@ -434,7 +434,7 @@ class _TimerPageState extends State<TimerPage> {
                               minHeight: 6,
                               backgroundColor:
                                   VoltWarna.latar
-                                      .withOpacity(0.15),
+                                      .withValues(alpha: 0.15),
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(
                                 _warnaFase ==

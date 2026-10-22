@@ -21,21 +21,25 @@ class FirebaseSetupPage extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _langkah(
+            context,
             '1',
             'ID aplikasi Android',
             'Pastikan ID aplikasi adalah com.example.voltstride.',
           ),
           _langkah(
+            context,
             '2',
             'Login email',
             'Di Firebase Console, buka Authentication → Sign-in method, lalu pastikan Email/Password aktif.',
           ),
           _langkah(
+            context,
             '3',
             'Database',
             'Pastikan Cloud Firestore sudah dibuat dan aturan dari firestore.rules sudah diterbitkan.',
           ),
           _langkah(
+            context,
             '4',
             'GitHub Secrets',
             'Periksa empat VOLTSTRIDE_FIREBASE_* secrets, lalu jalankan ulang workflow Build VoltStride APK di tab Actions.',
@@ -66,7 +70,12 @@ class FirebaseSetupPage extends StatelessWidget {
     );
   }
 
-  Widget _langkah(String nomor, String judul, String keterangan) {
+  Widget _langkah(
+    BuildContext context,
+    String nomor,
+    String judul,
+    String keterangan,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
