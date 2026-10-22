@@ -87,7 +87,7 @@ class _RunningPageState extends State<RunningPage> {
   int _stepsThisActivity = 0;
   double _maxCadenceSpm = 0;
   final List<RunCadenceSample> _cadenceSamples = <RunCadenceSample>[];
-  final List<int> _heartRateSamples = <int>[];
+  final List<RunHeartRateSample> _heartRateSamples = <RunHeartRateSample>[];
   StreamSubscription<int>? _heartRateSubscription;
   int? _latestHeartRateBpm;
   int _lastPacerMinute = 0;
@@ -105,7 +105,18 @@ class _RunningPageState extends State<RunningPage> {
         _latestHeartRateBpm = bpm;
         if (_controller.status == RunStatus.running ||
             _controller.status == RunStatus.paused) {
-          _heartRateSamples.add(bpm);
+          final int elapsedSeconds = _controller.elapsed.inSeconds;
+          final RunHeartRateSample sample = RunHeartRateSample(
+            elapsedSeconds: elapsedSeconds,
+            bpm: bpm,
+          );
+          if (_heartRateSamples.isNotEmpty &&
+              _heartRateSamples.last.elapsedSeconds == elapsedSeconds) {
+            _heartRateSamples[_heartRateSamples.length - 1] = sample;
+          } else if (_heartRateSamples.isEmpty ||
+              elapsedSeconds > _heartRateSamples.last.elapsedSeconds) {
+            _heartRateSamples.add(sample);
+          }
         }
         _liveMetricsRevision.value++;
       },
@@ -1747,7 +1758,9 @@ class _RunningPageState extends State<RunningPage> {
 
     final int? sensorAverageHeartRate = _heartRateSamples.isEmpty
         ? null
-        : (_heartRateSamples.reduce((int a, int b) => a + b) /
+        : (_heartRateSamples
+                    .map((RunHeartRateSample sample) => sample.bpm)
+                    .reduce((int a, int b) => a + b) /
                 _heartRateSamples.length)
             .round();
     final int? averageHeartRateBpm = await _askAverageHeartRateBpm(
@@ -1756,6 +1769,9 @@ class _RunningPageState extends State<RunningPage> {
     if (!mounted) return;
     final RunSession sessionWithHeartRate = session.copyWith(
       averageHeartRateBpm: averageHeartRateBpm,
+      heartRateSamples: List<RunHeartRateSample>.unmodifiable(
+        _heartRateSamples,
+      ),
     );
     _completedSessionOverride = sessionWithHeartRate;
     setState(() {});

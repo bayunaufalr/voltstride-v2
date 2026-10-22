@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
@@ -168,6 +169,12 @@ class _RunDetailPageState extends State<RunDetailPage> {
                   _dataRow('Waktu total', session.elapsedText),
                   _dataRow('Waktu bergerak', session.movingTimeText),
                   _dataRow('Pace rata-rata', '${session.averagePaceText}/km'),
+                  _dataRow(
+                    'Detak jantung rata-rata',
+                    session.averageHeartRateBpm == null
+                        ? 'Tidak tersedia'
+                        : '${session.averageHeartRateBpm} bpm',
+                  ),
                   _dataRow('Pace saat disimpan', session.currentPaceText),
                   _dataRow('Akurasi GPS terakhir', session.gpsAccuracyText),
                   _dataRow('Titik diterima', '${session.acceptedPoints}'),

@@ -1,11 +1,13 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../services/app_language_service.dart';
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 
-enum _MetricKind { elevation, pace, cadence }
+enum _MetricKind { elevation, pace, cadence, heartRate }
 
 /// Grafik lokal tanpa dependensi tambahan. Grafik dapat digeser/disentuh untuk
 /// membaca nilai tepat pada jarak yang dipilih.
@@ -16,6 +18,8 @@ class RunActivityCharts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String text(String indonesia, String english) =>
+        AppLanguageService.text(context, indonesia, english);
     final List<Offset> elevation = _elevationPoints(session.route);
     final List<Offset> pace = session.hundredMeterLaps
         .where((RunLap100m lap) {
@@ -29,6 +33,18 @@ class RunActivityCharts extends StatelessWidget {
               lap.paceSecondsPerKm!,
             ))
         .toList(growable: false);
+    final List<Offset> heartRate = _downsample(
+      session.heartRateSamples
+          .where((RunHeartRateSample sample) =>
+              sample.elapsedSeconds >= 0 &&
+              sample.bpm >= 30 &&
+              sample.bpm <= 240)
+          .map((RunHeartRateSample sample) => Offset(
+                sample.elapsedSeconds.toDouble(),
+                sample.bpm.toDouble(),
+              ))
+          .toList(growable: false),
+    );
     final List<Offset> cadence = session.cadenceSamples
         .where((RunCadenceSample sample) =>
             sample.distanceMeters.isFinite &&
@@ -45,10 +61,10 @@ class RunActivityCharts extends StatelessWidget {
       children: <Widget>[
         _InteractiveMetricChart(
           key: const ValueKey<String>('elevation-chart'),
-          title: 'Elevasi',
-          subtitle: 'Elevasi relatif • meter',
+          title: text('Elevasi', 'Elevation'),
+          subtitle: text('Elevasi relatif • meter', 'Relative elevation • meters'),
           points: elevation,
-          emptyText: 'Data elevasi belum cukup.',
+          emptyText: text('Data elevasi belum cukup.', 'Not enough elevation data.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFF0F0F0)
               : const Color(0xFF222222),
@@ -58,9 +74,9 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('pace-chart'),
           title: 'Pace',
-          subtitle: 'Menit per kilometer',
+          subtitle: text('Menit per kilometer', 'Minutes per kilometer'),
           points: pace,
-          emptyText: 'Belum ada split 100 m yang lengkap.',
+          emptyText: text('Belum ada split 100 m yang lengkap.', 'No complete 100 m splits are available.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFBDBDBD)
               : const Color(0xFF555555),
@@ -69,11 +85,25 @@ class RunActivityCharts extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         _InteractiveMetricChart(
+          key: const ValueKey<String>('heart-rate-chart'),
+          title: text('Detak jantung', 'Heart rate'),
+          subtitle: text('Denyut per menit • waktu aktivitas', 'Beats per minute • elapsed time'),
+          points: heartRate,
+          emptyText: session.averageHeartRateBpm == null
+              ? text('Sensor HR tidak merekam data pada sesi ini.', 'No heart-rate samples were recorded during this session.')
+              : text('Rerata tersedia, tetapi sampel grafik tidak direkam.', 'The average is available, but chart samples were not recorded.'),
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFFE0E0E0)
+              : const Color(0xFF303030),
+          kind: _MetricKind.heartRate,
+        ),
+        const SizedBox(height: 12),
+        _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
           title: 'Cadence',
-          subtitle: 'Langkah per menit',
+          subtitle: text('Langkah per menit', 'Steps per minute'),
           points: cadence,
-          emptyText: 'Cadence belum tersedia.',
+          emptyText: text('Cadence belum tersedia.', 'Cadence data is unavailable.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFF858585)
               : const Color(0xFF888888),
@@ -217,17 +247,29 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
         return '${value > 0 ? '+' : ''}${value.round()} m';
       case _MetricKind.cadence:
         return '${value.round()} spm';
+      case _MetricKind.heartRate:
+        return '${value.round()} bpm';
     }
+  }
+
+  String _xValueText(double value) {
+    if (widget.kind != _MetricKind.heartRate) {
+      return '${value.toStringAsFixed(2)} km';
+    }
+    final int seconds = math.max(0, value.round()).toInt();
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 
   String _metricName() {
     switch (widget.kind) {
       case _MetricKind.pace:
-        return 'Pace pada jarak ini';
+        return AppLanguageService.text(context, 'Pace pada jarak ini', 'Pace at this distance');
       case _MetricKind.elevation:
-        return 'Elevasi relatif';
+        return AppLanguageService.text(context, 'Elevasi relatif', 'Relative elevation');
       case _MetricKind.cadence:
-        return 'Cadence pada jarak ini';
+        return AppLanguageService.text(context, 'Cadence pada jarak ini', 'Cadence at this distance');
+      case _MetricKind.heartRate:
+        return AppLanguageService.text(context, 'Detak jantung pada waktu ini', 'Heart rate at this time');
     }
   }
 
@@ -237,11 +279,13 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
     final double high = values.reduce((double a, double b) => a > b ? a : b);
     switch (widget.kind) {
       case _MetricKind.pace:
-        return 'Rentang ${_valueText(low)} – ${_valueText(high)}';
+        return AppLanguageService.text(context, 'Rentang ${_valueText(low)} – ${_valueText(high)}', 'Range ${_valueText(low)} – ${_valueText(high)}');
       case _MetricKind.elevation:
-        return 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}';
+        return AppLanguageService.text(context, 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}', 'Lowest ${_valueText(low)} • highest ${_valueText(high)}');
       case _MetricKind.cadence:
-        return 'Rentang ${low.round()}–${high.round()} spm';
+        return AppLanguageService.text(context, 'Rentang ${low.round()}–${high.round()} spm', 'Range ${low.round()}–${high.round()} spm');
+      case _MetricKind.heartRate:
+        return AppLanguageService.text(context, 'Rentang ${low.round()}–${high.round()} bpm', 'Range ${low.round()}–${high.round()} bpm');
     }
   }
 
@@ -364,7 +408,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            '${points[_selectedIndex].dx.toStringAsFixed(2)} km',
+                            _xValueText(points[_selectedIndex].dx),
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 12,
@@ -393,7 +437,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
               ),
               const SizedBox(height: 5),
               Text(
-                'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.',
+                AppLanguageService.text(context, 'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.', 'Tap or drag the chart to inspect values at a specific point.'),
                 style: TextStyle(
                   color: VoltWarna.teksAbu,
                   fontSize: 10,
@@ -549,9 +593,9 @@ class _MetricChartPainter extends CustomPainter {
     );
 
     final double middleX = (minX + maxX) / 2;
-    _drawText(canvas, _distanceText(minX), Offset(plot.left, plot.bottom + 9), maxWidth: 70, fontSize: 9);
-    _drawText(canvas, _distanceText(middleX), Offset(plot.left + plot.width / 2, plot.bottom + 9), maxWidth: 70, fontSize: 9, align: TextAlign.center);
-    _drawText(canvas, _distanceText(maxX), Offset(plot.right, plot.bottom + 9), maxWidth: 70, fontSize: 9, align: TextAlign.right);
+    _drawText(canvas, _xAxisText(minX), Offset(plot.left, plot.bottom + 9), maxWidth: 70, fontSize: 9);
+    _drawText(canvas, _xAxisText(middleX), Offset(plot.left + plot.width / 2, plot.bottom + 9), maxWidth: 70, fontSize: 9, align: TextAlign.center);
+    _drawText(canvas, _xAxisText(maxX), Offset(plot.right, plot.bottom + 9), maxWidth: 70, fontSize: 9, align: TextAlign.right);
     canvas.restore();
   }
 
@@ -564,10 +608,18 @@ class _MetricChartPainter extends CustomPainter {
         return value.round().toString();
       case _MetricKind.cadence:
         return value.round().toString();
+      case _MetricKind.heartRate:
+        return value.round().toString();
     }
   }
 
-  String _distanceText(double value) => '${value.toStringAsFixed(2)} km';
+  String _xAxisText(double value) {
+    if (kind != _MetricKind.heartRate) {
+      return '${value.toStringAsFixed(2)} km';
+    }
+    final int seconds = math.max(0, value.round()).toInt();
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
 
   void _drawText(
     Canvas canvas,

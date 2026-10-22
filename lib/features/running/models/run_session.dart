@@ -371,7 +371,10 @@ RunElevationStats calculateRunElevation(List<RunPoint> route) {
   for (int i = 1; i < smoothed.length; i++) {
     final double value = smoothed[i];
     final int currentSegment = segmentIds[i];
-    rawMaxAboveStart = math.max(rawMaxAboveStart, value - startAltitude).toDouble();
+    rawMaxAboveStart = math.max(
+      rawMaxAboveStart,
+      value - startAltitude,
+    ).toDouble();
 
     if (currentSegment != activeSegment) {
       activeSegment = currentSegment;
@@ -453,6 +456,28 @@ class RunCadenceSample {
       );
 }
 
+/// Sampel denyut jantung dengan waktu relatif sejak awal sesi, dalam detik.
+class RunHeartRateSample {
+  final int elapsedSeconds;
+  final int bpm;
+
+  const RunHeartRateSample({
+    required this.elapsedSeconds,
+    required this.bpm,
+  });
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'elapsedSeconds': elapsedSeconds,
+        'bpm': bpm,
+      };
+
+  factory RunHeartRateSample.fromJson(Map<String, dynamic> json) =>
+      RunHeartRateSample(
+        elapsedSeconds: (json['elapsedSeconds'] as num).toInt(),
+        bpm: (json['bpm'] as num).toInt(),
+      );
+}
+
 /// Snapshot lengkap sesi lari.
 ///
 /// Model tidak bergantung pada UI, GPS, atau database. Semua data dapat
@@ -479,6 +504,7 @@ class RunSession {
   final double? maxCadenceSpm;
   final int? averageHeartRateBpm;
   final List<RunCadenceSample> cadenceSamples;
+  final List<RunHeartRateSample> heartRateSamples;
 
   const RunSession({
     required this.startedAt,
@@ -502,9 +528,13 @@ class RunSession {
     this.maxCadenceSpm,
     this.averageHeartRateBpm,
     this.cadenceSamples = const <RunCadenceSample>[],
+    this.heartRateSamples = const <RunHeartRateSample>[],
   });
 
-  RunSession copyWith({int? averageHeartRateBpm}) => RunSession(
+  RunSession copyWith({
+    int? averageHeartRateBpm,
+    List<RunHeartRateSample>? heartRateSamples,
+  }) => RunSession(
         startedAt: startedAt,
         finishedAt: finishedAt,
         distanceMeters: distanceMeters,
@@ -526,6 +556,7 @@ class RunSession {
         maxCadenceSpm: maxCadenceSpm,
         averageHeartRateBpm: averageHeartRateBpm ?? this.averageHeartRateBpm,
         cadenceSamples: cadenceSamples,
+        heartRateSamples: heartRateSamples ?? this.heartRateSamples,
       );
 
   String get displayLabel =>
@@ -590,6 +621,9 @@ class RunSession {
         'cadenceSamples': cadenceSamples
             .map((RunCadenceSample sample) => sample.toJson())
             .toList(growable: false),
+        'heartRateSamples': heartRateSamples
+            .map((RunHeartRateSample sample) => sample.toJson())
+            .toList(growable: false),
       }),
     };
   }
@@ -624,6 +658,10 @@ class RunSession {
     final Object? rawCadenceSamples = metrics['cadenceSamples'];
     final List<dynamic> cadenceJson = rawCadenceSamples is List<dynamic>
         ? rawCadenceSamples
+        : <dynamic>[];
+    final Object? rawHeartRateSamples = metrics['heartRateSamples'];
+    final List<dynamic> heartRateJson = rawHeartRateSamples is List<dynamic>
+        ? rawHeartRateSamples
         : <dynamic>[];
 
     return RunSession(
@@ -685,6 +723,11 @@ class RunSession {
       averageHeartRateBpm: (metrics['averageHeartRateBpm'] as num?)?.toInt(),
       cadenceSamples: cadenceJson
           .map((dynamic item) => RunCadenceSample.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ))
+          .toList(growable: false),
+      heartRateSamples: heartRateJson
+          .map((dynamic item) => RunHeartRateSample.fromJson(
                 Map<String, dynamic>.from(item as Map),
               ))
           .toList(growable: false),

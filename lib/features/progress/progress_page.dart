@@ -1,9 +1,13 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/app_language_service.dart';
-
+import '../account/account_service.dart';
 import '../running/models/run_session.dart';
 import '../running/services/personal_records_service.dart';
 import '../running/services/run_history_repository.dart';
@@ -24,6 +28,31 @@ class ProgressPageState extends State<ProgressPage> {
       RunHistoryRepository.instance.getAll();
   int _selectedWeekIndex = 11;
   _WeekChartMetric _chartMetric = _WeekChartMetric.distance;
+  static const String _cooperDistanceKey = 'voltstride.cooperTestDistanceMeters';
+  static const String _cooperDateKey = 'voltstride.cooperTestDate';
+  double? _cooperDistanceMeters;
+  DateTime? _cooperTestDate;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadCooperTest());
+  }
+
+  Future<void> _loadCooperTest() async {
+    try {
+      final SharedPreferences preferences = await SharedPreferences.getInstance();
+      final double? distance = preferences.getDouble(_cooperDistanceKey);
+      final String? rawDate = preferences.getString(_cooperDateKey);
+      if (!mounted) return;
+      setState(() {
+        _cooperDistanceMeters = distance;
+        _cooperTestDate = rawDate == null ? null : DateTime.tryParse(rawDate);
+      });
+    } catch (_) {
+      // Kemajuan tetap dapat dibuka meskipun penyimpanan lokal tidak tersedia.
+    }
+  }
 
   String _text(String indonesia, String english) =>
       AppLanguageService.text(context, indonesia, english);
@@ -80,6 +109,8 @@ class ProgressPageState extends State<ProgressPage> {
             const SizedBox(height: 12),
             widget.belowWeeklyChart!,
           ],
+          const SizedBox(height: 16),
+          _vo2MaxCard(),
           const SizedBox(height: 16),
           _predictionSection(sessions),
           const SizedBox(height: 20),
@@ -447,6 +478,336 @@ class ProgressPageState extends State<ProgressPage> {
         return value.round().toString();
     }
   }
+
+  Widget _vo2MaxCard() {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: AccountService.perubahanProfil,
+      builder: (
+        BuildContext context,
+        AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
+      ) {
+        final Map<String, dynamic> profile =
+            snapshot.data?.data() ?? <String, dynamic>{};
+        final DateTime? birthday =
+            DateTime.tryParse(profile['tanggalLahir'] as String? ?? '');
+        final int? age = birthday == null ? null : _ageFromBirthday(birthday);
+        final String gender = profile['jenisKelamin'] as String? ?? '';
+        final double? distance = _cooperDistanceMeters;
+        final double? vo2max = distance == null
+            ? null
+            : 22.351 * (distance / 1000.0) - 11.288;
+        final List<double>? thresholds = age == null
+            ? null
+            : _vo2Thresholds(age, gender);
+        final String? grade = vo2max == null || thresholds == null
+            ? null
+            : _vo2Grade(vo2max, thresholds);
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.monitor_heart_outlined,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _text('Estimasi VO₂max', 'Estimated VO₂max'),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _text(
+                  'Estimasi ini memakai jarak Tes Cooper 12 menit, bukan rerata HR saja. Gunakan hasil tes yang memang dilakukan selama 12 menit, bukan sesi lari biasa.',
+                  'This estimate uses the distance from a 12-minute Cooper test, not average HR alone. Enter a result from an actual 12-minute test, not an ordinary run.',
+                ),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (vo2max != null && vo2max > 0) ...<Widget>[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    Text(
+                      vo2max.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 34,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        'ml/kg/min',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                if (grade != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Text(
+                      grade,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  )
+                else
+                  Text(
+                    _text(
+                    age == null || !_genderCanBeClassified(gender)
+                        ? 'Lengkapi tanggal lahir dan pilih jenis kelamin di profil untuk melihat kategori berdasarkan usia.'
+                        : 'Kategori pembanding saat ini tersedia untuk usia 13–79 tahun.',
+                    age == null || !_genderCanBeClassified(gender)
+                        ? 'Complete date of birth and select a gender in your profile to see the age-based category.'
+                        : 'Reference categories are currently available for ages 13–79.',
+                  ),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Text(
+                  '${_text('Jarak tes', 'Test distance')}: ${distance!.round()} m${_cooperTestDate == null ? '' : ' • ${_formatShortDate(_cooperTestDate!)}'}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ] else
+                Text(
+                  _text(
+                    'Belum ada hasil Tes Cooper yang dimasukkan.',
+                    'No Cooper test result has been entered yet.',
+                  ),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _editCooperTestDistance,
+                icon: const Icon(Icons.edit_outlined),
+                label: Text(
+                  distance == null
+                      ? _text('Masukkan hasil tes 12 menit', 'Enter 12-minute test result')
+                      : _text('Perbarui hasil tes', 'Update test result'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editCooperTestDistance() async {
+    final TextEditingController controller = TextEditingController(
+      text: _cooperDistanceMeters?.round().toString() ?? '',
+    );
+    final int? distanceMeters = await showDialog<int>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Hasil Tes Cooper', 'Cooper test result')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              _text(
+                'Masukkan jarak dalam meter yang tercatat selama tes lari 12 menit. Hasil VO₂max tetap berupa estimasi.',
+                'Enter the distance in meters recorded during a 12-minute running test. The VO₂max result remains an estimate.',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: _text('Jarak (meter)', 'Distance (meters)'),
+                hintText: '2400',
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_text('Batal', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              final int? meters = int.tryParse(controller.text.trim());
+              if (meters == null || meters < 600 || meters > 5000) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _text(
+                        'Masukkan jarak antara 600 dan 5.000 meter.',
+                        'Enter a distance between 600 and 5,000 meters.',
+                      ),
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.of(dialogContext).pop(meters);
+            },
+            child: Text(_text('Simpan', 'Save')),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (distanceMeters == null) return;
+
+    final DateTime measuredAt = DateTime.now();
+    try {
+      final SharedPreferences preferences = await SharedPreferences.getInstance();
+      await preferences.setDouble(
+        _cooperDistanceKey,
+        distanceMeters.toDouble(),
+      );
+      await preferences.setString(
+        _cooperDateKey,
+        measuredAt.toIso8601String(),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              'Hasil tidak dapat disimpan di perangkat ini.',
+              'The result could not be saved on this device.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _cooperDistanceMeters = distanceMeters.toDouble();
+      _cooperTestDate = measuredAt;
+    });
+  }
+
+  int _ageFromBirthday(DateTime birthday) {
+    final DateTime today = DateTime.now();
+    int age = today.year - birthday.year;
+    if (today.month < birthday.month ||
+        (today.month == birthday.month && today.day < birthday.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  bool _genderCanBeClassified(String rawGender) {
+    final String gender = rawGender.trim().toLowerCase();
+    return gender == 'male' ||
+        gender == 'pria' ||
+        gender == 'laki-laki' ||
+        gender == 'laki laki' ||
+        gender == 'female' ||
+        gender == 'wanita' ||
+        gender == 'perempuan';
+  }
+
+  List<double>? _vo2Thresholds(int age, String rawGender) {
+    final String gender = rawGender.trim().toLowerCase();
+    final bool male = gender == 'male' ||
+        gender == 'pria' ||
+        gender == 'laki-laki' ||
+        gender == 'laki laki';
+    final bool female = gender == 'female' ||
+        gender == 'wanita' ||
+        gender == 'perempuan';
+    if (!male && !female) return null;
+
+    if (age >= 13 && age <= 19) {
+      return male
+          ? <double>[35.0, 38.4, 45.2, 51.0]
+          : <double>[25.0, 31.0, 35.0, 39.0];
+    }
+    if (age < 20 || age > 79) return null;
+
+    final int ageGroup = age < 30
+        ? 0
+        : age < 40
+            ? 1
+            : age < 50
+                ? 2
+                : age < 60
+                    ? 3
+                    : age < 70
+                        ? 4
+                        : 5;
+    const List<List<double>> maleThresholds = <List<double>>[
+      <double>[41.7, 45.4, 51.1, 55.4],
+      <double>[40.5, 44.0, 48.3, 54.0],
+      <double>[38.5, 42.4, 46.4, 52.5],
+      <double>[35.6, 39.2, 43.4, 48.9],
+      <double>[32.3, 35.5, 39.5, 45.7],
+      <double>[29.4, 32.3, 36.7, 42.1],
+    ];
+    const List<List<double>> femaleThresholds = <List<double>>[
+      <double>[36.1, 39.5, 43.9, 49.6],
+      <double>[34.4, 37.8, 42.4, 47.4],
+      <double>[33.0, 36.3, 39.7, 45.3],
+      <double>[30.1, 33.0, 36.7, 41.1],
+      <double>[27.5, 30.0, 33.0, 37.8],
+      <double>[25.9, 28.1, 30.9, 36.7],
+    ];
+    return (male ? maleThresholds : femaleThresholds)[ageGroup];
+  }
+
+  String _vo2Grade(double value, List<double> thresholds) {
+    if (value < thresholds[0]) return _text('Sangat kurang', 'Very low');
+    if (value < thresholds[1]) return _text('Kurang', 'Below average');
+    if (value < thresholds[2]) return _text('Normal / rata-rata', 'Average');
+    if (value < thresholds[3]) return _text('Bagus', 'Good');
+    return _text('Sangat bagus', 'Excellent');
+  }
+
+  String _formatShortDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   Widget _predictionSection(List<RunSession> sessions) {
     final List<_RacePrediction> predictions = _buatPrediksi(sessions);
