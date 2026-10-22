@@ -1,5 +1,6 @@
 // ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
@@ -8,6 +9,7 @@ import 'run_activity_charts.dart';
 import 'run_share_page.dart';
 import 'run_segment_data.dart';
 import 'services/run_evaluation.dart';
+import 'services/strava_file_export_service.dart';
 
 class RunDetailPage extends StatefulWidget {
   const RunDetailPage({super.key, required this.session});
@@ -22,6 +24,53 @@ class _RunDetailPageState extends State<RunDetailPage> {
   RunSession get session => widget.session;
 
   int _selectedIntervalMeters = 100;
+  bool _exportingTcx = false;
+
+  Future<void> _exportTcxForStrava() async {
+    if (_exportingTcx) return;
+    setState(() => _exportingTcx = true);
+    try {
+      await StravaFileExportService.shareTcx(session);
+    } on StateError catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('File TCX gagal disiapkan. Coba lagi.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingTcx = false);
+    }
+  }
+
+  Future<void> _openStravaUploadPage() async {
+    final Uri uri = Uri.parse('https://www.strava.com/upload/select');
+    try {
+      final bool opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Halaman unggah Strava tidak dapat dibuka.'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Halaman unggah Strava tidak dapat dibuka.'),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +131,71 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        const Icon(Icons.upload_file_rounded),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Ekspor aktivitas ke Strava',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Ekspor file TCX gratis, lalu unggah secara manual ke Strava. '
+                      'Lintasan GPS, waktu, elevasi, serta data denyut jantung '
+                      'dan cadence yang tersedia akan disertakan.',
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _exportingTcx ? null : _exportTcxForStrava,
+                        icon: _exportingTcx
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.file_download_outlined),
+                        label: Text(
+                          _exportingTcx ? 'Menyiapkan file…' : 'Ekspor file TCX',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openStravaUploadPage,
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: const Text('Buka halaman unggah Strava'),
+                      ),
+                    ),
+                    Text(
+                      'Setelah file dibagikan, simpan ke perangkat atau penyimpanan '
+                      'cloud, lalu pilih file tersebut di halaman unggah Strava.',
+                      style: TextStyle(
+                        color: Theme.of(context).hintColor,
+                        fontSize: 12,
+                      ),
+                    ),
                   ],
                 ),
               ),
