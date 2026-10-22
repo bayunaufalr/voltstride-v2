@@ -13,7 +13,6 @@ import 'features/account/account_page.dart';
 import 'features/more/more_page.dart';
 import 'features/reminders/reminder_service.dart';
 import 'features/route_planner/route_planner_page.dart';
-import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
 import 'features/running/models/run_session.dart';
@@ -36,7 +35,7 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
+    SystemUiOverlayStyle(
       statusBarColor: VoltWarna.latar,
       statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: VoltWarna.latar,
@@ -224,7 +223,6 @@ class _RootShellState extends State<RootShell> {
         MorePage(
           key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
-          onOpenCoach: () => _openPage(const AiCoachPage()),
           onOpenStrength: () => _openPage(const MusclePage()),
         ),
         AccountPage(key: _accountKey),

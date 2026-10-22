@@ -651,7 +651,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
       child: Text(
         label,
         style: const TextStyle(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.onPrimary,
           fontSize: 12,
           fontWeight: FontWeight.w800,
         ),

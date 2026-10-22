@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../services/app_language_service.dart';
+import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 
 enum _MetricKind { elevation, pace, cadence }
@@ -45,10 +45,10 @@ class RunActivityCharts extends StatelessWidget {
       children: <Widget>[
         _InteractiveMetricChart(
           key: const ValueKey<String>('elevation-chart'),
-          title: AppLanguageService.text(context, 'Elevasi', 'Elevation'),
-          subtitle: AppLanguageService.text(context, 'Elevasi relatif • meter', 'Relative elevation • metres'),
+          title: 'Elevasi',
+          subtitle: 'Elevasi relatif • meter',
           points: elevation,
-          emptyText: AppLanguageService.text(context, 'Data elevasi belum cukup.', 'Not enough elevation data yet.'),
+          emptyText: 'Data elevasi belum cukup.',
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFF0F0F0)
               : const Color(0xFF222222),
@@ -58,9 +58,9 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('pace-chart'),
           title: 'Pace',
-          subtitle: AppLanguageService.text(context, 'Menit per kilometer', 'Minutes per kilometre'),
+          subtitle: 'Menit per kilometer',
           points: pace,
-          emptyText: AppLanguageService.text(context, 'Belum ada split 100 m yang lengkap.', 'No complete 100 m splits yet.'),
+          emptyText: 'Belum ada split 100 m yang lengkap.',
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFBDBDBD)
               : const Color(0xFF555555),
@@ -71,9 +71,9 @@ class RunActivityCharts extends StatelessWidget {
         _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
           title: 'Cadence',
-          subtitle: AppLanguageService.text(context, 'Langkah per menit', 'Steps per minute'),
+          subtitle: 'Langkah per menit',
           points: cadence,
-          emptyText: AppLanguageService.text(context, 'Cadence belum tersedia.', 'Cadence is not available yet.'),
+          emptyText: 'Cadence belum tersedia.',
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFF858585)
               : const Color(0xFF888888),
@@ -157,9 +157,6 @@ class _InteractiveMetricChart extends StatefulWidget {
 }
 
 class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
   static const double _plotLeft = 54;
   static const double _plotRightInset = 12;
 
@@ -226,11 +223,11 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
   String _metricName() {
     switch (widget.kind) {
       case _MetricKind.pace:
-        return _text('Pace pada jarak ini', 'Pace at this distance');
+        return 'Pace pada jarak ini';
       case _MetricKind.elevation:
-        return _text('Elevasi relatif', 'Relative elevation');
+        return 'Elevasi relatif';
       case _MetricKind.cadence:
-        return _text('Cadence pada jarak ini', 'Cadence at this distance');
+        return 'Cadence pada jarak ini';
     }
   }
 
@@ -240,11 +237,11 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
     final double high = values.reduce((double a, double b) => a > b ? a : b);
     switch (widget.kind) {
       case _MetricKind.pace:
-        return '${_text('Range', 'Range')} ${_valueText(low)} – ${_valueText(high)}';
+        return 'Rentang ${_valueText(low)} – ${_valueText(high)}';
       case _MetricKind.elevation:
-        return '${_text('Terendah', 'Lowest')} ${_valueText(low)} • ${_text('tertinggi', 'highest')} ${_valueText(high)}';
+        return 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}';
       case _MetricKind.cadence:
-        return '${_text('Rentang', 'Range')} ${low.round()}–${high.round()} spm';
+        return 'Rentang ${low.round()}–${high.round()} spm';
     }
   }
 
@@ -288,7 +285,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
               widget.subtitle,
               style: TextStyle(
                 fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                color: VoltWarna.teksAbu,
               ),
             ),
             const SizedBox(height: 8),
@@ -298,7 +295,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                 child: Text(
                   widget.emptyText,
                   style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: VoltWarna.teksAbu,
                     fontSize: 12,
                   ),
                 ),
@@ -308,7 +305,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                 _rangeText(points),
                 style: TextStyle(
                   fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: VoltWarna.teksAbu,
                 ),
               ),
               const SizedBox(height: 4),
@@ -376,7 +373,7 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
                           Text(
                             _metricName(),
                             style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              color: VoltWarna.teksAbu,
                               fontSize: 10,
                             ),
                           ),
@@ -396,12 +393,9 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
               ),
               const SizedBox(height: 5),
               Text(
-                _text(
-                  'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.',
-                  'Tap or drag the chart to inspect values at specific distances.',
-                ),
+                'Ketuk atau geser grafik untuk meninjau nilai pada jarak tertentu.',
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: VoltWarna.teksAbu,
                   fontSize: 10,
                 ),
               ),

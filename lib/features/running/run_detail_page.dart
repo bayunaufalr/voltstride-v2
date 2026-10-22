@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../services/app_language_service.dart';
+import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 import 'run_route_map_view.dart';
 import 'run_activity_charts.dart';
 import 'run_share_page.dart';
 import 'run_segment_data.dart';
+import 'services/run_evaluation.dart';
 
 class RunDetailPage extends StatefulWidget {
   const RunDetailPage({super.key, required this.session});
@@ -19,20 +20,6 @@ class RunDetailPage extends StatefulWidget {
 class _RunDetailPageState extends State<RunDetailPage> {
   RunSession get session => widget.session;
 
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
-  String _activityLabel(RunSession item) {
-    if (item.activityType == RunActivityType.walk) return _text('Berjalan', 'Walk');
-    if (item.intervalPlan != null) return _text('Lari interval', 'Interval run');
-    return _text('Lari', 'Run');
-  }
-
-  String _environmentLabel(RunSession item) =>
-      item.environment == RunEnvironment.outdoor
-          ? _text('Luar ruangan', 'Outdoor')
-          : _text('Dalam ruangan', 'Indoor');
-
   int _selectedIntervalMeters = 100;
 
   @override
@@ -40,18 +27,19 @@ class _RunDetailPageState extends State<RunDetailPage> {
     final DateTime start = session.startedAt.toLocal();
     final DateTime? finish = session.finishedAt?.toLocal();
     final RunElevationStats elevation = session.elevationStats;
+    final RunEvaluation evaluation = evaluateRun(session);
     final String routeActivityLabel = session.activityType == RunActivityType.walk
-        ? _text('BERJALAN', 'WALK')
+        ? 'BERJALAN'
         : session.intervalPlan != null
-            ? _text('LARI INTERVAL', 'INTERVAL RUN')
-            : _text('LARI', 'RUN');
+            ? 'LARI INTERVAL'
+            : 'LARI';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_text('Detail aktivitas', 'Activity details')),
+        title: const Text('Detail aktivitas'),
         actions: <Widget>[
           IconButton(
-            tooltip: _text('Bagikan aktivitas', 'Share activity'),
+            tooltip: 'Bagikan aktivitas',
             icon: const Icon(Icons.share_rounded),
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => RunSharePage(session: session)),
@@ -77,19 +65,19 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text('${_environmentLabel(session)} • ${_dateText(start)}', style: TextStyle(color: Theme.of(context).hintColor)),
+                    Text('${session.environment.label} • ${_dateText(start)}', style: TextStyle(color: Theme.of(context).hintColor)),
                     const SizedBox(height: 14),
                     Row(
                       children: <Widget>[
-                        _heroMetric(_text('WAKTU', 'TIME'), session.elapsedText),
-                        _heroMetric(_text('WAKTU GERAK', 'MOVING'), session.movingTimeText),
+                        _heroMetric('WAKTU', session.elapsedText),
+                        _heroMetric('MOVING', session.movingTimeText),
                         _heroMetric('PACE', '${session.averagePaceText}/km'),
                       ],
                     ),
                     if (finish != null) ...<Widget>[
                       const SizedBox(height: 12),
                       Text(
-                        _text('Selesai ${_dateText(finish)}', 'Finished ${_dateText(finish)}'),
+                        'Selesai ${_dateText(finish)}',
                         style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
                       ),
                     ],
@@ -107,7 +95,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
-                        _text('PETA RUTE $routeActivityLabel • TITIK KECEPATAN', 'ROUTE MAP $routeActivityLabel • PACE POINTS'),
+                        'PETA RUTE $routeActivityLabel • TITIK KECEPATAN',
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
@@ -127,7 +115,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text(
-                        _text('Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.', 'Choose a split interval on the map. Line colours represent pace; tap a point to inspect a segment. The base map requires internet access.'),
+                        'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
                         style: TextStyle(
                           fontSize: 11,
                           color: Theme.of(context).hintColor,
@@ -144,9 +132,9 @@ class _RunDetailPageState extends State<RunDetailPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: <Widget>[
-                      Icon(Icons.directions_run_rounded, color: Theme.of(context).colorScheme.primary),
+                      Icon(Icons.directions_run_rounded, color: VoltWarna.aksen),
                       const SizedBox(width: 12),
-                      Expanded(child: Text(_text('Sesi dalam ruangan. Jarak dicatat dari nilai yang dimasukkan saat selesai; peta dan elevasi GPS tidak tersedia.', 'Indoor session. Distance comes from the value entered at the end; GPS maps and elevation are unavailable.'))),
+                      Expanded(child: Text('Sesi dalam ruangan. Jarak dicatat dari nilai yang dimasukkan saat selesai; peta dan elevasi GPS tidak tersedia.')),
                     ],
                   ),
                 ),
@@ -156,13 +144,13 @@ class _RunDetailPageState extends State<RunDetailPage> {
             _elevationCard(elevation),
             const SizedBox(height: 12),
             _sectionCard(
-              title: _text('LANGKAH, CADENCE, DAN KALORI', 'STEPS, CADENCE, AND CALORIES'),
+              title: 'LANGKAH, CADENCE, DAN KALORI',
               child: Column(
                 children: <Widget>[
-                  _dataRow(_text('Jumlah langkah', 'Steps'), session.totalSteps?.toString() ?? _text('Tidak tersedia', 'Unavailable')),
-                  _dataRow(_text('Cadence rata-rata', 'Average cadence'), session.averageCadenceSpm == null ? _text('Tidak tersedia', 'Unavailable') : '${session.averageCadenceSpm!.round()} langkah/menit'),
-                  _dataRow(_text('Cadence maksimum', 'Maximum cadence'), session.maxCadenceSpm == null ? _text('Tidak tersedia', 'Unavailable') : '${session.maxCadenceSpm!.round()} langkah/menit'),
-                  _dataRow(_text('Kalori terbakar (perkiraan)', 'Estimated calories'), '${session.estimatedCalories.round()} kcal'),
+                  _dataRow('Jumlah langkah', session.totalSteps?.toString() ?? 'Tidak tersedia'),
+                  _dataRow('Cadence rata-rata', session.averageCadenceSpm == null ? 'Tidak tersedia' : '${session.averageCadenceSpm!.round()} langkah/menit'),
+                  _dataRow('Cadence maksimum', session.maxCadenceSpm == null ? 'Tidak tersedia' : '${session.maxCadenceSpm!.round()} langkah/menit'),
+                  _dataRow('Kalori terbakar (perkiraan)', '${session.estimatedCalories.round()} kcal'),
                 ],
               ),
             ),
@@ -171,22 +159,22 @@ class _RunDetailPageState extends State<RunDetailPage> {
             RunActivityCharts(session: session),
             const SizedBox(height: 12),
             _sectionCard(
-              title: _text('DATA SESI', 'SESSION DATA'),
+              title: 'DATA SESI',
               child: Column(
                 children: <Widget>[
-                  _dataRow(_text('Jenis aktivitas', 'Activity type'), _activityLabel(session)),
-                  _dataRow(_text('Lokasi', 'Location'), _environmentLabel(session)),
-                  _dataRow(_text('Jarak', 'Distance'), '${session.distanceMeters.toStringAsFixed(0)} m'),
-                  _dataRow(_text('Waktu total', 'Elapsed time'), session.elapsedText),
-                  _dataRow(_text('Waktu bergerak', 'Moving time'), session.movingTimeText),
-                  _dataRow(_text('Pace rata-rata', 'Average pace'), '${session.averagePaceText}/km'),
-                  _dataRow(_text('Pace saat disimpan', 'Pace at save'), session.currentPaceText),
-                  _dataRow(_text('Akurasi GPS terakhir', 'Last GPS accuracy'), session.gpsAccuracyText),
-                  _dataRow(_text('Titik diterima', 'Accepted GPS points'), '${session.acceptedPoints}'),
-                  _dataRow(_text('Titik ditolak', 'Rejected GPS points'), '${session.rejectedPoints}'),
+                  _dataRow('Jenis aktivitas', session.displayLabel),
+                  _dataRow('Lokasi', session.environment.label),
+                  _dataRow('Jarak', '${session.distanceMeters.toStringAsFixed(0)} m'),
+                  _dataRow('Waktu total', session.elapsedText),
+                  _dataRow('Waktu bergerak', session.movingTimeText),
+                  _dataRow('Pace rata-rata', '${session.averagePaceText}/km'),
+                  _dataRow('Pace saat disimpan', session.currentPaceText),
+                  _dataRow('Akurasi GPS terakhir', session.gpsAccuracyText),
+                  _dataRow('Titik diterima', '${session.acceptedPoints}'),
+                  _dataRow('Titik ditolak', '${session.rejectedPoints}'),
                   if (session.intervalPlan != null)
                     _dataRow(
-                      _text('Rencana interval', 'Interval plan'),
+                      'Rencana interval',
                       session.intervalPlan!.measure == IntervalMeasure.time
                           ? '${session.intervalPlan!.workSeconds}s kerja / '
                               '${session.intervalPlan!.recoverySeconds}s pulih × '
@@ -202,17 +190,44 @@ class _RunDetailPageState extends State<RunDetailPage> {
             _segmentDetailsCard(),
             const SizedBox(height: 12),
             _sectionCard(
-              title: _text('SPLIT PER KM', 'SPLITS PER KM'),
+              title: 'SPLIT PER KM',
               child: session.splits.isEmpty
-                  ? Text(_text('Belum mencapai satu kilometer penuh.', 'No full kilometre completed yet.'))
+                  ? const Text('Belum mencapai satu kilometer penuh.')
                   : Column(
                       children: session.splits.map((RunSplit split) => _dataRow(
                         'KM ${split.kilometer}',
-                        '${split.durationSeconds} ${_text('dtk', 's')} • ${split.paceText}',
+                        '${split.durationSeconds} dtk • ${split.paceText}',
                       )).toList(growable: false),
                     ),
             ),
             const SizedBox(height: 12),
+            _sectionCard(
+              title: 'EVALUASI DAN SARAN',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text('PENGAMATAN', style: TextStyle(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  ...evaluation.observations.map((String item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                          const Text('•  '),
+                          Expanded(child: Text(item)),
+                        ]),
+                      )),
+                  const SizedBox(height: 8),
+                  const Text('SARAN', style: TextStyle(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  ...evaluation.recommendations.map((String item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                          Icon(Icons.arrow_right, size: 18, color: VoltWarna.aksen),
+                          Expanded(child: Text(item)),
+                        ]),
+                      )),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -225,7 +240,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
       _selectedIntervalMeters,
     );
     return _sectionCard(
-      title: _text('KECEPATAN PER SEGMEN', 'PACE BY SEGMENT'),
+      title: 'KECEPATAN PER SEGMEN',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -233,7 +248,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  _text('Panjang segmen', 'Segment length'),
+                  'Panjang segmen',
                   style: TextStyle(
                     color: Theme.of(context).hintColor,
                     fontSize: 12,
@@ -271,9 +286,9 @@ class _RunDetailPageState extends State<RunDetailPage> {
           ),
           const SizedBox(height: 10),
           if (segments.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              child: Text(_text('Belum ada segmen jarak yang cukup untuk ditampilkan.', 'Not enough distance segments to display yet.')),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Text('Belum ada segmen jarak yang cukup untuk ditampilkan.'),
             )
           else
             SingleChildScrollView(
@@ -283,11 +298,11 @@ class _RunDetailPageState extends State<RunDetailPage> {
                 child: Column(
                   children: <Widget>[
                     _segmentTableRow(
-                      segmentLabel: _text('Rentang', 'Range'),
-                      durationLabel: _text('Waktu', 'Time'),
+                      segmentLabel: 'Rentang',
+                      durationLabel: 'Waktu',
                       speedLabel: 'km/jam',
                       paceLabel: 'Pace',
-                      altitudeLabel: _text('Elev. relatif', 'Rel. elev.'),
+                      altitudeLabel: 'Elev. relatif',
                       header: true,
                     ),
                     const Divider(height: 14),
@@ -312,7 +327,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
             ),
           const SizedBox(height: 8),
           Text(
-            _text('Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.', 'Time and pace are segment averages; elevation uses GPS data.'),
+            'Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.',
             style: TextStyle(
               fontSize: 11,
               color: Theme.of(context).hintColor,
@@ -373,17 +388,17 @@ class _RunDetailPageState extends State<RunDetailPage> {
 
   Widget _elevationCard(RunElevationStats stats) {
     return _sectionCard(
-      title: _text('ELEVASI', 'ELEVATION'),
+      title: 'ELEVASI',
       child: !stats.hasAltitudeData
-          ? Text(_text('Data elevasi GPS tidak tersedia.', 'GPS elevation data is unavailable.'))
+          ? const Text('Data elevasi GPS tidak tersedia.')
           : Row(
               children: <Widget>[
                 _heroMetric(
-                  _text('ELEVASI +', 'ASCENT'),
+                  'ELEVASI +',
                   '+${stats.totalAscentMeters.round()} m',
                 ),
                 _heroMetric(
-                  _text('ELEVASI −', 'DESCENT'),
+                  'ELEVASI −',
                   '−${stats.totalDescentMeters.round()} m',
                 ),
               ],
@@ -458,12 +473,9 @@ class _ChartsTitle extends StatelessWidget {
   const _ChartsTitle();
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-    child: Text(
-      AppLanguageService.text(context, 'GRAFIK AKTIVITAS', 'ACTIVITY CHARTS'),
-      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-    ),
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.fromLTRB(4, 4, 4, 0),
+    child: Text('GRAFIK AKTIVITAS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
   );
 }
 

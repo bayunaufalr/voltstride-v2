@@ -1582,7 +1582,7 @@ class _RunningPageState extends State<RunningPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.location_off,
                 size: 64,
                 color: VoltWarna.merah,
@@ -1886,7 +1886,7 @@ class _RunningPageState extends State<RunningPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
+                    Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
                     Expanded(child: Text(achievement, style: TextStyle(fontWeight: FontWeight.w700))),
                   ],
                 ),

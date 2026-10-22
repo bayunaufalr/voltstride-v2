@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
-import '../../services/app_language_service.dart';
 import 'account_service.dart';
 
 /// Halaman masuk dan pendaftaran akun VoltStride.
@@ -14,9 +13,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _namaController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -61,12 +57,12 @@ class _LoginPageState extends State<LoginPage> {
       }
       // AccountGate mendeteksi perubahan login dan membuka halaman utama.
     } on FirebaseAuthException catch (error) {
-      if (mounted) setState(() => _pesanError = pesanErrorAkun(error, english: Localizations.localeOf(context).languageCode == 'en'));
+      if (mounted) setState(() => _pesanError = pesanErrorAkun(error));
     } catch (error) {
       if (mounted) {
         setState(() {
           _pesanError =
-              _text('Akun belum dapat diproses. Periksa koneksi serta pengaturan Firebase.', 'Could not process the account. Check your connection and Firebase settings.');
+              'Akun belum dapat diproses. Periksa koneksi serta pengaturan Firebase.';
         });
       }
     } finally {
@@ -77,7 +73,7 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _lupaKataSandi() async {
     final String email = _emailController.text.trim();
     if (email.isEmpty || !email.contains('@')) {
-      setState(() => _pesanError = _text('Isi email terlebih dahulu untuk menerima link pemulihan.', 'Enter your email to receive a password reset link.'));
+      setState(() => _pesanError = 'Isi email terlebih dahulu untuk menerima link pemulihan.');
       return;
     }
 
@@ -90,15 +86,15 @@ class _LoginPageState extends State<LoginPage> {
       await AccountService.kirimLinkAturUlangSandi(email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text('Link untuk mengatur ulang kata sandi telah dikirim jika email terdaftar.', 'If this email is registered, a password reset link has been sent.')),
+        const SnackBar(
+          content: Text('Link untuk mengatur ulang kata sandi telah dikirim jika email terdaftar.'),
         ),
       );
     } on FirebaseAuthException catch (error) {
-      if (mounted) setState(() => _pesanError = pesanErrorAkun(error, english: Localizations.localeOf(context).languageCode == 'en'));
+      if (mounted) setState(() => _pesanError = pesanErrorAkun(error));
     } catch (_) {
       if (mounted) {
-        setState(() => _pesanError = _text('Link pemulihan belum dapat dikirim. Coba lagi nanti.', 'Could not send the reset link. Try again later.'));
+        setState(() => _pesanError = 'Link pemulihan belum dapat dikirim. Coba lagi nanti.');
       }
     } finally {
       if (mounted) setState(() => _sedangMemproses = false);
@@ -119,17 +115,17 @@ class _LoginPageState extends State<LoginPage> {
 
   String? _periksaEmail(String? nilai) {
     final String email = nilai?.trim() ?? '';
-    if (email.isEmpty) return _text('Email wajib diisi.', 'Email is required.');
+    if (email.isEmpty) return 'Email wajib diisi.';
     if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
-      return _text('Masukkan alamat email yang valid.', 'Enter a valid email address.');
+      return 'Masukkan alamat email yang valid.';
     }
     return null;
   }
 
   String? _periksaKataSandi(String? nilai) {
     final String sandi = nilai ?? '';
-    if (sandi.isEmpty) return _text('Kata sandi wajib diisi.', 'Password is required.');
-    if (sandi.length < 8) return _text('Gunakan minimal 8 karakter.', 'Use at least 8 characters.');
+    if (sandi.isEmpty) return 'Kata sandi wajib diisi.';
+    if (sandi.length < 8) return 'Gunakan minimal 8 karakter.';
     return null;
   }
 
@@ -149,7 +145,7 @@ class _LoginPageState extends State<LoginPage> {
                   children: <Widget>[
                     const SizedBox(height: 8),
                     Text(
-                      _sedangDaftar ? _text('Buat akunmu', 'Create your account') : _text('Selamat datang kembali', 'Welcome back'),
+                      _sedangDaftar ? 'Buat akunmu' : 'Selamat datang kembali',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 27,
@@ -159,10 +155,10 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 8),
                     Text(
                       _sedangDaftar
-                          ? _text('Simpan catatan latihan dan buka di perangkat lain dengan akun yang sama.', 'Save your training history and access it on other devices with the same account.')
-                          : _text('Masuk untuk melanjutkan.', 'Sign in to continue.'),
+                          ? 'Simpan catatan latihan dan buka di perangkat lain dengan akun yang sama.'
+                          : 'Masuk untuk melanjutkan.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: VoltWarna.teksAbu,
                         height: 1.5,
                       ),
@@ -173,16 +169,16 @@ class _LoginPageState extends State<LoginPage> {
                         controller: _namaController,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: _text('Nama panggilan', 'Display name'),
+                        decoration: const InputDecoration(
+                          labelText: 'Nama panggilan',
                           prefixIcon: Icon(Icons.person_outline_rounded),
                         ),
                         validator: (String? nilai) {
                           if (nilai == null || nilai.trim().isEmpty) {
-                            return _text('Nama wajib diisi.', 'Name is required.');
+                            return 'Nama wajib diisi.';
                           }
                           if (nilai.trim().length < 2) {
-                            return _text('Nama minimal 2 karakter.', 'Name must be at least 2 characters.');
+                            return 'Nama minimal 2 karakter.';
                           }
                           return null;
                         },
@@ -194,7 +190,7 @@ class _LoginPageState extends State<LoginPage> {
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autocorrect: false,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Email',
                         prefixIcon: Icon(Icons.mail_outline_rounded),
                       ),
@@ -211,12 +207,12 @@ class _LoginPageState extends State<LoginPage> {
                         if (!_sedangDaftar) _kirimFormulir();
                       },
                       decoration: InputDecoration(
-                        labelText: _text('Kata sandi', 'Password'),
+                        labelText: 'Kata sandi',
                         prefixIcon: const Icon(Icons.lock_outline_rounded),
                         suffixIcon: IconButton(
                           tooltip: _sandiTerlihat
-                              ? _text('Sembunyikan kata sandi', 'Hide password')
-                              : _text('Lihat kata sandi', 'Show password'),
+                              ? 'Sembunyikan kata sandi'
+                              : 'Lihat kata sandi',
                           onPressed: () => setState(
                             () => _sandiTerlihat = !_sandiTerlihat,
                           ),
@@ -236,13 +232,13 @@ class _LoginPageState extends State<LoginPage> {
                         obscureText: !_sandiTerlihat,
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _kirimFormulir(),
-                        decoration: InputDecoration(
-                          labelText: _text('Ulangi kata sandi', 'Confirm password'),
+                        decoration: const InputDecoration(
+                          labelText: 'Ulangi kata sandi',
                           prefixIcon: Icon(Icons.lock_reset_rounded),
                         ),
                         validator: (String? nilai) {
                           if (nilai != _sandiController.text) {
-                            return _text('Kedua kata sandi belum sama.', 'The passwords do not match.');
+                            return 'Kedua kata sandi belum sama.';
                           }
                           return null;
                         },
@@ -269,7 +265,7 @@ class _LoginPageState extends State<LoginPage> {
                     FilledButton(
                       onPressed: _sedangMemproses ? null : _kirimFormulir,
                       child: _sedangMemproses
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(
@@ -277,13 +273,13 @@ class _LoginPageState extends State<LoginPage> {
                                 color: VoltWarna.latar,
                               ),
                             )
-                          : Text(_sedangDaftar ? _text('Buat akun', 'Create account') : _text('Masuk', 'Sign in')),
+                          : Text(_sedangDaftar ? 'Buat akun' : 'Masuk'),
                     ),
                     if (!_sedangDaftar) ...<Widget>[
                       const SizedBox(height: 8),
                       TextButton(
                         onPressed: _sedangMemproses ? null : _lupaKataSandi,
-                        child: Text(_text('Lupa kata sandi?', 'Forgot password?')),
+                        child: const Text('Lupa kata sandi?'),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -292,22 +288,22 @@ class _LoginPageState extends State<LoginPage> {
                       children: <Widget>[
                         Text(
                           _sedangDaftar
-                              ? _text('Sudah punya akun?', 'Already have an account?')
-                              : _text('Belum punya akun?', 'Do not have an account yet?'),
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              ? 'Sudah punya akun?'
+                              : 'Belum punya akun?',
+                          style: TextStyle(color: VoltWarna.teksAbu),
                         ),
                         TextButton(
                           onPressed: _sedangMemproses ? null : _gantiMode,
-                          child: Text(_sedangDaftar ? _text('Masuk', 'Sign in') : _text('Daftar', 'Create one')),
+                          child: Text(_sedangDaftar ? 'Masuk' : 'Daftar'),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _text('Gunakan email dan kata sandi milikmu sendiri.', 'Use your own email address and password.'),
+                      'Gunakan email dan kata sandi milikmu sendiri.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: VoltWarna.teksRedup,
                         fontSize: 11,
                         height: 1.5,
                       ),

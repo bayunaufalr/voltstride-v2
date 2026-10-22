@@ -5,15 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:shared_preferences/shared_preferences.dart';
-
-import '../../services/app_language_service.dart';
 import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
-/// Pilihan cara VoltStride mengingatkan jadwal.
+import '../../services/app_language_service.dart';
+
+/// notificationAndAlarm dipertahankan hanya untuk membaca data versi lama.
+/// Semua jadwal baru dan jadwal lama sekarang menggunakan notifikasi biasa.
 enum ReminderStyle { notificationOnly, notificationAndAlarm }
 
-/// Satu kegiatan rutin pada hari dan waktu tertentu.
 class TrainingReminder {
   const TrainingReminder({
     required this.id,
@@ -37,19 +37,17 @@ class TrainingReminder {
   final String sound;
   final List<String> completedDates;
 
-  TrainingReminder copyWith({List<String>? completedDates}) {
-    return TrainingReminder(
-      id: id,
-      activity: activity,
-      weekdays: weekdays,
-      hour: hour,
-      minute: minute,
-      durationMinutes: durationMinutes,
-      style: style,
-      sound: sound,
-      completedDates: completedDates ?? this.completedDates,
-    );
-  }
+  TrainingReminder copyWith({List<String>? completedDates}) => TrainingReminder(
+        id: id,
+        activity: activity,
+        weekdays: weekdays,
+        hour: hour,
+        minute: minute,
+        durationMinutes: durationMinutes,
+        style: ReminderStyle.notificationOnly,
+        sound: 'lembut',
+        completedDates: completedDates ?? this.completedDates,
+      );
 
   Map<String, Object?> toJson() => <String, Object?>{
         'id': id,
@@ -58,8 +56,8 @@ class TrainingReminder {
         'hour': hour,
         'minute': minute,
         'durationMinutes': durationMinutes,
-        'style': style.name,
-        'sound': sound,
+        'style': ReminderStyle.notificationOnly.name,
+        'sound': 'lembut',
         'completedDates': completedDates,
       };
 
@@ -73,11 +71,8 @@ class TrainingReminder {
       hour: (json['hour'] as num?)?.toInt() ?? 7,
       minute: (json['minute'] as num?)?.toInt() ?? 0,
       durationMinutes: (json['durationMinutes'] as num?)?.toInt() ?? 30,
-      style: ReminderStyle.values.firstWhere(
-        (ReminderStyle value) => value.name == json['style'],
-        orElse: () => ReminderStyle.notificationOnly,
-      ),
-      sound: json['sound'] as String? ?? 'lembut',
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
       completedDates: (json['completedDates'] as List<dynamic>? ?? <dynamic>[])
           .whereType<String>()
           .toList(growable: false),
@@ -89,14 +84,14 @@ class TrainingReminder {
 
   String get daysText {
     const List<String> labels = <String>[
-      'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'
+      'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min',
     ];
     final List<int> sorted = weekdays.toList()..sort();
     return sorted.map((int day) => labels[day - 1]).join(', ');
   }
 }
 
-/// Menyimpan jadwal di perangkat dan memasang pemberitahuan Android.
+/// Penyimpanan jadwal lokal dan penjadwalan notifikasi Android standar.
 class ReminderService {
   ReminderService._();
 
@@ -112,36 +107,6 @@ class ReminderService {
   static bool get _english =>
       AppLanguageService.localeNotifier.value.languageCode == 'en';
 
-  static String _activityName(String storedActivity) {
-    final String value = storedActivity.toLowerCase();
-    if (value.contains('kekuatan') || value.contains('strength')) {
-      return _english ? 'strength training' : 'latihan kekuatan';
-    }
-    if (value.contains('interval')) return _english ? 'interval run' : 'lari interval';
-    if (value.contains('jalan') || value.contains('walk')) return _english ? 'walk' : 'jalan';
-    if (value.contains('lari') || value.contains('run')) return _english ? 'run' : 'lari';
-    return storedActivity.toLowerCase();
-  }
-
-  static String _notificationTitle(TrainingReminder reminder) {
-    final String activity = _activityName(reminder.activity);
-    if (_english) {
-      return reminder.style == ReminderStyle.notificationAndAlarm
-          ? 'Time for $activity'
-          : 'Scheduled $activity';
-    }
-    return reminder.style == ReminderStyle.notificationAndAlarm
-        ? 'Waktunya $activity'
-        : 'Jadwal $activity';
-  }
-
-  static String _notificationBody(TrainingReminder reminder) => _english
-      ? 'Duration: ${reminder.durationMinutes} min.'
-      : 'Durasi ${reminder.durationMinutes} menit.';
-
-
-  /// Hindari inisialisasi plugin ganda jika halaman dan proses pemulihan
-  /// pengingat memanggil fungsi ini hampir bersamaan.
   static Future<void> initialize() {
     if (_ready) return Future<void>.value();
     return _initialization ??= _initializePlugin();
@@ -161,7 +126,6 @@ class ReminderService {
       );
       _ready = true;
     } catch (_) {
-      // Izinkan percobaan ulang jika inisialisasi pertama gagal.
       _initialization = null;
       rethrow;
     }
@@ -175,8 +139,7 @@ class ReminderService {
         RegExp(r'^voltstride-reminder-(\d+)$').firstMatch(payload);
     if (match == null) return;
     final int? reminderId = int.tryParse(match.group(1)!);
-    if (reminderId == null) return;
-    unawaited(_markCurrentOccurrenceCompleted(reminderId));
+    if (reminderId != null) unawaited(_markCurrentOccurrenceCompleted(reminderId));
   }
 
   static Future<void> _markCurrentOccurrenceCompleted(int reminderId) async {
@@ -192,11 +155,9 @@ class ReminderService {
   }
 
   static Future<List<TrainingReminder>> getAll() async {
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
     final String? jsonText = preferences.getString(_storageKey);
     if (jsonText == null || jsonText.isEmpty) return <TrainingReminder>[];
-
     try {
       final List<dynamic> values = jsonDecode(jsonText) as List<dynamic>;
       return values
@@ -209,114 +170,74 @@ class ReminderService {
   }
 
   static Future<void> save(TrainingReminder reminder) async {
-    // Simpan jadwal lokal lebih dahulu supaya jadwal tidak hilang dari aplikasi
-    // hanya karena Android gagal memasang salah satu notifikasi.
-    final List<TrainingReminder> existing = await getAll();
+    final TrainingReminder notificationOnly = TrainingReminder(
+      id: reminder.id,
+      activity: reminder.activity,
+      weekdays: reminder.weekdays.toList(growable: false),
+      hour: reminder.hour,
+      minute: reminder.minute,
+      durationMinutes: reminder.durationMinutes,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+      completedDates: reminder.completedDates.toList(growable: false),
+    );
+    final List<TrainingReminder> current = await getAll();
     final List<TrainingReminder> updated = <TrainingReminder>[
-      ...existing.where((TrainingReminder item) => item.id != reminder.id),
-      reminder,
+      ...current.where((TrainingReminder item) => item.id != reminder.id),
+      notificationOnly,
     ]..sort((TrainingReminder a, TrainingReminder b) => a.hour != b.hour
         ? a.hour.compareTo(b.hour)
         : a.minute.compareTo(b.minute));
 
+    // Jadwal disimpan dahulu. Gangguan notifikasi tidak boleh menghilangkan
+    // jadwal yang sudah diisi pengguna.
     await _write(updated);
-
-    // Penyimpanan jadwal tidak bergantung pada keberhasilan inisialisasi plugin.
-    // Dengan begitu, jadwal tetap dapat dilihat dan dihapus bila plugin Android
-    // gagal disiapkan; detail kegagalannya akan ditampilkan ke pengguna.
     await initialize();
     await _cancelReminderNotifications(reminder.id);
 
     final List<String> failures = <String>[];
-    for (final int day in reminder.weekdays.toSet()) {
-      final int notificationId = _notificationId(reminder.id, day);
-      final timezone.TZDateTime nextDate = _nextDate(
-        weekday: day,
-        hour: reminder.hour,
-        minute: reminder.minute,
-      );
-
+    for (final int day in notificationOnly.weekdays.toSet()) {
+      final int notificationId = _notificationId(notificationOnly.id, day);
       try {
         await _plugin.zonedSchedule(
           notificationId,
-          _notificationTitle(reminder),
-          _notificationBody(reminder),
-          nextDate,
-          _details(reminder),
-          payload: 'voltstride-reminder-${reminder.id}',
-          androidScheduleMode: _scheduleMode(reminder),
+          _notificationTitle(notificationOnly),
+          _notificationBody(notificationOnly),
+          _nextDate(
+            weekday: day,
+            hour: notificationOnly.hour,
+            minute: notificationOnly.minute,
+          ),
+          _details(),
+          payload: 'voltstride-reminder-${notificationOnly.id}',
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
         );
       } catch (error) {
-        // Jika alarm tepat ditolak oleh versi/varian Android, coba jadwalkan
-        // ulang sebagai alarm inexact. Suara alarm tetap mengikuti pilihan.
-        if (reminder.style == ReminderStyle.notificationAndAlarm) {
-          try {
-            // Prioritaskan alarm inexact dengan suara pilihan jika izin alarm
-            // tepat ditolak. Ini tetap memberi notifikasi bersuara.
-            await _plugin.zonedSchedule(
-              notificationId,
-              _notificationTitle(reminder),
-              _notificationBody(reminder),
-              nextDate,
-              _details(reminder),
-              payload: 'voltstride-reminder-${reminder.id}',
-              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-              matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-            );
-            continue;
-          } catch (fallbackError) {
-            try {
-              // Jika resource audio khusus bermasalah, tetap simpan notifikasi
-              // memakai suara bawaan Android agar jadwal tidak gagal total.
-              await _plugin.zonedSchedule(
-                notificationId,
-                _notificationTitle(reminder),
-                _notificationBody(reminder),
-                nextDate,
-                _details(reminder, useCustomSound: false),
-                payload: 'voltstride-reminder-${reminder.id}',
-                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-                matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-              );
-              continue;
-            } catch (defaultSoundError) {
-              failures.add(
-                'Hari $day: $defaultSoundError '
-                '(suara pilihan: $fallbackError, awal: $error)',
-              );
-            }
-          }
-        } else {
-          failures.add('Hari $day: $error');
-        }
+        failures.add('Hari $day: $error');
       }
     }
 
     if (failures.isNotEmpty) {
       throw StateError(
-        'Jadwal disimpan, tetapi notifikasi gagal dipasang: '
+        'Jadwal tersimpan, tetapi notifikasi belum berhasil dijadwalkan: '
         '${failures.join('; ')}',
       );
     }
   }
 
   static Future<void> delete(TrainingReminder reminder) async {
-    // Penghapusan lokal tidak bergantung pada plugin notifikasi yang mungkin
-    // sedang bermasalah. Jadwal dihapus dahulu, kemudian alarm lama dibatalkan.
     final List<TrainingReminder> updated = List<TrainingReminder>.of(
       await getAll(),
       growable: true,
     );
     updated.removeWhere((TrainingReminder item) => item.id == reminder.id);
     await _write(updated);
-
     try {
       await initialize();
       await _cancelReminderNotifications(reminder.id);
     } catch (_) {
-      // Data jadwal sudah terhapus. Jika Android menolak pembatalan alarm lama,
-      // jangan kembalikan jadwal yang sudah dihapus ke daftar aplikasi.
+      // Jadwal lokal sudah dihapus meskipun pembatalan notifikasi gagal.
     }
   }
 
@@ -326,16 +247,18 @@ class ReminderService {
     required bool completed,
   }) async {
     final List<TrainingReminder> reminders = await getAll();
-    final List<TrainingReminder> updated = reminders.map((TrainingReminder item) {
-      if (item.id != reminderId) return item;
-      final Set<String> dates = item.completedDates.toSet();
-      if (completed) {
-        dates.add(dateKey);
-      } else {
-        dates.remove(dateKey);
-      }
-      return item.copyWith(completedDates: dates.toList()..sort());
-    }).toList(growable: false);
+    final List<TrainingReminder> updated = reminders
+        .map((TrainingReminder item) {
+          if (item.id != reminderId) return item;
+          final Set<String> dates = item.completedDates.toSet();
+          if (completed) {
+            dates.add(dateKey);
+          } else {
+            dates.remove(dateKey);
+          }
+          return item.copyWith(completedDates: dates.toList()..sort());
+        })
+        .toList(growable: false);
     await _write(updated);
   }
 
@@ -343,59 +266,32 @@ class ReminderService {
     await initialize();
     final List<TrainingReminder> saved = await getAll();
     for (final TrainingReminder reminder in saved) {
+      // Membatalkan ID lama sekaligus membersihkan jadwal lama yang mungkin
+      // memakai kanal alarm khusus sebelum mendaftarkan notifikasi standar.
+      await _cancelReminderNotifications(reminder.id);
       for (final int day in reminder.weekdays.toSet()) {
-        final int notificationId = _notificationId(reminder.id, day);
-        final timezone.TZDateTime nextDate = _nextDate(
-          weekday: day,
-          hour: reminder.hour,
-          minute: reminder.minute,
-        );
         try {
           await _plugin.zonedSchedule(
-            notificationId,
+            _notificationId(reminder.id, day),
             _notificationTitle(reminder),
             _notificationBody(reminder),
-            nextDate,
-            _details(reminder),
+            _nextDate(
+              weekday: day,
+              hour: reminder.hour,
+              minute: reminder.minute,
+            ),
+            _details(),
             payload: 'voltstride-reminder-${reminder.id}',
-            androidScheduleMode: _scheduleMode(reminder),
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
           );
         } catch (_) {
-          if (reminder.style != ReminderStyle.notificationAndAlarm) continue;
-          try {
-            await _plugin.zonedSchedule(
-              notificationId,
-              _notificationTitle(reminder),
-              _notificationBody(reminder),
-              nextDate,
-              _details(reminder),
-              payload: 'voltstride-reminder-${reminder.id}',
-              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-              matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-            );
-          } catch (_) {
-            try {
-              await _plugin.zonedSchedule(
-                notificationId,
-                _notificationTitle(reminder),
-                _notificationBody(reminder),
-                nextDate,
-                _details(reminder, useCustomSound: false),
-                payload: 'voltstride-reminder-${reminder.id}',
-                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-                matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-              );
-            } catch (_) {
-              // Satu alarm bermasalah tidak boleh membatalkan pemulihan jadwal lain.
-            }
-          }
+          // Jadwal lain tetap dipulihkan walau satu notifikasi gagal.
         }
       }
     }
   }
 
-  /// Memeriksa izin notifikasi Android tanpa menutup formulir jadwal.
   static Future<bool> requestNotificationPermission() async {
     await initialize();
     final AndroidFlutterLocalNotificationsPlugin? android = _plugin
@@ -405,19 +301,15 @@ class ReminderService {
 
     bool? allowed = await android.areNotificationsEnabled();
     if (allowed == true) return true;
-
     await android.requestNotificationsPermission();
     allowed = await android.areNotificationsEnabled();
     if (allowed != true) {
-      // Jika dialog sudah ditolak, buka halaman izin aplikasi, bukan sekadar
-      // menyuruh pengguna mencari setelan secara manual.
       await openAppSettings();
       allowed = await android.areNotificationsEnabled();
     }
     return allowed == true;
   }
 
-  /// Membaca izin notifikasi tanpa memunculkan dialog atau mengubah setelan.
   static Future<bool> areNotificationsEnabled() async {
     await initialize();
     final AndroidFlutterLocalNotificationsPlugin? android = _plugin
@@ -427,7 +319,6 @@ class ReminderService {
     return await android.areNotificationsEnabled() == true;
   }
 
-  /// Membuka halaman pengaturan VoltStride di Android.
   static Future<void> openAppSettings() async {
     try {
       await _settingsChannel.invokeMethod<void>('openNotificationSettings');
@@ -438,161 +329,53 @@ class ReminderService {
     }
   }
 
-  /// Membaca status izin alarm tepat setelah pengguna kembali dari Setelan.
-  static Future<bool> isExactAlarmPermissionGranted() async {
-    await initialize();
-    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return true;
-    return await android.canScheduleExactNotifications() == true;
+  static String _notificationTitle(TrainingReminder reminder) {
+    final String activity = _activityName(reminder.activity);
+    return _english ? 'Scheduled $activity' : 'Jadwal $activity';
   }
 
-  /// Membuka halaman izin alarm khusus untuk VoltStride.
-  /// Android memang mengharuskan pengguna mengaktifkan izin ini di Setelan.
-  static Future<void> openExactAlarmSettings() async {
-    try {
-      await _settingsChannel.invokeMethod<void>('openExactAlarmSettings');
-      return;
-    } on PlatformException {
-      // Gunakan deep-link dari plugin sebagai fallback untuk perangkat lain.
-    } on MissingPluginException {
-      // Gunakan deep-link dari plugin sebagai fallback untuk perangkat lain.
+  static String _activityName(String activity) {
+    final String value = activity.toLowerCase();
+    if (value.contains('kekuatan') || value.contains('strength')) {
+      return _english ? 'strength training' : 'latihan kekuatan';
     }
-
-    await initialize();
-    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return;
-    try {
-      await android.requestExactAlarmsPermission();
-    } catch (_) {
-      await openAppSettings();
-    }
+    if (value.contains('interval')) return _english ? 'interval run' : 'lari interval';
+    if (value.contains('jalan') || value.contains('walk')) return _english ? 'walk' : 'jalan';
+    if (value.contains('lari') || value.contains('run')) return _english ? 'run' : 'lari';
+    return activity.toLowerCase();
   }
 
-  static Future<bool> areRequiredPermissionsGranted(
-    ReminderStyle style,
-  ) async {
-    await initialize();
-    final AndroidFlutterLocalNotificationsPlugin? android = _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return true;
+  static String _notificationBody(TrainingReminder reminder) => _english
+      ? 'Scheduled duration: ${reminder.durationMinutes} minutes.'
+      : 'Durasi latihan terjadwal: ${reminder.durationMinutes} menit.';
 
-    final bool notificationsAllowed =
-        await android.areNotificationsEnabled() == true;
-    if (!notificationsAllowed) return false;
-
-    if (style == ReminderStyle.notificationAndAlarm) {
-      return isExactAlarmPermissionGranted();
-    }
-    return true;
-  }
-
-  /// Meminta izin yang diperlukan. Formulir akan tetap terbuka bila pengguna
-  /// perlu mengaktifkan izin alarm dari Setelan Android.
-  static Future<bool> requestRequiredPermissions(ReminderStyle style) async {
-    if (!await requestNotificationPermission()) return false;
-    if (style == ReminderStyle.notificationAndAlarm &&
-        !await isExactAlarmPermissionGranted()) {
-      await openExactAlarmSettings();
-      return isExactAlarmPermissionGranted();
-    }
-    return true;
-  }
-
-  static AndroidScheduleMode _scheduleMode(TrainingReminder reminder) {
-    return reminder.style == ReminderStyle.notificationAndAlarm
-        ? AndroidScheduleMode.exactAllowWhileIdle
-        : AndroidScheduleMode.inexactAllowWhileIdle;
-  }
-
-  /// Memainkan suara yang dipilih melalui notifikasi percobaan.
-  static Future<void> previewSound(String sound) async {
-    await initialize();
-    final bool permission = await requestNotificationPermission();
-    if (!permission) {
-      throw StateError('Izin notifikasi belum diaktifkan.');
-    }
-    final TrainingReminder contoh = TrainingReminder(
-      id: 987654,
-      activity: 'uji suara',
-      weekdays: const <int>[DateTime.monday],
-      hour: 7,
-      minute: 0,
-      durationMinutes: 30,
-      style: ReminderStyle.notificationAndAlarm,
-      sound: sound,
-    );
-    await _plugin.cancel(987654);
-    await _plugin.show(
-      987654,
-      'Contoh suara alarm',
-      'Ini suara yang dipilih untuk pengingat latihan.',
-      _details(contoh, persistent: false),
-      payload: 'voltstride-alarm-preview',
-    );
-  }
-
-  static NotificationDetails _details(
-    TrainingReminder reminder, {
-    bool useCustomSound = true,
-    bool persistent = true,
-  }) {
-    final bool withAlarm =
-        reminder.style == ReminderStyle.notificationAndAlarm;
-    final bool customSoundEnabled = withAlarm && useCustomSound;
-    final String channelId = !withAlarm
-        ? 'voltstride_notice_v3'
-        : customSoundEnabled
-            ? 'voltstride_alarm_v3_${reminder.sound}'
-            : 'voltstride_alarm_fallback_v3';
+  static NotificationDetails _details() {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      channelId,
-      withAlarm ? 'Alarm latihan' : 'Pengingat latihan',
-      channelDescription: withAlarm
-          ? 'Pengingat latihan dengan suara pilihan pengguna.'
-          : 'Pemberitahuan jadwal latihan.',
-      importance: withAlarm ? Importance.max : Importance.defaultImportance,
-      priority: withAlarm ? Priority.max : Priority.defaultPriority,
+      'voltstride_notice_v4',
+      _english ? 'Training reminders' : 'Pengingat latihan',
+      channelDescription: _english
+          ? 'Scheduled training notifications.'
+          : 'Notifikasi jadwal latihan.',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
       playSound: true,
-      sound: customSoundEnabled
-          ? RawResourceAndroidNotificationSound(_soundResource(reminder.sound))
-          : null,
-      audioAttributesUsage:
-          withAlarm ? AudioAttributesUsage.alarm : AudioAttributesUsage.notification,
       enableVibration: true,
-      category: withAlarm ? AndroidNotificationCategory.alarm : AndroidNotificationCategory.reminder,
-      ongoing: persistent,
-      autoCancel: !persistent,
-      actions: persistent
-          ? <AndroidNotificationAction>[
-              AndroidNotificationAction(
-                'mark_completed',
-                _english ? 'Done' : 'Selesai',
-                cancelNotification: true,
-                showsUserInterface: true,
-              ),
-            ]
-          : null,
+      category: AndroidNotificationCategory.reminder,
+      ongoing: true,
+      autoCancel: false,
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'mark_completed',
+          _english ? 'Done' : 'Selesai',
+          cancelNotification: true,
+          showsUserInterface: true,
+        ),
+      ],
     );
     return NotificationDetails(
       android: androidDetails,
       iOS: const DarwinNotificationDetails(),
     );
-  }
-
-  static String _soundResource(String value) {
-    switch (value) {
-      case 'digital':
-        return 'volt_alarm_digital';
-      case 'denyut':
-        return 'volt_alarm_pulse';
-      default:
-        return 'volt_alarm_gentle';
-    }
   }
 
   static int _notificationId(int reminderId, int weekday) =>
@@ -604,7 +387,7 @@ class ReminderService {
     required int minute,
   }) {
     final timezone.TZDateTime now = timezone.TZDateTime.now(timezone.local);
-    int daysAhead = (weekday - now.weekday) % 7;
+    final int daysAhead = (weekday - now.weekday) % 7;
     timezone.TZDateTime candidate = timezone.TZDateTime(
       timezone.local,
       now.year,
@@ -624,15 +407,13 @@ class ReminderService {
       try {
         await _plugin.cancel(_notificationId(reminderId, day));
       } catch (_) {
-        // Penghapusan lokal tetap berhasil jika Android tidak bisa membatalkan
-        // salah satu notifikasi yang sebelumnya sudah terdaftar.
+        // Teruskan membatalkan notifikasi hari lain.
       }
     }
   }
 
   static Future<void> _write(List<TrainingReminder> reminders) async {
-    final SharedPreferences preferences =
-        await SharedPreferences.getInstance();
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       _storageKey,
       jsonEncode(reminders.map((TrainingReminder item) => item.toJson()).toList()),

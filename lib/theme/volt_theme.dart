@@ -39,23 +39,59 @@ Future<void> saveVoltThemeMode(ThemeMode mode) async {
 class VoltWarna {
   VoltWarna._();
 
-  static const Color latar = Color(0xFFF3F1EC);
-  static const Color kartu = Color(0xFFFCFBF8);
-  static const Color surface = Color(0xFFEAE8E2);
-  static const Color border = Color(0xFFD6D3CC);
+  static bool get _gelap {
+    final ThemeMode mode = voltThemeModeNotifier.value;
+    if (mode == ThemeMode.dark) return true;
+    if (mode == ThemeMode.light) return false;
+    return WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+        Brightness.dark;
+  }
 
-  static const Color aksen = Color(0xFF202124);
-  static const Color aksenGelap = Color(0xFF3A3B3D);
-  // Nama lama dipertahankan agar berkas lain tetap kompatibel; nilainya
-  // sengaja tetap netral, tanpa aksen hijau, kuning, merah, atau ungu.
-  static const Color hijau = Color(0xFF656568);
-  static const Color kuning = Color(0xFF85847F);
-  static const Color merah = Color(0xFF202124);
-  static const Color violet = Color(0xFF747478);
+  // Palet netral adaptif. Getter dipakai karena banyak widget lama mengakses
+  // VoltWarna secara langsung; warna sekarang ikut mode tema tanpa warna
+  // teks statis yang menghilang pada latar gelap.
+  static Color get latar => _gelap
+      ? const Color(0xFF141516)
+      : const Color(0xFFF4F2ED);
+  static Color get kartu => _gelap
+      ? const Color(0xFF202123)
+      : const Color(0xFFFCFBF8);
+  static Color get surface => _gelap
+      ? const Color(0xFF2B2C2E)
+      : const Color(0xFFE9E7E1);
+  static Color get border => _gelap
+      ? const Color(0xFF4A4B4D)
+      : const Color(0xFFD0CEC8);
 
-  static const Color teksPutih = Color(0xFF202124);
-  static const Color teksAbu = Color(0xFF626264);
-  static const Color teksRedup = Color(0xFF85847F);
+  // Aksen hitam-putih dibalik agar tetap kontras pada kedua tema.
+  static Color get aksen => _gelap
+      ? const Color(0xFFF3F2EE)
+      : const Color(0xFF202124);
+  static Color get aksenGelap => _gelap
+      ? const Color(0xFF2C2D2F)
+      : const Color(0xFF3A3B3D);
+  static Color get hijau => _gelap
+      ? const Color(0xFFD2D2CF)
+      : const Color(0xFF555659);
+  static Color get kuning => _gelap
+      ? const Color(0xFFC0C0BD)
+      : const Color(0xFF6A6B6E);
+  static Color get merah => _gelap
+      ? const Color(0xFFF0EFEB)
+      : const Color(0xFF292A2C);
+  static Color get violet => _gelap
+      ? const Color(0xFFCACAC7)
+      : const Color(0xFF5B5C60);
+
+  static Color get teksPutih => _gelap
+      ? const Color(0xFFF4F2ED)
+      : const Color(0xFF202124);
+  static Color get teksAbu => _gelap
+      ? const Color(0xFFC4C3BF)
+      : const Color(0xFF5E5F62);
+  static Color get teksRedup => _gelap
+      ? const Color(0xFFA9A9A5)
+      : const Color(0xFF707175);
 }
 
 ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {

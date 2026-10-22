@@ -287,7 +287,7 @@ class _TrackerPageState extends State<TrackerPage> {
     });
 
     // Getaran saat mulai merekam.
-    unawaited(HapticFeedback.mediumImpact());
+    HapticFeedback.mediumImpact();
   }
 
   /// Menghentikan perekaman GPS.
@@ -307,7 +307,7 @@ class _TrackerPageState extends State<TrackerPage> {
     });
 
     // Getaran selesai.
-    unawaited(HapticFeedback.mediumImpact());
+    HapticFeedback.mediumImpact();
   }
 
   // ------------------------------------------------------------
@@ -334,7 +334,7 @@ class _TrackerPageState extends State<TrackerPage> {
         _simulator.status != StatusSimulasi.selesai) {
       _simulator.lanjut();
       setState(() {});
-      unawaited(HapticFeedback.mediumImpact());
+      HapticFeedback.mediumImpact();
       return;
     }
 
@@ -353,7 +353,7 @@ class _TrackerPageState extends State<TrackerPage> {
       },
     );
 
-    unawaited(HapticFeedback.mediumImpact());
+    HapticFeedback.mediumImpact();
   }
 
   // ------------------------------------------------------------
@@ -527,7 +527,9 @@ class _TrackerPageState extends State<TrackerPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          error ?? 'Activity berhasil dikirim ke Strava.',
+          error == null
+              ? 'Activity berhasil dikirim ke Strava.'
+              : error,
         ),
         backgroundColor: error == null ? VoltWarna.hijau : VoltWarna.merah,
       ),
@@ -600,7 +602,7 @@ class _TrackerPageState extends State<TrackerPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const Text(
+              Text(
                 'Input Profil Pelari',
                 style: TextStyle(
                   fontSize: 17,
@@ -708,7 +710,7 @@ class _TrackerPageState extends State<TrackerPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
+            Text(
               'Hasil Analisis AI',
               style: TextStyle(
                 fontSize: 17,
@@ -722,21 +724,21 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Target Pace',
                     nilai: _fmtPace(p.targetPaceAdaptifDetik),
                     satuan: '/km',
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Skor Fitness',
                     nilai: p.skorKebugaran.toStringAsFixed(0),
                     satuan: '/100',
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Est. Finish',
                     nilai: _fmtDurasi(p.estimasiDurasiDetik),
                     satuan: '',
@@ -749,11 +751,11 @@ class _TrackerPageState extends State<TrackerPage> {
             const SizedBox(height: 12),
 
             // Detail zona.
-            _barisDetail('Zona Tempo', p.zonaTempo.rentangTeks),
-            _barisDetail('HR Max', '${p.hrMaxEstimasi} BPM'),
-            _barisDetail('Skor Kebugaran', '${p.skorKebugaran.toStringAsFixed(1)} / 100'),
-            _barisDetail('Selisih vs Target', '${p.selisihVsTarget} detik'),
-            _barisDetail('Peta Zona', p.petaZona.ringkasan),
+            _BarisDetail('Zona Tempo', p.zonaTempo.rentangTeks),
+            _BarisDetail('HR Max', '${p.hrMaxEstimasi} BPM'),
+            _BarisDetail('Skor Kebugaran', '${p.skorKebugaran.toStringAsFixed(1)} / 100'),
+            _BarisDetail('Selisih vs Target', '${p.selisihVsTarget} detik'),
+            _BarisDetail('Peta Zona', p.petaZona.ringkasan),
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 12),
@@ -761,7 +763,7 @@ class _TrackerPageState extends State<TrackerPage> {
             // Ringkasan saran.
             Text(
               p.ringkasanSaran,
-              style: const TextStyle(
+              style: TextStyle(
                 color: VoltWarna.teksAbu,
                 height: 1.5,
                 fontSize: 13,
@@ -785,9 +787,9 @@ class _TrackerPageState extends State<TrackerPage> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(Icons.gps_fixed, color: VoltWarna.aksen),
+                Icon(Icons.gps_fixed, color: VoltWarna.aksen),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Live GPS Run',
                     style: TextStyle(
@@ -802,7 +804,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: _gpsAktif
-                        ? VoltWarna.hijau.withValues(alpha: 0.2)
+                        ? VoltWarna.hijau.withOpacity(0.2)
                         : VoltWarna.surface,
                     borderRadius: BorderRadius.zero,
                   ),
@@ -825,14 +827,14 @@ class _TrackerPageState extends State<TrackerPage> {
                 children: <Widget>[
                   Text(
                     _pelacak.totalJarakKm.toStringAsFixed(3),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 44,
                       fontWeight: FontWeight.w900,
                       color: VoltWarna.aksen,
                       height: 1,
                     ),
                   ),
-                  const Text(
+                  Text(
                     'KILOMETER',
                     style: TextStyle(
                       fontSize: 11,
@@ -850,21 +852,21 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Waktu',
                     nilai: _fmtDurasi(_swGps.elapsed.inSeconds),
                     satuan: '',
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Pace',
                     nilai: pace == null ? '--' : _fmtPace(pace.round()),
                     satuan: '/km',
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Kecepatan',
                     nilai: _pelacak.kecepatanRataRataKmh.toStringAsFixed(1),
                     satuan: 'km/h',
@@ -876,7 +878,7 @@ class _TrackerPageState extends State<TrackerPage> {
 
             // Panel akurasi GPS. Ini yang membedakan versi yang
             // memakai filter Kalman dari yang tidak.
-            _panelAkurasiGps(pelacak: _pelacak),
+            _PanelAkurasiGps(pelacak: _pelacak),
             const SizedBox(height: 16),
 
             // Pesan error bila ada.
@@ -885,12 +887,12 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: VoltWarna.merah.withValues(alpha: 0.15),
+                  color: VoltWarna.merah.withOpacity(0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Text(
                   _pesanGps!,
-                  style: const TextStyle(color: VoltWarna.merah, fontSize: 12),
+                  style: TextStyle(color: VoltWarna.merah, fontSize: 12),
                 ),
               ),
 
@@ -919,7 +921,7 @@ class _TrackerPageState extends State<TrackerPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const Text(
+            Text(
               'Race Simulation AI',
               style: TextStyle(
                 fontSize: 17,
@@ -935,7 +937,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 padding: const EdgeInsets.all(12),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: _warnaFase.withValues(alpha: 0.15),
+                  color: _warnaFase.withOpacity(0.15),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: Row(
@@ -960,14 +962,14 @@ class _TrackerPageState extends State<TrackerPage> {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Jarak',
                     nilai: _simulator.jarakTotalKm.toStringAsFixed(2),
                     satuan: 'KM',
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Pace',
                     nilai: _simulator.paceKmBerjalan == null
                         ? '--'
@@ -976,7 +978,7 @@ class _TrackerPageState extends State<TrackerPage> {
                   ),
                 ),
                 Expanded(
-                  child: _statistikBox(
+                  child: _StatistikBox(
                     label: 'Fase',
                     nilai: _simulator.labelFase,
                     satuan: '',
@@ -999,7 +1001,7 @@ class _TrackerPageState extends State<TrackerPage> {
             const SizedBox(height: 6),
             Text(
               'Target ${_simulator.targetKm.toStringAsFixed(0)} KM',
-              style: const TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
+              style: TextStyle(fontSize: 11, color: VoltWarna.teksAbu),
             ),
             const SizedBox(height: 16),
 
@@ -1071,9 +1073,9 @@ class _TrackerPageState extends State<TrackerPage> {
           children: <Widget>[
             Row(
               children: <Widget>[
-                const Icon(Icons.calendar_month, color: VoltWarna.violet),
+                Icon(Icons.calendar_month, color: VoltWarna.violet),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Rencana Latihan',
                     style: TextStyle(
@@ -1087,12 +1089,12 @@ class _TrackerPageState extends State<TrackerPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: VoltWarna.violet.withValues(alpha: 0.2),
+                    color: VoltWarna.violet.withOpacity(0.2),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
                     _rencanaOnline != null ? 'COACH' : 'AI',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                       color: VoltWarna.violet,
@@ -1104,7 +1106,7 @@ class _TrackerPageState extends State<TrackerPage> {
             const SizedBox(height: 12),
             Text(
               rencana.ringkasan,
-              style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+              style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
             ),
             const SizedBox(height: 16),
             const Divider(),
@@ -1113,7 +1115,7 @@ class _TrackerPageState extends State<TrackerPage> {
             // Jadwal minggu pertama.
             Text(
               'Minggu ${mg.nomor}: ${mg.tema} (${mg.totalJarakKm.toStringAsFixed(1)} KM)',
-              style: const TextStyle(
+              style: TextStyle(
                 color: VoltWarna.aksen,
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
@@ -1133,7 +1135,7 @@ class _TrackerPageState extends State<TrackerPage> {
                       width: 40,
                       child: Text(
                         _namaHari(s.hari),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: VoltWarna.teksRedup,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -1146,7 +1148,7 @@ class _TrackerPageState extends State<TrackerPage> {
                         children: <Widget>[
                           Text(
                             s.ringkasan,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: VoltWarna.teksPutih,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -1155,7 +1157,7 @@ class _TrackerPageState extends State<TrackerPage> {
                           const SizedBox(height: 2),
                           Text(
                             s.instruksi,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: VoltWarna.teksAbu,
                               fontSize: 11,
                               height: 1.4,
@@ -1190,7 +1192,7 @@ class _TrackerPageState extends State<TrackerPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const Text(
+            Text(
               'Online Coach',
               style: TextStyle(
                 fontSize: 17,
@@ -1202,7 +1204,7 @@ class _TrackerPageState extends State<TrackerPage> {
 
             // Riwayat chat.
             if (_riwayatChat.isEmpty)
-              const Text(
+              Text(
                 'Tanya apa saja tentang programmu, misalnya '
                 '"jadwal minggu ini" atau "pace saya harus berapa".',
                 style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
@@ -1218,7 +1220,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 Expanded(
                   child: TextField(
                     controller: _cChat,
-                    style: const TextStyle(color: VoltWarna.teksPutih),
+                    style: TextStyle(color: VoltWarna.teksPutih),
                     decoration: const InputDecoration(
                       hintText: 'Tanya coach...',
                       isDense: true,
@@ -1229,7 +1231,7 @@ class _TrackerPageState extends State<TrackerPage> {
                 const SizedBox(width: 8),
                 IconButton(
                   onPressed: _memproses ? null : _kirimChat,
-                  icon: const Icon(Icons.send, color: VoltWarna.aksen),
+                  icon: Icon(Icons.send, color: VoltWarna.aksen),
                 ),
               ],
             ),
@@ -1324,7 +1326,7 @@ class _TrackerPageState extends State<TrackerPage> {
   }
 
   /// Widget statistik kecil: label besar di atas, nilai di bawah.
-  Widget _statistikBox({
+  Widget _StatistikBox({
     required String label,
     required String nilai,
     required String satuan,
@@ -1333,7 +1335,7 @@ class _TrackerPageState extends State<TrackerPage> {
       children: <Widget>[
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 10,
             color: VoltWarna.teksRedup,
             letterSpacing: 1,
@@ -1348,7 +1350,7 @@ class _TrackerPageState extends State<TrackerPage> {
           children: <Widget>[
             Text(
               nilai,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
                 color: VoltWarna.teksPutih,
@@ -1357,7 +1359,7 @@ class _TrackerPageState extends State<TrackerPage> {
             if (satuan.isNotEmpty)
               Text(
                 satuan,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   color: VoltWarna.teksAbu,
                 ),
@@ -1369,7 +1371,7 @@ class _TrackerPageState extends State<TrackerPage> {
   }
 
   /// Baris detail label: nilai.
-  Widget _barisDetail(String label, String nilai) {
+  Widget _BarisDetail(String label, String nilai) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1379,13 +1381,13 @@ class _TrackerPageState extends State<TrackerPage> {
             width: 130,
             child: Text(
               label,
-              style: const TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
+              style: TextStyle(color: VoltWarna.teksAbu, fontSize: 12),
             ),
           ),
           Expanded(
             child: Text(
               nilai,
-              style: const TextStyle(
+              style: TextStyle(
                 color: VoltWarna.teksPutih,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1402,7 +1404,7 @@ class _TrackerPageState extends State<TrackerPage> {
   /// Widget ini menunjukkan data yang hanya bisa ada kalau
   /// pemrosesan GPS memakai filter: jumlah titik diterima, ditolak,
   /// dan rasio penerimaan.
-  Widget _panelAkurasiGps({required PelacakLari pelacak}) {
+  Widget _PanelAkurasiGps({required PelacakLari pelacak}) {
     final int total = pelacak.titikDiterima + pelacak.titikDitolak;
     final double rasio = total == 0 ? 0 : pelacak.titikDiterima / total * 100;
 
@@ -1417,11 +1419,11 @@ class _TrackerPageState extends State<TrackerPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(Icons.filter_alt, color: VoltWarna.teksAbu, size: 16),
+              Icon(Icons.filter_alt, color: VoltWarna.teksAbu, size: 16),
               const SizedBox(width: 8),
               Text(
                 'AKURASI GPS: ${rasio.toStringAsFixed(0)}% Clean',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   color: VoltWarna.teksAbu,
                   fontWeight: FontWeight.w800,
@@ -1435,7 +1437,7 @@ class _TrackerPageState extends State<TrackerPage> {
             'Diterima: ${pelacak.titikDiterima} titik | '
             'Ditolak: ${pelacak.titikDitolak} titik | '
             'Kalman filter aktif',
-            style: const TextStyle(fontSize: 10, color: VoltWarna.teksRedup),
+            style: TextStyle(fontSize: 10, color: VoltWarna.teksRedup),
           ),
         ],
       ),

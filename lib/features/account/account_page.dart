@@ -586,7 +586,7 @@ class AccountPageState extends State<AccountPage>
           FilledButton.icon(
             onPressed: _movingLegacyHistory ? null : _sinkronkanAktivitas,
             icon: _movingLegacyHistory
-                ? const SizedBox(
+                ? SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(

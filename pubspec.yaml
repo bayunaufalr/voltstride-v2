@@ -1,5 +1,5 @@
 name: voltstride
-description: "VoltStride - Running engine, local run history, AI running coach, race planning, workouts, and strength training."
+description: "VoltStride - GPS running, race planning, strength training, workout timer, and training data export."
 publish_to: 'none'
 
 environment:

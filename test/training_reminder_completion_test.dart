@@ -21,7 +21,7 @@ void main() {
 
     expect(decoded.completedDates, contains('2026-10-19'));
     expect(decoded.weekdays, <int>[DateTime.monday, DateTime.friday]);
-    expect(decoded.style, ReminderStyle.notificationAndAlarm);
+    expect(decoded.style, ReminderStyle.notificationOnly);
   });
 
   test('menandai satu kejadian tidak mengubah jadwal berulangnya', () {

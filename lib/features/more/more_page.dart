@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../services/app_language_service.dart';
+import '../ai_coach/training_data_export_service.dart';
 
 class MorePage extends StatefulWidget {
   const MorePage({
     super.key,
     required this.onOpenTimer,
-    required this.onOpenCoach,
     required this.onOpenStrength,
   });
 
   final VoidCallback onOpenTimer;
-  final VoidCallback onOpenCoach;
   final VoidCallback onOpenStrength;
 
   @override
@@ -35,17 +34,49 @@ class MorePageState extends State<MorePage> {
             _text('Timer latihan', 'Workout timer'),
             widget.onOpenTimer,
           ),
-          _menuItem(_text('Pelatih AI', 'AI coach'), widget.onOpenCoach),
           _menuItem(
             _text('Latihan kekuatan', 'Strength training'),
             widget.onOpenStrength,
+          ),
+          _menuItem(
+            _text('Ekspor data latihan untuk AI', 'Export training data for AI'),
+            _exportTrainingData,
+            subtitle: _text(
+              'Bagikan satu file JSON ke ChatGPT atau layanan AI lain.',
+              'Share one JSON file with ChatGPT or another AI service.',
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _menuItem(String title, VoidCallback onTap) {
+  Future<void> _exportTrainingData() async {
+    try {
+      final int count = await TrainingDataExportService.shareAllSessions();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Ekspor berisi $count sesi latihan. Pilih aplikasi AI dari menu berbagi.',
+            'Export contains $count training sessions. Choose an AI app from the share menu.',
+          )),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Ekspor data gagal: $error',
+            'Training data export failed: $error',
+          )),
+        ),
+      );
+    }
+  }
+
+  Widget _menuItem(String title, VoidCallback onTap, {String? subtitle}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -54,6 +85,7 @@ class MorePageState extends State<MorePage> {
       ),
       child: ListTile(
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: subtitle == null ? null : Text(subtitle),
         trailing: Icon(
           Icons.chevron_right,
           color: Theme.of(context).colorScheme.onSurfaceVariant,

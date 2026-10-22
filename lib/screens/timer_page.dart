@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/volt_theme.dart';
-import '../services/app_language_service.dart';
 
 /// ============================================================
 /// TIMER PAGE: INTERVAL ROUND TIMER
@@ -40,9 +39,6 @@ class TimerPage extends StatefulWidget {
 }
 
 class _TimerPageState extends State<TimerPage> {
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
   // ------------------------------------------------------------
   // CONTROLLER INPUT
   // ------------------------------------------------------------
@@ -304,7 +300,7 @@ class _TimerPageState extends State<TimerPage> {
       case 'jeda':
         return VoltWarna.aksen;
       default:
-        return Theme.of(context).colorScheme.surface;
+        return VoltWarna.kartu;
     }
   }
 
@@ -312,15 +308,15 @@ class _TimerPageState extends State<TimerPage> {
   String get _labelFase {
     switch (_fase) {
       case 'ronde':
-        return _text('RONDE', 'ROUND');
+        return 'RONDE';
       case 'istirahat':
-        return _text('ISTIRAHAT', 'REST');
+        return 'ISTIRAHAT';
       case 'jeda':
-        return _text('BERSIAP', 'GET READY');
+        return 'BERSIAP';
       case 'selesai':
-        return _text('SELESAI', 'FINISHED');
+        return 'SELESAI';
       default:
-        return _text('SIAP', 'READY');
+        return 'SIAP';
     }
   }
 
@@ -342,20 +338,20 @@ class _TimerPageState extends State<TimerPage> {
               child: Row(
                 children: <Widget>[
                   Text(
-                    _text('TIMER RONDE INTERVAL', 'INTERVAL ROUND TIMER'),
+                    'INTERVAL ROUND TIMER',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: Theme.of(context).colorScheme.onSurface,
+                      color: VoltWarna.teksPutih,
                       letterSpacing: 1,
                     ),
                   ),
                   const Spacer(),
                   if (aktif)
                     Text(
-                      _text('Ronde $_rondeSekarang / $_totalRonde', 'Round $_rondeSekarang / $_totalRonde'),
+                      'Ronde $_rondeSekarang / $_totalRonde',
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
+                        color: VoltWarna.aksen,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -384,7 +380,7 @@ class _TimerPageState extends State<TimerPage> {
                         ? [
                             BoxShadow(
                               color: _warnaFase
-                                  .withValues(alpha: 0.24),
+                                  .withOpacity(0.35),
                               blurRadius: 40,
                               spreadRadius: 4,
                             ),
@@ -402,9 +398,11 @@ class _TimerPageState extends State<TimerPage> {
                             fontSize: 14,
                             letterSpacing: 4,
                             fontWeight: FontWeight.w800,
-                            color: _fase == 'siap'
-                                ? Theme.of(context).colorScheme.onSurfaceVariant
-                                : Colors.white,
+                            color:
+                                _warnaFase ==
+                                        VoltWarna.kartu
+                                    ? VoltWarna.teksAbu
+                                    : VoltWarna.latar,
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -415,9 +413,11 @@ class _TimerPageState extends State<TimerPage> {
                           style: TextStyle(
                             fontSize: 72,
                             fontWeight: FontWeight.w900,
-                            color: _fase == 'siap'
-                                ? Theme.of(context).colorScheme.onSurface
-                                : Colors.white,
+                            color:
+                                _warnaFase ==
+                                        VoltWarna.kartu
+                                    ? VoltWarna.teksPutih
+                                    : VoltWarna.latar,
                             height: 1,
                           ),
                         ),
@@ -432,13 +432,15 @@ class _TimerPageState extends State<TimerPage> {
                             child: LinearProgressIndicator(
                               value: _progresFase,
                               minHeight: 6,
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme.onSurface.withValues(alpha: 0.14),
+                              backgroundColor:
+                                  VoltWarna.latar
+                                      .withOpacity(0.15),
                               valueColor:
                                   AlwaysStoppedAnimation<Color>(
-                                _fase == 'siap'
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.white,
+                                _warnaFase ==
+                                        VoltWarna.kartu
+                                    ? VoltWarna.aksen
+                                    : VoltWarna.latar,
                               ),
                             ),
                           ),
@@ -460,8 +462,8 @@ class _TimerPageState extends State<TimerPage> {
                       Expanded(
                         child: _InputDurasi(
                           controller: _cDurasiRonde,
-                          label: _text('Durasi ronde', 'Round duration'),
-                          satuan: _text('detik', 'sec'),
+                          label: 'Durasi Ronde',
+                          satuan: 'detik',
                           ikon: Icons.timer,
                         ),
                       ),
@@ -469,8 +471,8 @@ class _TimerPageState extends State<TimerPage> {
                       Expanded(
                         child: _InputDurasi(
                           controller: _cIstirahat,
-                          label: _text('Istirahat', 'Rest'),
-                          satuan: _text('detik', 'sec'),
+                          label: 'Istirahat',
+                          satuan: 'detik',
                           ikon: Icons.self_improvement,
                         ),
                       ),
@@ -482,8 +484,8 @@ class _TimerPageState extends State<TimerPage> {
                       Expanded(
                         child: _InputDurasi(
                           controller: _cJumlahRonde,
-                          label: _text('Jumlah ronde', 'Number of rounds'),
-                          satuan: _text('ronde', 'rounds'),
+                          label: 'Jumlah Ronde',
+                          satuan: 'ronde',
                           ikon: Icons.repeat,
                         ),
                       ),
@@ -501,7 +503,7 @@ class _TimerPageState extends State<TimerPage> {
                           : Icons.play_arrow,
                     ),
                     label: Text(
-                      aktif ? _text('Hentikan', 'Stop') : _text('Mulai sesi', 'Start session'),
+                      aktif ? 'Henti' : 'Mulai Sesi',
                     ),
                     style: aktif
                         ? FilledButton.styleFrom(
@@ -563,7 +565,7 @@ class _InputDurasi extends StatelessWidget {
       controller: controller,
       keyboardType: TextInputType.number,
       style: TextStyle(
-        color: Theme.of(context).colorScheme.onSurface,
+        color: VoltWarna.teksPutih,
         fontWeight: FontWeight.w700,
       ),
       decoration: InputDecoration(
