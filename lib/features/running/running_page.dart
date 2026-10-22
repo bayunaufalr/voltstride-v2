@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:pedometer/pedometer.dart';
 
 import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
@@ -19,6 +18,7 @@ import 'run_activity_charts.dart';
 import 'run_share_page.dart';
 import 'services/heart_rate_service.dart';
 import 'services/running_notification_service.dart';
+import 'services/step_counter_service.dart';
 
 /// Perekaman aktivitas dan ringkasan sesi pengguna.
 class RunningPage extends StatefulWidget {
@@ -30,6 +30,7 @@ class RunningPage extends StatefulWidget {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = false,
+    this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
     this.onExit,
   });
@@ -40,6 +41,7 @@ class RunningPage extends StatefulWidget {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
+  final List<RunPoint> plannedRoute;
   final bool autoStart;
   final VoidCallback? onExit;
 
@@ -75,7 +77,9 @@ class _RunningPageState extends State<RunningPage> {
   int _lastObservedRouteLength = 0;
   int? _countdownValue;
   bool _isStarting = false;
-  StreamSubscription<StepCount>? _stepSubscription;
+  bool _allowExitAfterConfirmation = false;
+  bool _exitConfirmationVisible = false;
+  StreamSubscription<StepCounterEvent>? _stepSubscription;
   bool _requestingStepStream = false;
   int? _lastSystemStepCount;
   DateTime? _lastStepTimestamp;
@@ -204,7 +208,7 @@ class _RunningPageState extends State<RunningPage> {
         final PermissionStatus status = await Permission.activityRecognition.request();
         if (!status.isGranted) return;
       }
-      _stepSubscription = Pedometer.stepCountStream.listen(
+      _stepSubscription = StepCounterService.stepCountStream.listen(
         _onStepCount,
         onError: (Object _) {
           // Aplikasi tetap merekam GPS jika sensor langkah tidak tersedia.
@@ -218,7 +222,7 @@ class _RunningPageState extends State<RunningPage> {
     }
   }
 
-  void _onStepCount(StepCount event) {
+  void _onStepCount(StepCounterEvent event) {
     final DateTime timestamp = event.timeStamp;
     final int systemSteps = event.steps;
     final int? previousSteps = _lastSystemStepCount;
@@ -395,22 +399,30 @@ class _RunningPageState extends State<RunningPage> {
 
   @override
   Widget build(BuildContext context) {
-    switch (_controller.status) {
-      case RunStatus.idle:
-        return _buildIdle();
-      case RunStatus.acquiringGps:
-        return _buildAcquiringGps();
-      case RunStatus.running:
-        return _buildLiveRun(paused: false);
-      case RunStatus.paused:
-        return _buildLiveRun(paused: true);
-      case RunStatus.finished:
-        return _buildSummary(
+    final RunStatus status = _controller.status;
+    final bool activityIsActive = status == RunStatus.acquiringGps ||
+        status == RunStatus.running ||
+        status == RunStatus.paused;
+    final Widget page = switch (status) {
+      RunStatus.idle => _buildIdle(),
+      RunStatus.acquiringGps => _buildAcquiringGps(),
+      RunStatus.running => _buildLiveRun(paused: false),
+      RunStatus.paused => _buildLiveRun(paused: true),
+      RunStatus.finished => _buildSummary(
           _completedSessionOverride ?? _controller.lastFinishedSession,
-        );
-      case RunStatus.error:
-        return _buildError();
-    }
+        ),
+      RunStatus.error => _buildError(),
+    };
+
+    return PopScope<Object?>(
+      canPop: !activityIsActive || _allowExitAfterConfirmation,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && activityIsActive && !_allowExitAfterConfirmation) {
+          unawaited(_confirmExitRunning());
+        }
+      },
+      child: page,
+    );
   }
 
   Widget _buildIdle() {
@@ -591,7 +603,7 @@ class _RunningPageState extends State<RunningPage> {
         title: Text('$_activityDisplayLabel • ${_text('Dalam ruangan', 'Indoor')}'),
         leading: IconButton(
           tooltip: _text('Keluar dari aktivitas', 'Exit activity'),
-          onPressed: () => _confirmExitIndoor(paused: paused),
+          onPressed: () => _confirmExitRunning(),
           icon: const Icon(Icons.close_rounded),
         ),
       ),
@@ -657,24 +669,42 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  Future<void> _confirmExitIndoor({required bool paused}) async {
+  Future<void> _confirmExitRunning() async {
+    if (_exitConfirmationVisible || !mounted) return;
+    _exitConfirmationVisible = true;
     final bool? exit = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(_text('Akhiri aktivitas?', 'End activity?')),
-        content: Text(_text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.', 'An unfinished activity will not be saved to your history.')),
+        title: Text(_text('Keluar dari aktivitas?', 'Exit activity?')),
+        content: Text(_text(
+          'Jika keluar sekarang, sesi yang belum selesai tidak akan disimpan ke riwayat. Tetap rekam atau keluar?',
+          'If you leave now, this unfinished session will not be saved to history. Keep recording or exit?',
+        )),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(_text('Kembali', 'Keep going'))),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(_text('Akhiri', 'End activity'))),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_text('Tetap rekam', 'Keep recording')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_text('Keluar', 'Exit')),
+          ),
         ],
       ),
     );
-    if (exit == true && mounted) {
-      _controller.resetRun();
-      final VoidCallback? onExit = widget.onExit;
-      if (onExit != null) onExit();
-    } else if (paused && mounted) {
-      // Tetap dijeda sesuai pilihan terakhir.
+    _exitConfirmationVisible = false;
+    if (exit != true || !mounted) return;
+
+    // Buka jalur pop setelah konfirmasi agar PopScope tidak memblokir pop
+    // programatis yang dilakukan oleh parent route.
+    setState(() => _allowExitAfterConfirmation = true);
+    await Future<void>.delayed(Duration.zero);
+    _controller.resetRun();
+    final VoidCallback? onExit = widget.onExit;
+    if (onExit != null) {
+      onExit();
+    } else if (mounted) {
+      Navigator.of(context).maybePop();
     }
   }
 
@@ -713,6 +743,7 @@ class _RunningPageState extends State<RunningPage> {
                   RunRouteMapView(
                 key: const ValueKey<String>('live-run-route-map-fullscreen'),
                 route: route,
+                plannedRoute: widget.plannedRoute,
                 laps: _controller.hundredMeterLaps,
                 height: MediaQuery.sizeOf(context).height,
                 followLastPoint: !paused,
@@ -2466,6 +2497,7 @@ class _RunningPageState extends State<RunningPage> {
                     RunRouteMapView(
                   key: const ValueKey<String>('live-run-route-map'),
                   route: route,
+                  plannedRoute: widget.plannedRoute,
                   laps: _controller.hundredMeterLaps,
                   height: 300,
                   followLastPoint: !paused,

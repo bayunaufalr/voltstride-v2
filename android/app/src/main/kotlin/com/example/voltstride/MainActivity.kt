@@ -1,6 +1,14 @@
 package com.example.voltstride
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.net.Uri
+import android.provider.Settings
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -29,6 +37,8 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     companion object {
         private const val METHOD_CHANNEL = "voltstride/heart_rate"
         private const val EVENT_CHANNEL = "voltstride/heart_rate_events"
+        private const val SETTINGS_CHANNEL = "voltstride/android_settings"
+        private const val STEP_COUNT_CHANNEL = "voltstride/step_count_events"
         private val HEART_RATE_SERVICE: UUID =
             UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         private val HEART_RATE_MEASUREMENT: UUID =
@@ -77,6 +87,53 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(this)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, STEP_COUNT_CHANNEL)
+            .setStreamHandler(StepCounterStreamHandler(this))
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openNotificationSettings" -> openSettings(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(
+                            Settings.EXTRA_APP_PACKAGE,
+                            packageName,
+                        ),
+                        result,
+                    )
+                    "openExactAlarmSettings" -> {
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            Intent(
+                                Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                Uri.parse("package:$packageName"),
+                            )
+                        } else {
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(
+                                Settings.EXTRA_APP_PACKAGE,
+                                packageName,
+                            )
+                        }
+                        openSettings(intent, result)
+                    }
+                    "openAppSettings" -> openSettings(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(Uri.parse("package:$packageName")),
+                        result,
+                    )
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun openSettings(intent: Intent, result: MethodChannel.Result) {
+        try {
+            startActivity(intent)
+            result.success(true)
+        } catch (error: Exception) {
+            result.error(
+                "settings_unavailable",
+                error.message ?: "Android settings could not be opened.",
+                null,
+            )
+        }
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
@@ -424,5 +481,58 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         if (scanResult != null) finishHeartRateScan(errorCode = -1, message = "Activity closed during Bluetooth scan.")
         disconnectHeartRateDevice()
         super.onDestroy()
+    }
+}
+
+
+/** Membaca sensor langkah bawaan Android tanpa plugin yang menerapkan KGP lama. */
+private class StepCounterStreamHandler(
+    private val context: Context,
+) : EventChannel.StreamHandler, SensorEventListener {
+    private var sensorManager: SensorManager? = null
+    private var eventSink: EventChannel.EventSink? = null
+
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        eventSink = events
+        val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = manager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        if (manager == null || sensor == null) {
+            events?.error(
+                "step_sensor_unavailable",
+                "This device does not provide a hardware step counter sensor.",
+                null,
+            )
+            eventSink = null
+            return
+        }
+        sensorManager = manager
+        if (!manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)) {
+            events?.error(
+                "step_sensor_unavailable",
+                "Android could not start the hardware step counter sensor.",
+                null,
+            )
+            sensorManager = null
+            eventSink = null
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type != Sensor.TYPE_STEP_COUNTER) return
+        val steps = event.values.firstOrNull()?.toInt() ?: return
+        eventSink?.success(
+            mapOf(
+                "steps" to steps,
+                "timestampMillis" to System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    override fun onCancel(arguments: Any?) {
+        sensorManager?.unregisterListener(this)
+        sensorManager = null
+        eventSink = null
     }
 }

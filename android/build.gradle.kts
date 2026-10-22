@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.compile.JavaCompile
+
 allprojects {
     repositories {
         google()
@@ -17,6 +19,15 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+// Firebase Firestore memiliki beberapa cast internal yang sudah diketahui upstream.
+// Matikan kategori javac unchecked agar log build tidak dipenuhi catatan generik
+// dari kode dependency, tanpa mengubah sumber atau perilaku aplikasi.
+subprojects {
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Xlint:-unchecked")
+    }
 }
 
 tasks.register<Delete>("clean") {

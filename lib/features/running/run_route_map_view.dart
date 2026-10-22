@@ -18,6 +18,7 @@ class RunRouteMapView extends StatefulWidget {
     super.key,
     required this.route,
     required this.laps,
+    this.plannedRoute = const <RunPoint>[],
     this.height = 280,
     this.followLastPoint = false,
     this.showIntervalSelector = false,
@@ -28,6 +29,7 @@ class RunRouteMapView extends StatefulWidget {
   });
 
   final List<RunPoint> route;
+  final List<RunPoint> plannedRoute;
   final List<RunLap100m> laps;
   final double height;
   final bool followLastPoint;
@@ -101,10 +103,10 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
       longitude >= -180 &&
       longitude <= 180;
 
-  List<RunPoint> _validRoute() {
+  List<RunPoint> _validRoute([List<RunPoint>? source]) {
     final List<RunPoint> result = <RunPoint>[];
     bool breakBeforeNext = false;
-    for (final RunPoint point in widget.route) {
+    for (final RunPoint point in source ?? widget.route) {
       if (!_isValidCoordinate(point.latitude, point.longitude)) {
         breakBeforeNext = true;
         continue;
@@ -295,8 +297,9 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
 
   @override
   Widget build(BuildContext context) {
-    final List<RunPoint> validRoute = _validRoute();
-    if (validRoute.isEmpty) {
+    final List<RunPoint> validRoute = _validRoute(widget.route);
+    final List<RunPoint> validPlannedRoute = _validRoute(widget.plannedRoute);
+    if (validRoute.isEmpty && validPlannedRoute.isEmpty) {
       return SizedBox(
         height: widget.height,
         child: Center(
@@ -322,16 +325,41 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
       );
     }
 
+    final List<RunPoint> routeForMarkers =
+        validRoute.isNotEmpty ? validRoute : validPlannedRoute;
     final List<_DisplayPoint> display = _displayRoute(validRoute);
-    final List<LatLng> coordinates = display.map((p) => LatLng(p.point.latitude, p.point.longitude)).toList(growable: false);
+    final List<LatLng> coordinates = display
+        .map((p) => LatLng(p.point.latitude, p.point.longitude))
+        .toList(growable: false);
+    final List<LatLng> plannedCoordinates = validPlannedRoute
+        .map((RunPoint point) => LatLng(point.latitude, point.longitude))
+        .toList(growable: false);
+    final List<LatLng> allCoordinates = <LatLng>[
+      ...plannedCoordinates,
+      ...coordinates,
+    ];
     final List<RunDistanceSegment> splits =
         buildRunDistanceSegments(widget.laps, _activeIntervalMeters);
-    final List<Polyline> polylines = _coloredPolylines(display, splits);
-    final LatLng center = widget.followLastPoint
+    final List<Polyline> polylines = <Polyline>[
+      if (plannedCoordinates.length > 1)
+        Polyline(
+          points: plannedCoordinates,
+          strokeWidth: 3.5,
+          color: Theme.of(context).colorScheme.outline,
+        ),
+      ..._coloredPolylines(display, splits),
+    ];
+    final LatLng center = widget.followLastPoint && validRoute.isNotEmpty
         ? LatLng(validRoute.last.latitude, validRoute.last.longitude)
-        : _safeFitCenter(coordinates);
-    final LatLng startPoint = LatLng(validRoute.first.latitude, validRoute.first.longitude);
-    final LatLng lastPoint = LatLng(validRoute.last.latitude, validRoute.last.longitude);
+        : _safeFitCenter(allCoordinates);
+    final LatLng startPoint = LatLng(
+      routeForMarkers.first.latitude,
+      routeForMarkers.first.longitude,
+    );
+    final LatLng lastPoint = LatLng(
+      routeForMarkers.last.latitude,
+      routeForMarkers.last.longitude,
+    );
 
     final List<Marker> markers = <Marker>[
       Marker(
@@ -340,7 +368,7 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         height: 22,
         child: const Icon(Icons.flag_circle_rounded, color: Colors.black, size: 21),
       ),
-      if (validRoute.length > 1)
+      if (routeForMarkers.length > 1)
         Marker(
           point: lastPoint,
           width: 22,
@@ -353,9 +381,9 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final double viewportWidth = constraints.maxWidth.isFinite && constraints.maxWidth > 0 ? constraints.maxWidth : 320;
-        final double zoom = widget.followLastPoint
+        final double zoom = widget.followLastPoint && validRoute.isNotEmpty
             ? _defaultZoom
-            : _safeFitZoom(coordinates, viewportWidth, widget.height);
+            : _safeFitZoom(allCoordinates, viewportWidth, widget.height);
         return SizedBox(
           height: widget.height,
           child: ClipRRect(

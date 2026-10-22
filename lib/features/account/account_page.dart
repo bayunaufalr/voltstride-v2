@@ -34,6 +34,7 @@ class AccountPageState extends State<AccountPage>
   DateTime? _recommendedResumeAt;
   bool _loading = true;
   bool _movingLegacyHistory = false;
+  bool _showProfilePage = false;
   int _legacyHistoryCount = 0;
   late final TabController _sectionController;
   final GlobalKey<ProgressPageState> _progressKey =
@@ -49,12 +50,17 @@ class AccountPageState extends State<AccountPage>
   @override
   void initState() {
     super.initState();
-    _sectionController = TabController(length: 4, vsync: this);
+    _sectionController = TabController(length: 3, vsync: this);
     _loadRecovery();
   }
 
   void openSection(int index) {
+    if (index == 3) {
+      setState(() => _showProfilePage = true);
+      return;
+    }
     if (index < 0 || index >= _sectionController.length) return;
+    setState(() => _showProfilePage = false);
     _sectionController.animateTo(index);
   }
 
@@ -198,19 +204,30 @@ class AccountPageState extends State<AccountPage>
     final List<Tab> tabs = <Tab>[
       Tab(
         icon: const Icon(Icons.bar_chart_rounded),
-        text: AppLanguageService.text(context, 'Kemajuan', 'Progress'),
+        child: Text(
+          AppLanguageService.text(context, 'Kemajuan', 'Progress'),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       Tab(
         icon: const Icon(Icons.history_rounded),
-        text: AppLanguageService.text(context, 'Aktivitas', 'Activities'),
+        child: Text(
+          AppLanguageService.text(context, 'Aktivitas', 'Activities'),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       Tab(
         icon: const Icon(Icons.event_note_rounded),
-        text: AppLanguageService.text(context, 'Rencanakan latihan', 'Training plan'),
-      ),
-      Tab(
-        icon: const Icon(Icons.person_outline_rounded),
-        text: AppLanguageService.text(context, 'Profil', 'Profile'),
+        child: Text(
+          AppLanguageService.text(context, 'Rencanakan latihan', 'Training plan'),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     ];
 
@@ -219,27 +236,81 @@ class AccountPageState extends State<AccountPage>
         ? signedInUser!.displayName!.trim()
         : _text('Profil saya', 'My profile');
 
+    if (_showProfilePage) {
+      return PopScope<Object?>(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? result) {
+          if (!didPop && mounted) setState(() => _showProfilePage = false);
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              tooltip: _text('Kembali', 'Back'),
+              onPressed: () => setState(() => _showProfilePage = false),
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+            title: Text(_text('Profil', 'Profile')),
+          ),
+          body: _profileTab(),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(profileTitle),
-        bottom: TabBar(
-          controller: _sectionController,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          tabs: tabs,
+        actions: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              tooltip: _text('Buka profil', 'Open profile'),
+              onPressed: () => setState(() => _showProfilePage = true),
+              icon: CircleAvatar(
+                radius: 20,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                backgroundImage: signedInUser?.photoURL?.isNotEmpty == true
+                    ? NetworkImage(signedInUser!.photoURL!)
+                    : null,
+                child: signedInUser?.photoURL?.isNotEmpty == true
+                    ? null
+                    : Icon(
+                        Icons.person_outline_rounded,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+              ),
+            ),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(72),
+          child: TabBar(
+            controller: _sectionController,
+            isScrollable: false,
+            tabAlignment: TabAlignment.fill,
+            tabs: tabs,
+          ),
         ),
       ),
       body: TabBarView(
         controller: _sectionController,
         children: <Widget>[
-          ProgressPage(key: _progressKey, embedded: true),
+          ProgressPage(
+            key: _progressKey,
+            embedded: true,
+            belowWeeklyChart: _recoveryCard(),
+          ),
           RunHistoryPage(key: _historyKey, embedded: true),
           TrainingRemindersPage(key: _remindersKey, embedded: true),
-          _profileTab(),
         ],
       ),
     );
   }
+
+  Widget _recoveryCard() => _RecoveryCountdownCard(
+        recommendedResumeAt: _recommendedResumeAt,
+        loading: _loading,
+        hasActivity: _latestSession != null,
+      );
 
   Widget _profileTab() {
     return ListView(
@@ -256,12 +327,6 @@ class AccountPageState extends State<AccountPage>
           const SizedBox(height: 14),
           _legacyHistoryCard(),
         ],
-        const SizedBox(height: 14),
-        _RecoveryCountdownCard(
-          recommendedResumeAt: _recommendedResumeAt,
-          loading: _loading,
-          hasActivity: _latestSession != null,
-        ),
       ],
     );
   }

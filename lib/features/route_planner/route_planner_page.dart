@@ -8,13 +8,19 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../services/app_language_service.dart';
+import '../running/models/run_session.dart';
 
 /// Perencana rute dengan beberapa titik singgah.
 class RoutePlannerPage extends StatefulWidget {
-  const RoutePlannerPage({super.key, required this.active});
+  const RoutePlannerPage({
+    super.key,
+    required this.active,
+    required this.onUseRoute,
+  });
 
   /// GPS baru diminta ketika pengguna benar-benar membuka tab rute.
   final bool active;
+  final ValueChanged<List<RunPoint>> onUseRoute;
 
   @override
   State<RoutePlannerPage> createState() => _RoutePlannerPageState();
@@ -25,6 +31,9 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
       AppLanguageService.text(context, indonesia, english);
   final MapController _mapController = MapController();
   static const LatLng _pusatAwal = LatLng(-7.7956, 110.3695);
+  // Batas aman server rute publik: cukup fleksibel tanpa URL berlebihan/ANR.
+  static const int _batasTitikRute = 100;
+  static const int _maksimumTitikRuteRekam = 1200;
 
   final List<LatLng> _titikRute = <LatLng>[];
   List<LatLng> _jalur = <LatLng>[];
@@ -70,8 +79,11 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
   }
 
   void _pilihTitik(LatLng titik) {
-    if (_titikRute.length >= 10) {
-      setState(() => _pesanError = _text('Maksimal 10 titik dalam satu rute.', 'A route can have up to 10 points.'));
+    if (_titikRute.length >= _batasTitikRute) {
+      setState(() => _pesanError = _text(
+        'Batas aman $_batasTitikRute titik per rute tercapai. Ini menjaga permintaan peta dan memori tetap stabil.',
+        'The safe limit of $_batasTitikRute route points has been reached to keep map requests and memory stable.',
+      ));
       return;
     }
 
@@ -93,6 +105,24 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
         () => unawaited(_hitungRute()),
       );
     }
+  }
+
+  void _gunakanRuteDiRekam() {
+    if (_jalur.length < 2 || _jarakMeter == null) return;
+    final DateTime timestamp = DateTime.now();
+    final List<LatLng> routeForRecording =
+        _ambilSampel(_jalur, _maksimumTitikRuteRekam);
+    final List<RunPoint> ruteTerencana = <RunPoint>[
+      for (int i = 0; i < routeForRecording.length; i++)
+        RunPoint(
+          latitude: routeForRecording[i].latitude,
+          longitude: routeForRecording[i].longitude,
+          timestamp: timestamp,
+          accuracyMeters: 0,
+          startsNewSegment: i == 0,
+        ),
+    ];
+    widget.onUseRoute(List<RunPoint>.unmodifiable(ruteTerencana));
   }
 
   void _hapusHasilRute() {
@@ -254,13 +284,18 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
           rute['geometry'] as Map<String, dynamic>;
       final List<dynamic> koordinatJalur =
           geometri['coordinates'] as List<dynamic>;
-      final List<LatLng> jalurBaru = koordinatJalur.map((dynamic nilai) {
+      final List<LatLng> geometriLengkap = koordinatJalur.map((dynamic nilai) {
         final List<dynamic> xy = nilai as List<dynamic>;
         return LatLng(
           (xy[1] as num).toDouble(),
           (xy[0] as num).toDouble(),
         );
       }).toList(growable: false);
+      // Batasi titik polyline yang dipelihara dan digambar oleh FlutterMap.
+      // Jarak total tetap memakai hasil server rute, sehingga penyederhanaan
+      // tampilan tidak mengubah jarak yang dilaporkan layanan routing.
+      final List<LatLng> jalurBaru =
+          _ambilSampel(geometriLengkap, _maksimumTitikRuteRekam);
 
       if (jalurBaru.length < 2) {
         throw Exception(_text('Data jalur dari layanan peta belum lengkap.', 'The map service returned incomplete route data.'));
@@ -470,7 +505,7 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                       Polyline(
                         points: _jalur,
                         strokeWidth: 5,
-                        color: const Color(0xFF356B54),
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ],
                   ),
@@ -579,8 +614,22 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
                 if (_titikRute.length < 2) ...<Widget>[
                   const SizedBox(height: 8),
                   Text(
-                    _text('Ketuk peta untuk menambah titik berikutnya.', 'Tap the map to add the next point.'),
+                    _text(
+                      'Ketuk peta untuk menambah titik (hingga $_batasTitikRute titik).',
+                      'Tap the map to add points (up to $_batasTitikRute waypoints).',
+                    ),
                     style: TextStyle(color: Theme.of(context).hintColor),
+                  ),
+                ],
+                if (_jalur.length > 1 && _jarakMeter != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _sedangMenghitung ? null : _gunakanRuteDiRekam,
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: Text(_text('Gunakan rute di Rekam', 'Use route in Record')),
+                    ),
                   ),
                 ],
               ],
@@ -595,8 +644,8 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
     return Container(
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFF356B54),
-        border: Border.all(color: const Color(0xFFE7EFE8), width: 2),
+        color: Theme.of(context).colorScheme.primary,
+        border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
         shape: BoxShape.circle,
       ),
       child: Text(

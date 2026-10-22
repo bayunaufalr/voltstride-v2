@@ -17,6 +17,7 @@ class ActivityStartConfig {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
+  final List<RunPoint> plannedRoute;
 
   const ActivityStartConfig({
     required this.activityType,
@@ -25,15 +26,23 @@ class ActivityStartConfig {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = false,
+    this.plannedRoute = const <RunPoint>[],
   });
 }
 
 enum _ActivityMode { run, interval, walk }
 
 class ActivitySetupPage extends StatefulWidget {
-  const ActivitySetupPage({super.key, required this.onStart});
+  const ActivitySetupPage({
+    super.key,
+    required this.onStart,
+    this.plannedRoute = const <RunPoint>[],
+    this.onClearPlannedRoute,
+  });
 
   final ValueChanged<ActivityStartConfig> onStart;
+  final List<RunPoint> plannedRoute;
+  final VoidCallback? onClearPlannedRoute;
 
   @override
   State<ActivitySetupPage> createState() => ActivitySetupPageState();
@@ -144,6 +153,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 child: RunRouteMapView(
                   key: ValueKey<String>('activity-start-${_currentLocation?.timestamp.toIso8601String() ?? 'empty'}'),
                   route: _currentLocation == null ? const <RunPoint>[] : <RunPoint>[_currentLocation!],
+                  plannedRoute: widget.plannedRoute,
                   laps: const <RunLap100m>[],
                   height: 240,
                 ),
@@ -161,6 +171,33 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                   ),
                 ],
               ),
+              if (widget.plannedRoute.length > 1) ...<Widget>[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.route_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _text('Rute terencana akan ditampilkan di GPS langsung.', 'The planned route will appear on the live GPS screen.'),
+                          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: _text('Lepas rute', 'Remove route'),
+                        onPressed: widget.onClearPlannedRoute,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
             const SizedBox(height: 20),
             _sectionTitle(_text('Lokasi aktivitas', 'Activity location')),
@@ -732,6 +769,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       targetDistanceKm: targetDistanceKm,
       targetPaceSecondsPerKm: targetPaceSecondsPerKm,
       paceNotificationsEnabled: _paceNotificationsEnabled,
+      plannedRoute: widget.plannedRoute,
     ));
   }
 

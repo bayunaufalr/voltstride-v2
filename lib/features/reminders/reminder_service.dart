@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart' as permissions;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,6 +102,8 @@ class ReminderService {
 
   static const String _storageKey = 'voltstride_training_reminders_v1';
   static const String _zoneName = 'Asia/Jakarta';
+  static const MethodChannel _settingsChannel =
+      MethodChannel('voltstride/android_settings');
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static bool _ready = false;
@@ -151,13 +155,40 @@ class ReminderService {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       );
-      await _plugin.initialize(settings);
+      await _plugin.initialize(
+        settings,
+        onDidReceiveNotificationResponse: _onNotificationResponse,
+      );
       _ready = true;
     } catch (_) {
       // Izinkan percobaan ulang jika inisialisasi pertama gagal.
       _initialization = null;
       rethrow;
     }
+  }
+
+  static void _onNotificationResponse(NotificationResponse response) {
+    if (response.actionId != 'mark_completed') return;
+    final String? payload = response.payload;
+    if (payload == null) return;
+    final RegExpMatch? match =
+        RegExp(r'^voltstride-reminder-(\d+)$').firstMatch(payload);
+    if (match == null) return;
+    final int? reminderId = int.tryParse(match.group(1)!);
+    if (reminderId == null) return;
+    unawaited(_markCurrentOccurrenceCompleted(reminderId));
+  }
+
+  static Future<void> _markCurrentOccurrenceCompleted(int reminderId) async {
+    final timezone.TZDateTime now = timezone.TZDateTime.now(timezone.local);
+    final String dateKey = '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    await setOccurrenceCompleted(
+      reminderId: reminderId,
+      dateKey: dateKey,
+      completed: true,
+    );
   }
 
   static Future<List<TrainingReminder>> getAll() async {
@@ -221,19 +252,40 @@ class ReminderService {
         // ulang sebagai alarm inexact. Suara alarm tetap mengikuti pilihan.
         if (reminder.style == ReminderStyle.notificationAndAlarm) {
           try {
+            // Prioritaskan alarm inexact dengan suara pilihan jika izin alarm
+            // tepat ditolak. Ini tetap memberi notifikasi bersuara.
             await _plugin.zonedSchedule(
               notificationId,
               _notificationTitle(reminder),
               _notificationBody(reminder),
               nextDate,
-              _details(reminder, useCustomSound: false),
+              _details(reminder),
               payload: 'voltstride-reminder-${reminder.id}',
               androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
               matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
             );
             continue;
           } catch (fallbackError) {
-            failures.add('Hari $day: $fallbackError (awal: $error)');
+            try {
+              // Jika resource audio khusus bermasalah, tetap simpan notifikasi
+              // memakai suara bawaan Android agar jadwal tidak gagal total.
+              await _plugin.zonedSchedule(
+                notificationId,
+                _notificationTitle(reminder),
+                _notificationBody(reminder),
+                nextDate,
+                _details(reminder, useCustomSound: false),
+                payload: 'voltstride-reminder-${reminder.id}',
+                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+              );
+              continue;
+            } catch (defaultSoundError) {
+              failures.add(
+                'Hari $day: $defaultSoundError '
+                '(suara pilihan: $fallbackError, awal: $error)',
+              );
+            }
           }
         } else {
           failures.add('Hari $day: $error');
@@ -317,13 +369,26 @@ class ReminderService {
               _notificationTitle(reminder),
               _notificationBody(reminder),
               nextDate,
-              _details(reminder, useCustomSound: false),
+              _details(reminder),
               payload: 'voltstride-reminder-${reminder.id}',
               androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
               matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
             );
           } catch (_) {
-            // Satu alarm bermasalah tidak boleh membatalkan pemulihan jadwal lain.
+            try {
+              await _plugin.zonedSchedule(
+                notificationId,
+                _notificationTitle(reminder),
+                _notificationBody(reminder),
+                nextDate,
+                _details(reminder, useCustomSound: false),
+                payload: 'voltstride-reminder-${reminder.id}',
+                androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+                matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+              );
+            } catch (_) {
+              // Satu alarm bermasalah tidak boleh membatalkan pemulihan jadwal lain.
+            }
           }
         }
       }
@@ -346,7 +411,7 @@ class ReminderService {
     if (allowed != true) {
       // Jika dialog sudah ditolak, buka halaman izin aplikasi, bukan sekadar
       // menyuruh pengguna mencari setelan secara manual.
-      await permissions.openAppSettings();
+      await openAppSettings();
       allowed = await android.areNotificationsEnabled();
     }
     return allowed == true;
@@ -364,7 +429,13 @@ class ReminderService {
 
   /// Membuka halaman pengaturan VoltStride di Android.
   static Future<void> openAppSettings() async {
-    await permissions.openAppSettings();
+    try {
+      await _settingsChannel.invokeMethod<void>('openNotificationSettings');
+    } on PlatformException {
+      await permissions.openAppSettings();
+    } on MissingPluginException {
+      await permissions.openAppSettings();
+    }
   }
 
   /// Membaca status izin alarm tepat setelah pengguna kembali dari Setelan.
@@ -380,17 +451,24 @@ class ReminderService {
   /// Membuka halaman izin alarm khusus untuk VoltStride.
   /// Android memang mengharuskan pengguna mengaktifkan izin ini di Setelan.
   static Future<void> openExactAlarmSettings() async {
+    try {
+      await _settingsChannel.invokeMethod<void>('openExactAlarmSettings');
+      return;
+    } on PlatformException {
+      // Gunakan deep-link dari plugin sebagai fallback untuk perangkat lain.
+    } on MissingPluginException {
+      // Gunakan deep-link dari plugin sebagai fallback untuk perangkat lain.
+    }
+
     await initialize();
     final AndroidFlutterLocalNotificationsPlugin? android = _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
     if (android == null) return;
     try {
-      // Plugin ini membuka halaman khusus izin alarm tepat di Android.
       await android.requestExactAlarmsPermission();
     } catch (_) {
-      // Beberapa varian Android menolak deep-link khusus. Buka setelan app.
-      await permissions.openAppSettings();
+      await openAppSettings();
     }
   }
 
@@ -453,7 +531,7 @@ class ReminderService {
       987654,
       'Contoh suara alarm',
       'Ini suara yang dipilih untuk pengingat latihan.',
-      _details(contoh),
+      _details(contoh, persistent: false),
       payload: 'voltstride-alarm-preview',
     );
   }
@@ -461,15 +539,16 @@ class ReminderService {
   static NotificationDetails _details(
     TrainingReminder reminder, {
     bool useCustomSound = true,
+    bool persistent = true,
   }) {
     final bool withAlarm =
         reminder.style == ReminderStyle.notificationAndAlarm;
     final bool customSoundEnabled = withAlarm && useCustomSound;
     final String channelId = !withAlarm
-        ? 'voltstride_notice_v2'
+        ? 'voltstride_notice_v3'
         : customSoundEnabled
-            ? 'voltstride_alarm_v2_${reminder.sound}'
-            : 'voltstride_alarm_fallback_v2';
+            ? 'voltstride_alarm_v3_${reminder.sound}'
+            : 'voltstride_alarm_fallback_v3';
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       channelId,
       withAlarm ? 'Alarm latihan' : 'Pengingat latihan',
@@ -486,6 +565,18 @@ class ReminderService {
           withAlarm ? AudioAttributesUsage.alarm : AudioAttributesUsage.notification,
       enableVibration: true,
       category: withAlarm ? AndroidNotificationCategory.alarm : AndroidNotificationCategory.reminder,
+      ongoing: persistent,
+      autoCancel: !persistent,
+      actions: persistent
+          ? <AndroidNotificationAction>[
+              AndroidNotificationAction(
+                'mark_completed',
+                _english ? 'Done' : 'Selesai',
+                cancelNotification: true,
+                showsUserInterface: true,
+              ),
+            ]
+          : null,
     );
     return NotificationDetails(
       android: androidDetails,

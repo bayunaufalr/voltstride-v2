@@ -16,6 +16,7 @@ import 'features/route_planner/route_planner_page.dart';
 import 'features/ai_coach/ai_coach_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
+import 'features/running/models/run_session.dart';
 import 'features/running/running_page.dart';
 import 'screens/muscle_page.dart';
 import 'screens/timer_page.dart';
@@ -195,6 +196,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  List<RunPoint> _plannedRoute = const <RunPoint>[];
 
   final GlobalKey<HomeDashboardPageState> _homeKey =
       GlobalKey<HomeDashboardPageState>();
@@ -209,9 +211,14 @@ class _RootShellState extends State<RootShell> {
           onRecord: () => _selectTab(2),
           onHistory: () => _openAccountSection(1),
         ),
-        RoutePlannerPage(active: _index == 1),
+        RoutePlannerPage(
+          active: _index == 1,
+          onUseRoute: _usePlannedRoute,
+        ),
         ActivitySetupPage(
           key: _activityKey,
+          plannedRoute: _plannedRoute,
+          onClearPlannedRoute: _clearPlannedRoute,
           onStart: _startActivity,
         ),
         MorePage(
@@ -275,6 +282,17 @@ class _RootShellState extends State<RootShell> {
     ];
   }
 
+  void _usePlannedRoute(List<RunPoint> route) {
+    if (route.length < 2) return;
+    setState(() => _plannedRoute = List<RunPoint>.unmodifiable(route));
+    _selectTab(2);
+  }
+
+  void _clearPlannedRoute() {
+    if (_plannedRoute.isEmpty) return;
+    setState(() => _plannedRoute = const <RunPoint>[]);
+  }
+
   void _selectTab(int value) {
     setState(() => _index = value);
     switch (value) {
@@ -313,13 +331,17 @@ class _RootShellState extends State<RootShell> {
           targetDistanceKm: config.targetDistanceKm,
           targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
           paceNotificationsEnabled: config.paceNotificationsEnabled,
+          plannedRoute: config.plannedRoute,
           autoStart: true,
           onExit: () => Navigator.of(routeContext).pop(),
         ),
       ),
     );
     if (!mounted) return;
-    setState(() => _index = 0);
+    setState(() {
+      _index = 0;
+      _plannedRoute = const <RunPoint>[];
+    });
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
   }
