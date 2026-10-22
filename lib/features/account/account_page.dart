@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -32,7 +33,6 @@ class AccountPageState extends State<AccountPage>
   RunSession? _latestSession;
   DateTime? _recommendedResumeAt;
   bool _loading = true;
-  bool _showProfile = false;
   bool _movingLegacyHistory = false;
   int _legacyHistoryCount = 0;
   late final TabController _sectionController;
@@ -43,10 +43,13 @@ class AccountPageState extends State<AccountPage>
   final GlobalKey<TrainingRemindersPageState> _remindersKey =
       GlobalKey<TrainingRemindersPageState>();
 
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   @override
   void initState() {
     super.initState();
-    _sectionController = TabController(length: 3, vsync: this);
+    _sectionController = TabController(length: 4, vsync: this);
     _loadRecovery();
   }
 
@@ -190,101 +193,51 @@ class AccountPageState extends State<AccountPage>
     return jamIstirahat.round().clamp(6, 72).toInt();
   }
 
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
-  String _displayName() {
-    final User? user = AccountService.akunAktif;
-    final String? name = user?.displayName?.trim();
-    if (name != null && name.isNotEmpty) return name;
-    final String? email = user?.email;
-    if (email != null && email.contains('@')) return email.split('@').first;
-    return _text('Pengguna', 'User');
-  }
-
-  Widget _profileAvatarAction() {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: AccountService.perubahanProfil,
-      builder: (BuildContext context,
-          AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot) {
-        final String encoded =
-            snapshot.data?.data()?['fotoProfilBase64'] as String? ?? '';
-        final ImageProvider<Object>? photo =
-            encoded.isEmpty ? null : _fotoDariBase64(encoded);
-        return Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: IconButton(
-            tooltip: _text('Buka profil', 'Open profile'),
-            onPressed: () => setState(() => _showProfile = true),
-            icon: CircleAvatar(
-              radius: 17,
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              backgroundImage: photo,
-              child: photo == null
-                  ? const Icon(Icons.person_outline_rounded, size: 20)
-                  : null,
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final List<Tab> tabs = <Tab>[
       Tab(
         icon: const Icon(Icons.bar_chart_rounded),
-        text: _text('Kemajuan', 'Progress'),
+        text: AppLanguageService.text(context, 'Kemajuan', 'Progress'),
       ),
       Tab(
         icon: const Icon(Icons.history_rounded),
-        text: _text('Aktivitas', 'Activities'),
+        text: AppLanguageService.text(context, 'Aktivitas', 'Activities'),
       ),
       Tab(
         icon: const Icon(Icons.event_note_rounded),
-        text: _text('Rencanakan latihan', 'Training plan'),
+        text: AppLanguageService.text(context, 'Rencanakan latihan', 'Training plan'),
+      ),
+      Tab(
+        icon: const Icon(Icons.person_outline_rounded),
+        text: AppLanguageService.text(context, 'Profil', 'Profile'),
       ),
     ];
 
+    final User? signedInUser = AccountService.akunAktif;
+    final String profileTitle = signedInUser?.displayName?.trim().isNotEmpty == true
+        ? signedInUser!.displayName!.trim()
+        : _text('Profil saya', 'My profile');
+
     return Scaffold(
       appBar: AppBar(
-        leading: _showProfile
-            ? IconButton(
-                tooltip: _text('Kembali ke aktivitas', 'Back to activity'),
-                onPressed: () => setState(() => _showProfile = false),
-                icon: const Icon(Icons.arrow_back_rounded),
-              )
-            : null,
-        title: Text(_displayName()),
-        actions: _showProfile ? null : <Widget>[_profileAvatarAction()],
-        bottom: _showProfile
-            ? null
-            : TabBar(
-                controller: _sectionController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                tabs: tabs,
-              ),
+        title: Text(profileTitle),
+        bottom: TabBar(
+          controller: _sectionController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: tabs,
+        ),
       ),
-      body: _showProfile
-          ? _profileTab()
-          : TabBarView(
-              controller: _sectionController,
-              children: <Widget>[
-                ProgressPage(
-                  key: _progressKey,
-                  embedded: true,
-                  belowWeeklyChart: _RecoveryCountdownCard(
-                    recommendedResumeAt: _recommendedResumeAt,
-                    loading: _loading,
-                    hasActivity: _latestSession != null,
-                  ),
-                ),
-                RunHistoryPage(key: _historyKey, embedded: true),
-                TrainingRemindersPage(key: _remindersKey, embedded: true),
-              ],
-            ),
+      body: TabBarView(
+        controller: _sectionController,
+        children: <Widget>[
+          ProgressPage(key: _progressKey, embedded: true),
+          RunHistoryPage(key: _historyKey, embedded: true),
+          TrainingRemindersPage(key: _remindersKey, embedded: true),
+          _profileTab(),
+        ],
+      ),
     );
   }
 
@@ -303,6 +256,12 @@ class AccountPageState extends State<AccountPage>
           const SizedBox(height: 14),
           _legacyHistoryCard(),
         ],
+        const SizedBox(height: 14),
+        _RecoveryCountdownCard(
+          recommendedResumeAt: _recommendedResumeAt,
+          loading: _loading,
+          hasActivity: _latestSession != null,
+        ),
       ],
     );
   }
@@ -398,7 +357,7 @@ class AccountPageState extends State<AccountPage>
                 children: <Widget>[
                   CircleAvatar(
                     radius: 32,
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    backgroundColor: VoltWarna.surface,
                     backgroundImage: foto,
                     child: foto == null
                         ? const Icon(Icons.person_outline, size: 34)
@@ -514,7 +473,7 @@ class AccountPageState extends State<AccountPage>
       _tampilkanPesan(_text('Foto profil diperbarui.', 'Profile photo updated.'));
     } catch (_) {
       _tampilkanPesan(
-        _text('Foto profil belum berhasil diperbarui. Coba pilih foto lain.', 'The profile photo could not be updated. Try another image.'),
+        _text('Foto profil belum berhasil diperbarui. Coba pilih foto lain.', 'Could not update the profile photo. Try another image.'),
       );
     }
   }
@@ -524,7 +483,7 @@ class AccountPageState extends State<AccountPage>
       await AccountService.hapusFotoProfil();
       _tampilkanPesan(_text('Foto profil dihapus.', 'Profile photo removed.'));
     } catch (_) {
-      _tampilkanPesan(_text('Foto profil belum berhasil dihapus.', 'The profile photo could not be removed.'));
+      _tampilkanPesan(_text('Foto profil belum berhasil dihapus.', 'Could not remove the profile photo.'));
     }
   }
 
@@ -552,7 +511,10 @@ class AccountPageState extends State<AccountPage>
           ),
           const SizedBox(height: 6),
           Text(
-            _text('$_legacyHistoryCount aktivitas masih perlu dikirim ke akun.', '$_legacyHistoryCount activities still need to be uploaded to your account.'),
+            _text(
+              '$_legacyHistoryCount aktivitas masih perlu dikirim ke akun.',
+              '$_legacyHistoryCount activities still need to be uploaded to your account.',
+            ),
             style: TextStyle(color: Theme.of(context).hintColor, height: 1.45),
           ),
           const SizedBox(height: 12),
@@ -570,7 +532,7 @@ class AccountPageState extends State<AccountPage>
                 : const Icon(Icons.cloud_upload_outlined),
             label: Text(
               _movingLegacyHistory
-                  ? _text('Memindahkan aktivitas...', 'Uploading activities...')
+                  ? _text('Memindahkan aktivitas...', 'Moving activities...')
                   : _text('Sinkronkan aktivitas', 'Sync activities'),
             ),
           ),
@@ -585,7 +547,10 @@ class AccountPageState extends State<AccountPage>
       builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(_text('Keluar dari akun?', 'Sign out?')),
         content: Text(
-          _text('Data yang sudah tersimpan di akun tetap ada. Kamu perlu masuk lagi untuk membukanya.', 'Data already saved to your account will remain there. You will need to sign in again to access it.'),
+          _text(
+            'Data yang sudah tersimpan di akun tetap ada. Kamu perlu masuk lagi untuk membukanya.',
+            'Data already saved to your account will remain there. You will need to sign in again to access it.',
+          ),
         ),
         actions: <Widget>[
           TextButton(
@@ -606,7 +571,9 @@ class AccountPageState extends State<AccountPage>
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_text('Belum berhasil keluar. Coba lagi.', 'Could not sign out. Try again.'))),
+        SnackBar(
+          content: Text(_text('Belum berhasil keluar. Coba lagi.', 'Could not sign out. Please try again.')),
+        ),
       );
     }
   }
@@ -617,12 +584,15 @@ class AccountPageState extends State<AccountPage>
       builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(_text('Sinkronkan aktivitas ke akun?', 'Sync activities to your account?')),
         content: Text(
-          _text('$_legacyHistoryCount aktivitas yang belum tersinkron akan dikirim ke akun ini. Data di perangkat hanya dibersihkan setelah penyimpanan akun berhasil.', '$_legacyHistoryCount unsynced activities will be uploaded to this account. Device data is removed only after the account upload succeeds.'),
+          _text(
+            '$_legacyHistoryCount aktivitas yang belum tersinkron akan dikirim ke akun ini. Data di perangkat hanya dibersihkan setelah penyimpanan akun berhasil.',
+            '$_legacyHistoryCount unsynced activities will be uploaded to this account. Data on this device will only be cleared after the account save succeeds.',
+          ),
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(_text('Batal', 'Cancel')),
+            child: Text(AppLanguageService.text(context, 'Batal', 'Cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -643,8 +613,14 @@ class AccountPageState extends State<AccountPage>
         SnackBar(
           content: Text(
             jumlah > 0
-                ? _text('$jumlah aktivitas berhasil dipindahkan atau disinkronkan.', '$jumlah activities were migrated or synced.')
-                : _text('Tidak ada data yang perlu dipindahkan.', 'No data needs to be migrated.'),
+                ? _text(
+                    '$jumlah aktivitas berhasil dipindahkan atau disinkronkan.',
+                    '$jumlah activities were moved or synced successfully.',
+                  )
+                : _text(
+                    'Tidak ada data yang perlu dipindahkan.',
+                    'There is no data to move.',
+                  ),
           ),
         ),
       );
@@ -674,7 +650,7 @@ class AccountPageState extends State<AccountPage>
 
 }
 
-/// Editor foto profil dengan gestur cubit untuk zoom dan satu jari untuk menggeser.
+/// Pemotong foto sederhana: pengguna dapat menggeser area kotak sebelum disimpan.
 class _CropFotoDialog extends StatefulWidget {
   const _CropFotoDialog({required this.gambarAsli});
 
@@ -685,14 +661,12 @@ class _CropFotoDialog extends StatefulWidget {
 }
 
 class _CropFotoDialogState extends State<_CropFotoDialog> {
-  static const double _pratinjauSisi = 240;
   late final int _sisiDasar;
-  late final Uint8List _bytesPratinjau;
   late int _sisiPotong;
   late double _kiri;
   late double _atas;
   double _zoom = 1;
-  double _zoomAwalGestur = 1;
+  double _zoomSaatMulai = 1;
 
   int get _maksKiri => widget.gambarAsli.width - _sisiPotong;
   int get _maksAtas => widget.gambarAsli.height - _sisiPotong;
@@ -705,39 +679,36 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
       widget.gambarAsli.height,
     );
     _sisiPotong = _sisiDasar;
-    _kiri = (widget.gambarAsli.width - _sisiPotong) / 2;
-    _atas = (widget.gambarAsli.height - _sisiPotong) / 2;
-    // Encode sekali saja. Meng-encode ulang pada setiap gerakan membuat crop
-    // tersendat terutama pada ponsel dengan RAM dan CPU terbatas.
-    _bytesPratinjau = Uint8List.fromList(
-      img.encodeJpg(widget.gambarAsli, quality: 88),
-    );
+    _kiri = _maksKiri / 2;
+    _atas = _maksAtas / 2;
   }
 
   void _mulaiGestur(ScaleStartDetails details) {
-    _zoomAwalGestur = _zoom;
+    _zoomSaatMulai = _zoom;
   }
 
   void _perbaruiGestur(ScaleUpdateDetails details) {
     final double zoomBaru =
-        (_zoomAwalGestur * details.scale).clamp(1.0, 2.5).toDouble();
+        (_zoomSaatMulai * details.scale).clamp(1.0, 2.5).toDouble();
     final int sisiBaru =
         (_sisiDasar / zoomBaru).round().clamp(1, _sisiDasar).toInt();
-    final double rasioSumberPerPixel = _sisiPotong / _pratinjauSisi;
-    final double tengahX = _kiri + _sisiPotong / 2 -
-        details.focalPointDelta.dx * rasioSumberPerPixel;
-    final double tengahY = _atas + _sisiPotong / 2 -
-        details.focalPointDelta.dy * rasioSumberPerPixel;
-    final double kiriMaks =
-        (widget.gambarAsli.width - sisiBaru).toDouble();
-    final double atasMaks =
-        (widget.gambarAsli.height - sisiBaru).toDouble();
+    final double tengahX = _kiri + (_sisiPotong / 2);
+    final double tengahY = _atas + (_sisiPotong / 2);
+    final double skalaGeser = sisiBaru / 210;
+    final double kiriBaru =
+        (tengahX - sisiBaru / 2 - details.focalPointDelta.dx * skalaGeser)
+            .clamp(0, widget.gambarAsli.width - sisiBaru)
+            .toDouble();
+    final double atasBaru =
+        (tengahY - sisiBaru / 2 - details.focalPointDelta.dy * skalaGeser)
+            .clamp(0, widget.gambarAsli.height - sisiBaru)
+            .toDouble();
 
     setState(() {
       _zoom = zoomBaru;
       _sisiPotong = sisiBaru;
-      _kiri = (tengahX - sisiBaru / 2).clamp(0.0, kiriMaks).toDouble();
-      _atas = (tengahY - sisiBaru / 2).clamp(0.0, atasMaks).toDouble();
+      _kiri = kiriBaru;
+      _atas = atasBaru;
     });
   }
 
@@ -759,67 +730,53 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final double skala = _pratinjauSisi / _sisiPotong;
-    final double lebar = widget.gambarAsli.width * skala;
-    final double tinggi = widget.gambarAsli.height * skala;
+    final Uint8List preview = _hasilPotongan();
     final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
-    final bool english = Localizations.localeOf(context).languageCode == 'en';
-
     return AlertDialog(
-      title: Text(english ? 'Adjust profile photo' : 'Atur foto profil'),
+      title: Text(AppLanguageService.text(context, 'Potong foto profil', 'Crop profile photo')),
       content: SizedBox(
         width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onScaleStart: _mulaiGestur,
-              onScaleUpdate: _perbaruiGestur,
-              child: ClipOval(
-                child: SizedBox(
-                  width: _pratinjauSisi,
-                  height: _pratinjauSisi,
-                  child: Stack(
-                    clipBehavior: Clip.hardEdge,
-                    children: <Widget>[
-                      Positioned(
-                        left: -_kiri * skala,
-                        top: -_atas * skala,
-                        width: lebar,
-                        height: tinggi,
-                        child: Image.memory(
-                          _bytesPratinjau,
-                          width: lebar,
-                          height: tinggi,
-                          fit: BoxFit.fill,
-                          gaplessPlayback: true,
-                        ),
-                      ),
-                    ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              GestureDetector(
+                onScaleStart: _mulaiGestur,
+                onScaleUpdate: _perbaruiGestur,
+                child: Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(128),
+                    child: Image.memory(
+                      preview,
+                      width: 210,
+                      height: 210,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              english
-                  ? 'Pinch to zoom in or out. Drag the photo to reposition it.'
-                  : 'Cubit untuk memperbesar atau memperkecil. Geser foto untuk mengatur posisinya.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
-            ),
-          ],
+              const SizedBox(height: 10),
+              Text(
+                AppLanguageService.text(
+                  context,
+                  'Cubit untuk memperbesar atau memperkecil, lalu geser foto untuk mengatur posisi.',
+                  'Pinch to zoom in or out, then drag the photo to reposition it.',
+                ),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: teksSekunder, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(english ? 'Cancel' : 'Batal'),
+          child: Text(AppLanguageService.text(context, 'Batal', 'Cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_hasilPotongan()),
-          child: Text(english ? 'Use photo' : 'Gunakan foto'),
+          child: Text(AppLanguageService.text(context, 'Gunakan foto', 'Use photo')),
         ),
       ],
     );
@@ -892,15 +849,23 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
     final int secs = seconds % 60;
     if (hours >= 24) {
       final int days = hours ~/ 24;
-      final bool english = Localizations.localeOf(context).languageCode == 'en';
-      return english
-          ? '$days d ${hours % 24} h ${minutes.toString().padLeft(2, '0')} m ${secs.toString().padLeft(2, '0')} s'
-          : '$days hari ${hours % 24} jam ${minutes.toString().padLeft(2, '0')} menit ${secs.toString().padLeft(2, '0')} detik';
+      return AppLanguageService.text(
+        context,
+        '$days hari ${hours % 24} jam '
+            '${minutes.toString().padLeft(2, '0')} menit '
+            '${secs.toString().padLeft(2, '0')} detik',
+        '$days days ${hours % 24} hours '
+            '${minutes.toString().padLeft(2, '0')} minutes '
+            '${secs.toString().padLeft(2, '0')} seconds',
+      );
     }
-    final bool english = Localizations.localeOf(context).languageCode == 'en';
-    return english
-        ? '$hours h ${minutes.toString().padLeft(2, '0')} m ${secs.toString().padLeft(2, '0')} s'
-        : '$hours jam ${minutes.toString().padLeft(2, '0')} menit ${secs.toString().padLeft(2, '0')} detik';
+    return AppLanguageService.text(
+      context,
+      '$hours jam ${minutes.toString().padLeft(2, '0')} menit '
+          '${secs.toString().padLeft(2, '0')} detik',
+      '$hours hours ${minutes.toString().padLeft(2, '0')} minutes '
+          '${secs.toString().padLeft(2, '0')} seconds',
+    );
   }
 
   @override
@@ -913,9 +878,9 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
     if (widget.loading) {
       status = AppLanguageService.text(context, 'Menghitung waktu istirahat…', 'Calculating recovery time…');
     } else if (!widget.hasActivity || remaining == null) {
-      status = AppLanguageService.text(context, 'Belum ada aktivitas.', 'No activities yet.');
+      status = AppLanguageService.text(context, 'Belum ada aktivitas.', 'No activity yet.');
     } else if (sudahLewat) {
-      status = AppLanguageService.text(context, 'Anda siap berolahraga.', 'You may be ready for your next session.');
+      status = AppLanguageService.text(context, 'Anda siap berolahraga.', 'You are ready to exercise.');
     } else {
       status = _teksHitungMundur(remaining);
     }
@@ -932,7 +897,7 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
         children: <Widget>[
           Text(
             AppLanguageService.text(context, 'Pemulihan', 'Recovery'),
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 12),
           Text(
@@ -945,7 +910,11 @@ class _RecoveryCountdownCardState extends State<_RecoveryCountdownCard> {
           ),
           const SizedBox(height: 8),
           Text(
-            AppLanguageService.text(context, 'Ini hanya perkiraan, bukan penilaian medis. Jika masih merasa lelah, tunda latihan.', 'This is only an estimate, not a medical assessment. Delay your workout if you still feel tired.'),
+            AppLanguageService.text(
+              context,
+              'Ini hanya perkiraan saja, bukan penilaian medis. Jika masih merasa lelah, tunda latihan.',
+              'This is only an estimate, not a medical assessment. If you still feel tired, postpone your workout.',
+            ),
             style: TextStyle(
               color: Theme.of(context).hintColor,
               fontSize: 11,

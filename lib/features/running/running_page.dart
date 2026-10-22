@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -681,8 +682,27 @@ class _RunningPageState extends State<RunningPage> {
   /// The top-left control closes the map; the collapsed details screen keeps
   /// all existing metrics and offers a way to reopen it.
   Widget _buildLiveMapExperience({required bool paused}) {
-    return Scaffold(
-      backgroundColor: Colors.black,
+    final ThemeData appTheme = Theme.of(context);
+    final bool dark = appTheme.brightness == Brightness.dark;
+    final Color screenBackground = appTheme.scaffoldBackgroundColor;
+    final Color panelColor = appTheme.colorScheme.surface;
+    final Color panelSoft = appTheme.colorScheme.surfaceContainerHighest;
+    final Color primaryText = appTheme.colorScheme.onSurface;
+    final Color secondaryText = appTheme.colorScheme.onSurfaceVariant;
+    final Color borderColor = appTheme.colorScheme.outlineVariant;
+    final SystemUiOverlayStyle overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: screenBackground,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: panelSoft,
+      systemNavigationBarIconBrightness:
+          dark ? Brightness.light : Brightness.dark,
+      systemNavigationBarDividerColor: borderColor,
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
+      backgroundColor: screenBackground,
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -697,6 +717,7 @@ class _RunningPageState extends State<RunningPage> {
                 height: MediaQuery.sizeOf(context).height,
                 followLastPoint: !paused,
                 showIntervalSelector: true,
+                selectorUnderLiveControls: true,
               ),
             ),
           ),
@@ -709,15 +730,21 @@ class _RunningPageState extends State<RunningPage> {
                   child: Row(
                     children: <Widget>[
                       Material(
-                        color: Colors.black.withValues(alpha: 0.84),
+                        color: panelColor.withValues(alpha: 0.97),
                         shape: const CircleBorder(),
-                        child: IconButton(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: IconButton(
                           tooltip: _text('Tutup peta', 'Close map'),
                           onPressed: () => setState(() => _liveMapExpanded = false),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.keyboard_arrow_down,
-                            color: Colors.white,
+                            color: primaryText,
                             size: 30,
+                          ),
                           ),
                         ),
                       ),
@@ -731,8 +758,9 @@ class _RunningPageState extends State<RunningPage> {
                             vertical: 9,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.84),
+                            color: panelColor.withValues(alpha: 0.97),
                             borderRadius: BorderRadius.zero,
+                            border: Border.all(color: borderColor),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -740,13 +768,18 @@ class _RunningPageState extends State<RunningPage> {
                               Icon(
                                 paused ? Icons.pause_circle : Icons.gps_fixed,
                                 size: 16,
-                                color: paused ? Colors.white70 : Colors.white,
+                                color: paused ? secondaryText : primaryText,
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
+                                paused
+                                    ? _text('AKTIVITAS DIJEDA', 'ACTIVITY PAUSED')
+                                    : _text(
+                                        'AKURASI GPS • $gpsAccuracy',
+                                        'GPS ACCURACY • $gpsAccuracy',
+                                      ),
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: primaryText,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 11,
                                 ),
@@ -773,10 +806,17 @@ class _RunningPageState extends State<RunningPage> {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xED101010),
+                        color: panelColor.withValues(alpha: 0.97),
                         borderRadius: BorderRadius.zero,
-                        boxShadow: const <BoxShadow>[
-                          BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
+                        border: Border.all(color: borderColor),
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: dark ? 0.20 : 0.08,
+                            ),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
                         ],
                       ),
                       child: Column(
@@ -785,7 +825,7 @@ class _RunningPageState extends State<RunningPage> {
                           Text(
                             _activityDisplayLabel.toUpperCase(),
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: secondaryText,
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1.2,
@@ -794,25 +834,25 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
-                              _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
+                              _liveMapMetric(_text('WAKTU', 'TIME'), _formatDuration(_controller.elapsed)),
                               _liveMapMetric('PACE', _formatPace(pace)),
-                              _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
+                              _liveMapMetric(_text('JARAK', 'DISTANCE'), '${_controller.distanceKm.toStringAsFixed(2)} km'),
                             ],
                           ),
                           if (_latestHeartRateBpm != null) ...<Widget>[
                             const SizedBox(height: 8),
                             Row(
                               children: <Widget>[
-                                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 17),
+                                Icon(Icons.favorite_rounded, color: secondaryText, size: 17),
                                 const SizedBox(width: 7),
                                 Text(
                                   _text('DETAK JANTUNG', 'HEART RATE'),
-                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800),
+                                  style: TextStyle(color: secondaryText, fontSize: 11, fontWeight: FontWeight.w800),
                                 ),
                                 const Spacer(),
                                 Text(
                                   '${_latestHeartRateBpm!} bpm',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
+                                  style: TextStyle(color: primaryText, fontWeight: FontWeight.w900, fontSize: 14),
                                 ),
                               ],
                             ),
@@ -820,29 +860,29 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 12),
                           Row(
                             children: <Widget>[
-                              const Icon(Icons.speed, color: Colors.white70, size: 18),
+                              Icon(Icons.speed, color: secondaryText, size: 18),
                               const SizedBox(width: 6),
                               Text(
                                 speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
-                                    ? '${speedKmh.toStringAsFixed(1)} km/jam'
-                                    : '-- km/jam',
+                                    ? '${speedKmh.toStringAsFixed(1)} ${_text('km/jam', 'km/h')}'
+                                    : '-- ${_text('km/jam', 'km/h')}',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: primaryText,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               const Spacer(),
-                              const Icon(Icons.terrain, color: Colors.white70, size: 18),
+                              Icon(Icons.terrain, color: secondaryText, size: 18),
                               const SizedBox(width: 5),
                               Flexible(
                                 child: Text(
                                   elevation.hasAltitudeData
-                                      ? 'Selisih $netElevation'
-                                      : 'Perubahan --',
+                                      ? _text('Selisih $netElevation', 'Net change $netElevation')
+                                      : _text('Perubahan --', 'Change --'),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: primaryText,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
@@ -855,12 +895,14 @@ class _RunningPageState extends State<RunningPage> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m'
-                                ' • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                _text(
+                                  'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                  'Ascent +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Descent −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white70,
+                                  color: secondaryText,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -871,7 +913,7 @@ class _RunningPageState extends State<RunningPage> {
                           Row(
                             children: <Widget>[
                               _liveMapMiniMetric(
-                                'LANGKAH',
+                                _text('LANGKAH', 'STEPS'),
                                 _stepsThisActivity.toString(),
                               ),
                               _liveMapMiniMetric(
@@ -881,7 +923,7 @@ class _RunningPageState extends State<RunningPage> {
                                     : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm',
                               ),
                               _liveMapMiniMetric(
-                                'KALORI*',
+                                _text('KALORI*', 'CALORIES*'),
                                 '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()} kcal',
                               ),
                             ],
@@ -911,8 +953,9 @@ class _RunningPageState extends State<RunningPage> {
                     16,
                     10,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF101010),
+                  decoration: BoxDecoration(
+                    color: panelSoft,
+                    border: Border(top: BorderSide(color: borderColor)),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Column(
@@ -922,7 +965,7 @@ class _RunningPageState extends State<RunningPage> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white38,
+                          color: secondaryText.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.zero,
                         ),
                       ),
@@ -935,8 +978,8 @@ class _RunningPageState extends State<RunningPage> {
                                   ? _controller.resumeRun
                                   : _controller.pauseRun,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white30),
+                                foregroundColor: primaryText,
+                                side: BorderSide(color: borderColor),
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: Icon(paused ? Icons.play_arrow : Icons.pause),
@@ -948,8 +991,8 @@ class _RunningPageState extends State<RunningPage> {
                             child: FilledButton.icon(
                               onPressed: _finishRun,
                               style: FilledButton.styleFrom(
-                                backgroundColor: VoltWarna.merah,
-                                foregroundColor: Colors.white,
+                                backgroundColor: primaryText,
+                                foregroundColor: panelColor,
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: const Icon(Icons.stop),
@@ -959,10 +1002,13 @@ class _RunningPageState extends State<RunningPage> {
                         ],
                       ),
                       const SizedBox(height: 3),
-                      const Text(
-                        'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
+                      Text(
+                        _text(
+                          'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
+                          'Choose a split interval on the map; tap a marker to view pace, speed, and elevation.',
+                        ),
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: secondaryText, fontSize: 10),
                       ),
                     ],
                   ),
@@ -971,6 +1017,7 @@ class _RunningPageState extends State<RunningPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -986,7 +1033,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w900,
             ),
@@ -996,7 +1043,7 @@ class _RunningPageState extends State<RunningPage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white70,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -1016,7 +1063,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
@@ -1025,7 +1072,7 @@ class _RunningPageState extends State<RunningPage> {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white60,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 9,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,

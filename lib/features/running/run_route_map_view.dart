@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'run_segment_data.dart';
@@ -19,6 +21,7 @@ class RunRouteMapView extends StatefulWidget {
     this.height = 280,
     this.followLastPoint = false,
     this.showIntervalSelector = false,
+    this.selectorUnderLiveControls = false,
     this.initialIntervalMeters = 100,
     this.selectedIntervalMeters,
     this.onIntervalMetersChanged,
@@ -29,6 +32,9 @@ class RunRouteMapView extends StatefulWidget {
   final double height;
   final bool followLastPoint;
   final bool showIntervalSelector;
+  /// Memindahkan pemilih split ke bawah kontrol live agar tidak bertumpuk
+  /// dengan jam dan ikon status Android pada layar edge-to-edge.
+  final bool selectorUnderLiveControls;
   final int initialIntervalMeters;
   /// Jika diisi, pemilihan interval dikendalikan bersama oleh halaman induk.
   final int? selectedIntervalMeters;
@@ -287,9 +293,6 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     return splits.isEmpty ? null : splits.last;
   }
 
-  String _text(String indonesia, String english) =>
-      AppLanguageService.text(context, indonesia, english);
-
   @override
   Widget build(BuildContext context) {
     final List<RunPoint> validRoute = _validRoute();
@@ -298,13 +301,20 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
         height: widget.height,
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(Icons.gps_not_fixed, size: 38, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                const SizedBox(height: 8),
-                Text(_text('Rute akan tampil setelah beberapa titik GPS masuk.', 'The route will appear after GPS records a few points.'), textAlign: TextAlign.center),
+                Icon(Icons.gps_not_fixed, size: 38, color: VoltWarna.teksAbu),
+                SizedBox(height: 8),
+                Text(
+            AppLanguageService.text(
+              context,
+              'Rute akan tampil setelah beberapa titik GPS masuk.',
+              'The route will appear after a few GPS points are recorded.',
+            ),
+            textAlign: TextAlign.center,
+          ),
               ],
             ),
           ),
@@ -375,7 +385,6 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
                     if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
                     MarkerLayer(markers: markers),
                     const RichAttributionWidget(
-                      showFlutterMapAttribution: false,
                       attributions: <SourceAttribution>[
                         TextSourceAttribution('© OpenStreetMap contributors'),
                       ],
@@ -384,35 +393,56 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
                 ),
                 if (widget.showIntervalSelector)
                   Positioned(
-                    top: 8,
+                    top: widget.selectorUnderLiveControls
+                        ? MediaQuery.viewPaddingOf(context).top + 92
+                        : 8,
                     left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xE9222222),
-                        borderRadius: BorderRadius.zero,
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _activeIntervalMeters,
-                          dropdownColor: const Color(0xFF222222),
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
-                          iconEnabledColor: Colors.white,
-                          isDense: true,
-                          items: runSegmentIntervalOptions.map((int meters) => DropdownMenuItem<int>(
-                            value: meters,
-                            child: Text(meters >= 1000 ? '${meters ~/ 1000} km' : '$meters m'),
-                          )).toList(growable: false),
-                          onChanged: (int? value) {
-                            if (value == null) return;
-                            if (widget.selectedIntervalMeters == null) {
-                              setState(() => _selectedIntervalMeters = value);
-                            }
-                            widget.onIntervalMetersChanged?.call(value);
-                          },
-                        ),
-                      ),
+                    child: Builder(
+                      builder: (BuildContext context) {
+                        final ThemeData theme = Theme.of(context);
+                        final Color surface = theme.colorScheme.surface;
+                        final Color text = theme.colorScheme.onSurface;
+                        final Color border = theme.colorScheme.outlineVariant;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: surface.withValues(alpha: 0.97),
+                            borderRadius: BorderRadius.zero,
+                            border: Border.all(color: border),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<int>(
+                              value: _activeIntervalMeters,
+                              dropdownColor: surface,
+                              style: TextStyle(
+                                color: text,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                              iconEnabledColor: text,
+                              isDense: true,
+                              items: runSegmentIntervalOptions
+                                  .map((int meters) => DropdownMenuItem<int>(
+                                        value: meters,
+                                        child: Text(meters >= 1000
+                                            ? '${meters ~/ 1000} km'
+                                            : '$meters m'),
+                                      ))
+                                  .toList(growable: false),
+                              onChanged: (int? value) {
+                                if (value == null) return;
+                                if (widget.selectedIntervalMeters == null) {
+                                  setState(() => _selectedIntervalMeters = value);
+                                }
+                                widget.onIntervalMetersChanged?.call(value);
+                              },
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
               ],
@@ -557,16 +587,27 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     await showDialog<void>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text('Segmen $distanceLabel'),
+        title: Text(AppLanguageService.text(context, 'Segmen $distanceLabel', 'Segment $distanceLabel')),
         content: Text(
-          'Panjang segmen: ${split.distanceMeters.toStringAsFixed(0)} m\n'
-          'Durasi: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} detik\n'
-          'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
-          'Kecepatan rata-rata: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/jam\n'
-          'Elevasi dari awal: $altitude',
+          AppLanguageService.text(
+            context,
+            'Panjang segmen: ${split.distanceMeters.toStringAsFixed(0)} m\n'
+                'Durasi: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} detik\n'
+                'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
+                'Kecepatan rata-rata: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/jam\n'
+                'Elevasi dari awal: $altitude',
+            'Segment length: ${split.distanceMeters.toStringAsFixed(0)} m\n'
+                'Duration: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} seconds\n'
+                'Average pace: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
+                'Average speed: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/h\n'
+                'Elevation from start: $altitude',
+          ),
         ),
         actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(AppLanguageService.text(context, 'Tutup', 'Close'))),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(AppLanguageService.text(context, 'Tutup', 'Close')),
+          ),
         ],
       ),
     );

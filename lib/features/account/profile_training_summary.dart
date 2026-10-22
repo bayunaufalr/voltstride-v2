@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -28,6 +29,8 @@ class ProfileTrainingSummary extends StatelessWidget {
             bio.trim().isNotEmpty;
         final Color secondaryText =
             Theme.of(context).colorScheme.onSurfaceVariant;
+        String text(String indonesia, String english) =>
+            AppLanguageService.text(context, indonesia, english);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -45,8 +48,8 @@ class ProfileTrainingSummary extends StatelessWidget {
                     children: <Widget>[
                       Expanded(
                         child: Text(
-                          AppLanguageService.text(context, 'Profil', 'Profile'),
-                          style: const TextStyle(
+                          text('Profil', 'Profile'),
+                          style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
                           ),
@@ -54,7 +57,7 @@ class ProfileTrainingSummary extends StatelessWidget {
                       ),
                       TextButton(
                         onPressed: () => _editProfile(context, profile),
-                        child: Text(complete ? AppLanguageService.text(context, 'Edit', 'Edit') : AppLanguageService.text(context, 'Lengkapi', 'Complete')),
+                        child: Text(complete ? text('Edit', 'Edit') : text('Lengkapi', 'Complete profile')),
                       ),
                     ],
                   ),
@@ -62,20 +65,23 @@ class ProfileTrainingSummary extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        AppLanguageService.text(context, 'Tanggal lahir, jenis kelamin, dan bio wajib diisi.', 'Date of birth, gender, and bio are required.'),
+                        text('Tanggal lahir, jenis kelamin, dan bio wajib diisi.', 'Date of birth, gender, and bio are required.'),
                         style: TextStyle(fontSize: 12, color: secondaryText),
                       ),
                     ),
                   if (birthday != null)
                     _profileRow(
                       context,
-                      'Umur',
-                      '${age ?? '--'} ${AppLanguageService.text(context, 'tahun', 'years old')} · ${_dateText(birthday)}',
+                      text('Umur', 'Age'),
+                      text(
+                        '${age ?? '--'} tahun · ${_dateText(birthday)}',
+                        '${age ?? '--'} years · ${_dateText(birthday)}',
+                      ),
                     ),
                   if (gender.isNotEmpty)
-                    _profileRow(context, AppLanguageService.text(context, 'Jenis kelamin', 'Gender'), _genderLabel(context, gender)),
+                    _profileRow(context, text('Jenis kelamin', 'Gender'), _genderText(context, gender)),
                   if (bio.trim().isNotEmpty)
-                    _profileRow(context, AppLanguageService.text(context, 'Bio', 'Bio'), bio.trim()),
+                    _profileRow(context, text('Bio', 'Bio'), bio.trim()),
                 ],
               ),
             ),
@@ -83,6 +89,19 @@ class ProfileTrainingSummary extends StatelessWidget {
         );
       },
     );
+  }
+
+  String _genderText(BuildContext context, String value) {
+    return switch (value) {
+      'Laki-laki' => AppLanguageService.text(context, 'Laki-laki', 'Male'),
+      'Perempuan' => AppLanguageService.text(context, 'Perempuan', 'Female'),
+      'Tidak ingin menyebutkan' => AppLanguageService.text(
+          context,
+          'Tidak ingin menyebutkan',
+          'Prefer not to say',
+        ),
+      _ => value,
+    };
   }
 
   Widget _profileRow(BuildContext context, String label, String value) {
@@ -129,8 +148,10 @@ class ProfileTrainingSummary extends StatelessWidget {
             StateSetter setDialogState,
           ) {
             final int? age = birthday == null ? null : _ageFromBirthday(birthday!);
+            String dialogText(String indonesia, String english) =>
+                AppLanguageService.text(dialogContext, indonesia, english);
             return AlertDialog(
-              title: Text(AppLanguageService.text(dialogContext, 'Data profil', 'Profile details')),
+              title: Text(dialogText('Data profil', 'Profile details')),
               content: SizedBox(
                 width: 360,
                 child: SingleChildScrollView(
@@ -151,7 +172,7 @@ class ProfileTrainingSummary extends StatelessWidget {
                                         DateTime(now.year - 16, now.month, now.day),
                                     firstDate: DateTime(1900),
                                     lastDate: now,
-                                    helpText: AppLanguageService.text(dialogContext, 'Pilih tanggal lahir', 'Choose date of birth'),
+                                    helpText: dialogText('Pilih tanggal lahir', 'Choose date of birth'),
                                   );
                                   if (chosen != null) {
                                     setDialogState(() {
@@ -163,9 +184,9 @@ class ProfileTrainingSummary extends StatelessWidget {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: <Widget>[
-                              Text(AppLanguageService.text(dialogContext, 'Tanggal lahir *', 'Date of birth *')),
+                              Text(dialogText('Tanggal lahir *', 'Date of birth *')),
                               Text(birthday == null
-                                  ? AppLanguageService.text(dialogContext, 'Pilih tanggal', 'Choose a date')
+                                  ? dialogText('Pilih tanggal', 'Choose date')
                                   : _dateText(birthday!)),
                             ],
                           ),
@@ -173,31 +194,34 @@ class ProfileTrainingSummary extends StatelessWidget {
                         if (age != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4, bottom: 10),
-                            child: Text(AppLanguageService.text(dialogContext, 'Umur: $age tahun', 'Age: $age years')),
+                            child: Text(dialogText('Umur: $age tahun', 'Age: $age years')),
                           ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           initialValue: gender,
                           decoration: InputDecoration(
-                            labelText: AppLanguageService.text(dialogContext, 'Jenis kelamin *', 'Gender *'),
+                            labelText: dialogText('Jenis kelamin *', 'Gender *'),
                           ),
                           items: <DropdownMenuItem<String>>[
                             DropdownMenuItem(
                               value: 'Laki-laki',
-                              child: Text(AppLanguageService.text(dialogContext, 'Laki-laki', 'Male')),
+                              child: Text(dialogText('Laki-laki', 'Male')),
                             ),
                             DropdownMenuItem(
                               value: 'Perempuan',
-                              child: Text(AppLanguageService.text(dialogContext, 'Perempuan', 'Female')),
+                              child: Text(dialogText('Perempuan', 'Female')),
                             ),
                             DropdownMenuItem(
                               value: 'Tidak ingin menyebutkan',
-                              child: Text(AppLanguageService.text(dialogContext, 'Tidak ingin menyebutkan', 'Prefer not to say')),
+                              child: Text(dialogText(
+                                'Tidak ingin menyebutkan',
+                                'Prefer not to say',
+                              )),
                             ),
                           ],
                           validator: (String? value) =>
                               value == null || value.isEmpty
-                                  ? AppLanguageService.text(dialogContext, 'Pilih jenis kelamin.', 'Choose a gender.')
+                                  ? dialogText('Pilih jenis kelamin.', 'Choose your gender.')
                                   : null,
                           onChanged: saving
                               ? null
@@ -211,16 +235,16 @@ class ProfileTrainingSummary extends StatelessWidget {
                           maxLines: 3,
                           maxLength: 160,
                           decoration: InputDecoration(
-                            labelText: AppLanguageService.text(dialogContext, 'Bio *', 'Bio *'),
-                            hintText: AppLanguageService.text(dialogContext, 'Tulis bio singkat', 'Write a short bio'),
+                            labelText: dialogText('Bio *', 'Bio *'),
+                            hintText: dialogText('Tulis bio singkat', 'Write a short bio'),
                             alignLabelWithHint: true,
                           ),
                           validator: (String? value) {
                             if (value == null || value.trim().isEmpty) {
-                              return AppLanguageService.text(dialogContext, 'Bio wajib diisi.', 'Bio is required.');
+                              return dialogText('Bio wajib diisi.', 'Bio is required.');
                             }
                             if (value.trim().length < 3) {
-                              return AppLanguageService.text(dialogContext, 'Bio terlalu singkat.', 'Bio is too short.');
+                              return dialogText('Bio terlalu singkat.', 'Bio is too short.');
                             }
                             return null;
                           },
@@ -245,7 +269,7 @@ class ProfileTrainingSummary extends StatelessWidget {
                   onPressed: saving
                       ? null
                       : () => Navigator.of(dialogContext).pop(false),
-                  child: Text(AppLanguageService.text(dialogContext, 'Batal', 'Cancel')),
+                  child: Text(dialogText('Batal', 'Cancel')),
                 ),
                 FilledButton(
                   onPressed: saving
@@ -254,13 +278,13 @@ class ProfileTrainingSummary extends StatelessWidget {
                           if (!formKey.currentState!.validate()) return;
                           if (birthday == null) {
                             setDialogState(() {
-                              validationMessage = AppLanguageService.text(dialogContext, 'Pilih tanggal lahir.', 'Choose a date of birth.');
+                              validationMessage = dialogText('Pilih tanggal lahir.', 'Choose your date of birth.');
                             });
                             return;
                           }
                           if (gender == null || gender!.isEmpty) {
                             setDialogState(() {
-                              validationMessage = AppLanguageService.text(dialogContext, 'Pilih jenis kelamin.', 'Choose a gender.');
+                              validationMessage = dialogText('Pilih jenis kelamin.', 'Choose your gender.');
                             });
                             return;
                           }
@@ -277,7 +301,7 @@ class ProfileTrainingSummary extends StatelessWidget {
                             if (!dialogContext.mounted) return;
                             setDialogState(() {
                               saving = false;
-                              validationMessage = AppLanguageService.text(dialogContext, 'Profil belum berhasil disimpan.', 'Could not save the profile.');
+                              validationMessage = dialogText('Profil belum berhasil disimpan.', 'Could not save the profile.');
                             });
                           }
                         },
@@ -287,7 +311,7 @@ class ProfileTrainingSummary extends StatelessWidget {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(AppLanguageService.text(dialogContext, 'Simpan', 'Save')),
+                      : Text(dialogText('Simpan', 'Save')),
                 ),
               ],
             );
@@ -301,20 +325,6 @@ class ProfileTrainingSummary extends StatelessWidget {
       }
     } finally {
       bioController.dispose();
-    }
-  }
-
-
-  static String _genderLabel(BuildContext context, String gender) {
-    switch (gender) {
-      case 'Laki-laki':
-        return AppLanguageService.text(context, 'Laki-laki', 'Male');
-      case 'Perempuan':
-        return AppLanguageService.text(context, 'Perempuan', 'Female');
-      case 'Tidak ingin menyebutkan':
-        return AppLanguageService.text(context, 'Tidak ingin menyebutkan', 'Prefer not to say');
-      default:
-        return gender;
     }
   }
 

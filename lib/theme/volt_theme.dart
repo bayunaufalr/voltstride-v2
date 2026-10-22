@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -34,58 +35,70 @@ Future<void> saveVoltThemeMode(ThemeMode mode) async {
   }
 }
 
-/// Warna bersama untuk komponen yang masih memakai palet langsung.
+/// Warna netral untuk bagian aplikasi yang belum membutuhkan warna khusus.
 class VoltWarna {
   VoltWarna._();
 
-  static const Color latar = Color(0xFFF5F5F1);
-  static const Color kartu = Color(0xFFFFFEFC);
-  static const Color surface = Color(0xFFEBEEE9);
-  static const Color border = Color(0xFFD9DED8);
+  static const Color latar = Color(0xFFF3F1EC);
+  static const Color kartu = Color(0xFFFCFBF8);
+  static const Color surface = Color(0xFFEAE8E2);
+  static const Color border = Color(0xFFD6D3CC);
 
-  static const Color aksen = Color(0xFF477561);
-  static const Color aksenGelap = Color(0xFF315444);
-  static const Color hijau = Color(0xFF587B63);
-  static const Color kuning = Color(0xFF806A3D);
-  static const Color merah = Color(0xFF99564F);
-  static const Color violet = Color(0xFF716681);
+  static const Color aksen = Color(0xFF202124);
+  static const Color aksenGelap = Color(0xFF3A3B3D);
+  // Nama lama dipertahankan agar berkas lain tetap kompatibel; nilainya
+  // sengaja tetap netral, tanpa aksen hijau, kuning, merah, atau ungu.
+  static const Color hijau = Color(0xFF656568);
+  static const Color kuning = Color(0xFF85847F);
+  static const Color merah = Color(0xFF202124);
+  static const Color violet = Color(0xFF747478);
 
-  static const Color teksPutih = Color(0xFFFFFFFF);
-  static const Color teksAbu = Color(0xFF69746D);
-  static const Color teksRedup = Color(0xFF8C968F);
+  static const Color teksPutih = Color(0xFF202124);
+  static const Color teksAbu = Color(0xFF626264);
+  static const Color teksRedup = Color(0xFF85847F);
 }
 
 ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
   final bool gelap = brightness == Brightness.dark;
-  // Hijau-abu yang lembut mengurangi silau tanpa membuat teks kehilangan kontras.
-  final Color latar = gelap ? const Color(0xFF171B19) : const Color(0xFFF5F5F1);
-  final Color permukaan = gelap ? const Color(0xFF202622) : const Color(0xFFFFFEFC);
-  final Color permukaanLembut =
-      gelap ? const Color(0xFF29312C) : const Color(0xFFEBEEE9);
-  final Color teks = gelap ? const Color(0xFFE9EDE9) : const Color(0xFF29342D);
-  final Color teksSekunder =
-      gelap ? const Color(0xFFB3BDB6) : const Color(0xFF69746D);
-  final Color garis = gelap ? const Color(0xFF3C4640) : const Color(0xFFD9DED8);
-  final Color primer = gelap ? const Color(0xFFA5C7B2) : const Color(0xFF477561);
-  final Color teksDiPrimer = gelap ? const Color(0xFF202A23) : Colors.white;
-  final Color permukaanTinggi =
-      gelap ? const Color(0xFF303833) : const Color(0xFFE5ECE6);
+  // Palet ivory, milk-white, grey, black, dan charcoal.
+  final Color latar = gelap
+      ? const Color(0xFF141516)
+      : const Color(0xFFF3F1EC);
+  final Color permukaan = gelap
+      ? const Color(0xFF202123)
+      : const Color(0xFFFCFBF8);
+  final Color permukaanLembut = gelap
+      ? const Color(0xFF292A2C)
+      : const Color(0xFFEAE8E2);
+  final Color teks = gelap
+      ? const Color(0xFFF2F1ED)
+      : const Color(0xFF202124);
+  final Color teksSekunder = gelap
+      ? const Color(0xFFB7B6B1)
+      : const Color(0xFF626264);
+  final Color garis = gelap
+      ? const Color(0xFF414245)
+      : const Color(0xFFD6D3CC);
 
   final ColorScheme skema = ColorScheme.fromSeed(
-    seedColor: primer,
+    seedColor: teks,
     brightness: brightness,
   ).copyWith(
-    primary: primer,
-    onPrimary: teksDiPrimer,
-    secondary: gelap ? const Color(0xFFB5C9BA) : const Color(0xFF647E6C),
-    onSecondary: gelap ? const Color(0xFF222B25) : Colors.white,
+    primary: teks,
+    onPrimary: latar,
+    secondary: teksSekunder,
+    onSecondary: latar,
+    tertiary: teksSekunder,
+    onTertiary: latar,
     surface: permukaan,
     onSurface: teks,
-    surfaceContainerHighest: permukaanTinggi,
+    surfaceContainerHighest: permukaanLembut,
+    onSurfaceVariant: teksSekunder,
     outline: garis,
     outlineVariant: garis,
-    error: gelap ? const Color(0xFFFFB4AB) : const Color(0xFFAA4845),
-    onError: gelap ? const Color(0xFF3A0908) : Colors.white,
+    surfaceTint: Colors.transparent,
+    error: gelap ? const Color(0xFFE0E0E0) : const Color(0xFF202124),
+    onError: gelap ? const Color(0xFF111111) : Colors.white,
   );
 
   return ThemeData(
@@ -111,7 +124,7 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.zero,
         side: BorderSide(color: garis),
       ),
     ),
@@ -127,47 +140,49 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
       labelStyle: TextStyle(color: teksSekunder),
       hintStyle: TextStyle(color: teksSekunder),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: garis),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.zero,
         borderSide: BorderSide(color: garis),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: primer, width: 1.6),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: teks, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: skema.error),
+        borderRadius: BorderRadius.zero,
+        borderSide: BorderSide(color: teks),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: primer,
-        foregroundColor: teksDiPrimer,
+        backgroundColor: teks,
+        foregroundColor: latar,
         minimumSize: const Size.fromHeight(48),
         textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: primer,
+        foregroundColor: teks,
         minimumSize: const Size.fromHeight(48),
-        side: BorderSide(color: garis),
+        side: BorderSide(color: teks),
         textStyle: const TextStyle(fontWeight: FontWeight.w600),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: primer),
+      style: TextButton.styleFrom(foregroundColor: teks),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: latar,
-      indicatorColor: gelap ? const Color(0xFF2B4033) : const Color(0xFFE0E8E0),
-      indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      indicatorColor: permukaanLembut,
+      indicatorShape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
@@ -176,25 +191,27 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
           fontWeight: states.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w400,
-          color: states.contains(WidgetState.selected) ? primer : teksSekunder,
+          color: states.contains(WidgetState.selected) ? teks : teksSekunder,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         return IconThemeData(
           size: 23,
-          color: states.contains(WidgetState.selected) ? primer : teksSekunder,
+          color: states.contains(WidgetState.selected) ? teks : teksSekunder,
         );
       }),
     ),
     dividerTheme: DividerThemeData(color: garis, thickness: 1),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: gelap ? const Color(0xFFE9EDE9) : const Color(0xFF315444),
+      backgroundColor: gelap
+          ? const Color(0xFFEAE8E2)
+          : const Color(0xFF202124),
       contentTextStyle: TextStyle(
-        color: gelap ? const Color(0xFF27362D) : Colors.white,
+        color: gelap ? const Color(0xFF202124) : const Color(0xFFFCFBF8),
       ),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
     ),
-    progressIndicatorTheme: ProgressIndicatorThemeData(color: primer),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: teks),
   );
 }
