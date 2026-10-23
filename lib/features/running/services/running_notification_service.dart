@@ -1,7 +1,9 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../../services/app_language_service.dart';
+import 'pacer_guidance.dart';
 
 /// Notifikasi statistik lari yang diperbarui berkala.
 /// Geolocator tetap menampilkan notifikasi layanan GPS-nya sendiri.
@@ -69,10 +71,12 @@ class RunningNotificationService {
     );
   }
 
-  /// Memberi arahan pace lokal setiap menit saat sesi aktif.
-  /// Notifikasi ini membutuhkan aplikasi tetap berjalan selama perekaman.
+  /// Gives minute-by-minute pace advice for the requested average pace.
   static Future<void> showPacerUpdate({
+    required double targetDistanceKm,
     required double targetPaceSecondsPerKm,
+    required double currentDistanceKm,
+    required Duration elapsed,
     required double? currentPaceSecondsPerKm,
     required int elapsedMinutes,
   }) async {
@@ -81,6 +85,12 @@ class RunningNotificationService {
 
     final bool english =
         AppLanguageService.localeNotifier.value.languageCode == 'en';
+    final PacerGuidance guidance = PacerGuidance.calculate(
+      targetDistanceKm: targetDistanceKm,
+      targetAveragePaceSecondsPerKm: targetPaceSecondsPerKm,
+      currentDistanceKm: currentDistanceKm,
+      elapsed: elapsed,
+    );
     final String target = _formatPace(targetPaceSecondsPerKm);
     final bool hasCurrent = currentPaceSecondsPerKm != null &&
         currentPaceSecondsPerKm.isFinite &&
@@ -89,36 +99,34 @@ class RunningNotificationService {
     final String current = hasCurrent
         ? _formatPace(currentPaceSecondsPerKm)
         : '--:--';
+    final String requiredPace = _formatPace(
+      guidance.requiredRemainingPaceSecondsPerKm,
+    );
 
-    final double actualPace =
-        currentPaceSecondsPerKm ?? targetPaceSecondsPerKm;
-    String advice;
-    if (!hasCurrent) {
+    final String advice;
+    if (guidance.targetReached) {
       advice = english
-          ? 'Settle into a comfortable rhythm. Target pace: $target/km.'
-          : 'Jaga ritme yang nyaman. Pace target: $target/km.';
-    } else if (actualPace > targetPaceSecondsPerKm + 10) {
+          ? 'Target distance reached. Check the finished average pace against $target/km.'
+          : 'Jarak target tercapai. Bandingkan pace rata-rata akhir dengan target $target/km.';
+    } else if (!guidance.targetAchievable) {
       advice = english
-          ? 'You are slower than target. Increase effort slightly if it feels safe.'
-          : 'Pace sedikit lebih lambat dari target. Tingkatkan usaha perlahan jika terasa aman.';
-    } else if (actualPace < targetPaceSecondsPerKm - 10) {
-      advice = english
-          ? 'You are faster than target. Ease off a little to stay consistent.'
-          : 'Pace lebih cepat dari target. Kurangi sedikit agar tetap stabil.';
+          ? 'The target average pace is no longer mathematically reachable over the remaining distance. Finish at a safe effort.'
+          : 'Target pace rata-rata tidak lagi tercapai secara hitungan pada sisa jarak. Selesaikan dengan usaha yang aman.';
     } else {
+      final String remaining = guidance.remainingDistanceKm.toStringAsFixed(2);
       advice = english
-          ? 'You are near your target pace. Keep this steady effort.'
-          : 'Pace mendekati target. Pertahankan usaha yang stabil.';
+          ? 'To finish at $target/km average, cover the remaining $remaining km at about $requiredPace/km.'
+          : 'Untuk finis dengan rata-rata $target/km, tempuh sisa $remaining km sekitar $requiredPace/km.';
     }
 
     final AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_minute_pacer_v1',
+      'voltstride_minute_pacer_priority_v3',
       english ? 'Minute-by-minute pacer' : 'Pacer setiap menit',
       channelDescription: english
-          ? 'Pace guidance while a running session is active.'
-          : 'Arahan pace selama sesi lari berlangsung.',
-      importance: Importance.high,
-      priority: Priority.high,
+          ? 'High-priority pace guidance while a running session is active.'
+          : 'Arahan pace berprioritas tinggi selama sesi lari berlangsung.',
+      importance: Importance.max,
+      priority: Priority.max,
       ongoing: false,
       autoCancel: true,
       onlyAlertOnce: false,
@@ -129,10 +137,12 @@ class RunningNotificationService {
     );
     await _plugin.show(
       42602,
-      english ? 'Running pacer • Minute $elapsedMinutes' : 'Pacer lari • Menit $elapsedMinutes',
       english
-          ? 'Target $target/km • Current $current/km. $advice'
-          : 'Target $target/km • Saat ini $current/km. $advice',
+          ? 'Running pacer • Minute $elapsedMinutes'
+          : 'Pacer lari • Menit $elapsedMinutes',
+      english
+          ? 'Target avg $target/km • Current avg $current/km. $advice'
+          : 'Target rata-rata $target/km • Rata-rata saat ini $current/km. $advice',
       NotificationDetails(android: android),
     );
   }

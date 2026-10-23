@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:pedometer/pedometer.dart';
 
 import '../../theme/volt_theme.dart';
 import '../../services/app_language_service.dart';
@@ -18,7 +19,7 @@ import 'run_activity_charts.dart';
 import 'run_share_page.dart';
 import 'services/heart_rate_service.dart';
 import 'services/running_notification_service.dart';
-import 'services/step_counter_service.dart';
+import 'services/pacer_guidance.dart';
 
 /// Perekaman aktivitas dan ringkasan sesi pengguna.
 class RunningPage extends StatefulWidget {
@@ -30,7 +31,6 @@ class RunningPage extends StatefulWidget {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = false,
-    this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
     this.onExit,
   });
@@ -41,7 +41,6 @@ class RunningPage extends StatefulWidget {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
-  final List<RunPoint> plannedRoute;
   final bool autoStart;
   final VoidCallback? onExit;
 
@@ -77,9 +76,7 @@ class _RunningPageState extends State<RunningPage> {
   int _lastObservedRouteLength = 0;
   int? _countdownValue;
   bool _isStarting = false;
-  bool _allowExitAfterConfirmation = false;
-  bool _exitConfirmationVisible = false;
-  StreamSubscription<StepCounterEvent>? _stepSubscription;
+  StreamSubscription<StepCount>? _stepSubscription;
   bool _requestingStepStream = false;
   int? _lastSystemStepCount;
   DateTime? _lastStepTimestamp;
@@ -87,7 +84,9 @@ class _RunningPageState extends State<RunningPage> {
   int _stepsThisActivity = 0;
   double _maxCadenceSpm = 0;
   final List<RunCadenceSample> _cadenceSamples = <RunCadenceSample>[];
-  final List<RunHeartRateSample> _heartRateSamples = <RunHeartRateSample>[];
+  final List<int> _heartRateSamples = <int>[];
+  final List<RunHeartRateSample> _heartRateTrackSamples =
+      <RunHeartRateSample>[];
   StreamSubscription<int>? _heartRateSubscription;
   int? _latestHeartRateBpm;
   int _lastPacerMinute = 0;
@@ -103,19 +102,19 @@ class _RunningPageState extends State<RunningPage> {
       (int bpm) {
         if (!mounted) return;
         _latestHeartRateBpm = bpm;
-        if (_controller.status == RunStatus.running ||
-            _controller.status == RunStatus.paused) {
+        if (_controller.status == RunStatus.running) {
+          _heartRateSamples.add(bpm);
           final int elapsedSeconds = _controller.elapsed.inSeconds;
           final RunHeartRateSample sample = RunHeartRateSample(
             elapsedSeconds: elapsedSeconds,
             bpm: bpm,
           );
-          if (_heartRateSamples.isNotEmpty &&
-              _heartRateSamples.last.elapsedSeconds == elapsedSeconds) {
-            _heartRateSamples[_heartRateSamples.length - 1] = sample;
-          } else if (_heartRateSamples.isEmpty ||
-              elapsedSeconds > _heartRateSamples.last.elapsedSeconds) {
-            _heartRateSamples.add(sample);
+          if (_heartRateTrackSamples.isEmpty ||
+              elapsedSeconds > _heartRateTrackSamples.last.elapsedSeconds) {
+            _heartRateTrackSamples.add(sample);
+          } else if (elapsedSeconds ==
+              _heartRateTrackSamples.last.elapsedSeconds) {
+            _heartRateTrackSamples[_heartRateTrackSamples.length - 1] = sample;
           }
         }
         _liveMetricsRevision.value++;
@@ -219,7 +218,7 @@ class _RunningPageState extends State<RunningPage> {
         final PermissionStatus status = await Permission.activityRecognition.request();
         if (!status.isGranted) return;
       }
-      _stepSubscription = StepCounterService.stepCountStream.listen(
+      _stepSubscription = Pedometer.stepCountStream.listen(
         _onStepCount,
         onError: (Object _) {
           // Aplikasi tetap merekam GPS jika sensor langkah tidak tersedia.
@@ -233,7 +232,7 @@ class _RunningPageState extends State<RunningPage> {
     }
   }
 
-  void _onStepCount(StepCounterEvent event) {
+  void _onStepCount(StepCount event) {
     final DateTime timestamp = event.timeStamp;
     final int systemSteps = event.steps;
     final int? previousSteps = _lastSystemStepCount;
@@ -343,6 +342,7 @@ class _RunningPageState extends State<RunningPage> {
 
     setState(() => _isStarting = true);
     _heartRateSamples.clear();
+    _heartRateTrackSamples.clear();
     _lastPacerMinute = 0;
     _completedSessionOverride = null;
     try {
@@ -410,30 +410,22 @@ class _RunningPageState extends State<RunningPage> {
 
   @override
   Widget build(BuildContext context) {
-    final RunStatus status = _controller.status;
-    final bool activityIsActive = status == RunStatus.acquiringGps ||
-        status == RunStatus.running ||
-        status == RunStatus.paused;
-    final Widget page = switch (status) {
-      RunStatus.idle => _buildIdle(),
-      RunStatus.acquiringGps => _buildAcquiringGps(),
-      RunStatus.running => _buildLiveRun(paused: false),
-      RunStatus.paused => _buildLiveRun(paused: true),
-      RunStatus.finished => _buildSummary(
+    switch (_controller.status) {
+      case RunStatus.idle:
+        return _buildIdle();
+      case RunStatus.acquiringGps:
+        return _buildAcquiringGps();
+      case RunStatus.running:
+        return _buildLiveRun(paused: false);
+      case RunStatus.paused:
+        return _buildLiveRun(paused: true);
+      case RunStatus.finished:
+        return _buildSummary(
           _completedSessionOverride ?? _controller.lastFinishedSession,
-        ),
-      RunStatus.error => _buildError(),
-    };
-
-    return PopScope<Object?>(
-      canPop: !activityIsActive || _allowExitAfterConfirmation,
-      onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (!didPop && activityIsActive && !_allowExitAfterConfirmation) {
-          unawaited(_confirmExitRunning());
-        }
-      },
-      child: page,
-    );
+        );
+      case RunStatus.error:
+        return _buildError();
+    }
   }
 
   Widget _buildIdle() {
@@ -614,7 +606,7 @@ class _RunningPageState extends State<RunningPage> {
         title: Text('$_activityDisplayLabel • ${_text('Dalam ruangan', 'Indoor')}'),
         leading: IconButton(
           tooltip: _text('Keluar dari aktivitas', 'Exit activity'),
-          onPressed: () => _confirmExitRunning(),
+          onPressed: () => _confirmExitIndoor(paused: paused),
           icon: const Icon(Icons.close_rounded),
         ),
       ),
@@ -680,42 +672,24 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  Future<void> _confirmExitRunning() async {
-    if (_exitConfirmationVisible || !mounted) return;
-    _exitConfirmationVisible = true;
+  Future<void> _confirmExitIndoor({required bool paused}) async {
     final bool? exit = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(_text('Keluar dari aktivitas?', 'Exit activity?')),
-        content: Text(_text(
-          'Jika keluar sekarang, sesi yang belum selesai tidak akan disimpan ke riwayat. Tetap rekam atau keluar?',
-          'If you leave now, this unfinished session will not be saved to history. Keep recording or exit?',
-        )),
+        title: Text(_text('Akhiri aktivitas?', 'End activity?')),
+        content: Text(_text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.', 'An unfinished activity will not be saved to your history.')),
         actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(_text('Tetap rekam', 'Keep recording')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(_text('Keluar', 'Exit')),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(_text('Kembali', 'Keep going'))),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(_text('Akhiri', 'End activity'))),
         ],
       ),
     );
-    _exitConfirmationVisible = false;
-    if (exit != true || !mounted) return;
-
-    // Buka jalur pop setelah konfirmasi agar PopScope tidak memblokir pop
-    // programatis yang dilakukan oleh parent route.
-    setState(() => _allowExitAfterConfirmation = true);
-    await Future<void>.delayed(Duration.zero);
-    _controller.resetRun();
-    final VoidCallback? onExit = widget.onExit;
-    if (onExit != null) {
-      onExit();
-    } else if (mounted) {
-      Navigator.of(context).maybePop();
+    if (exit == true && mounted) {
+      _controller.resetRun();
+      final VoidCallback? onExit = widget.onExit;
+      if (onExit != null) onExit();
+    } else if (paused && mounted) {
+      // Tetap dijeda sesuai pilihan terakhir.
     }
   }
 
@@ -723,27 +697,8 @@ class _RunningPageState extends State<RunningPage> {
   /// The top-left control closes the map; the collapsed details screen keeps
   /// all existing metrics and offers a way to reopen it.
   Widget _buildLiveMapExperience({required bool paused}) {
-    final ThemeData appTheme = Theme.of(context);
-    final bool dark = appTheme.brightness == Brightness.dark;
-    final Color screenBackground = appTheme.scaffoldBackgroundColor;
-    final Color panelColor = appTheme.colorScheme.surface;
-    final Color panelSoft = appTheme.colorScheme.surfaceContainerHighest;
-    final Color primaryText = appTheme.colorScheme.onSurface;
-    final Color secondaryText = appTheme.colorScheme.onSurfaceVariant;
-    final Color borderColor = appTheme.colorScheme.outlineVariant;
-    final SystemUiOverlayStyle overlayStyle = SystemUiOverlayStyle(
-      statusBarColor: screenBackground,
-      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
-      systemNavigationBarColor: panelSoft,
-      systemNavigationBarIconBrightness:
-          dark ? Brightness.light : Brightness.dark,
-      systemNavigationBarDividerColor: borderColor,
-    );
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: overlayStyle,
-      child: Scaffold(
-      backgroundColor: screenBackground,
+    return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -754,12 +709,10 @@ class _RunningPageState extends State<RunningPage> {
                   RunRouteMapView(
                 key: const ValueKey<String>('live-run-route-map-fullscreen'),
                 route: route,
-                plannedRoute: widget.plannedRoute,
                 laps: _controller.hundredMeterLaps,
                 height: MediaQuery.sizeOf(context).height,
                 followLastPoint: !paused,
                 showIntervalSelector: true,
-                selectorUnderLiveControls: true,
               ),
             ),
           ),
@@ -772,21 +725,15 @@ class _RunningPageState extends State<RunningPage> {
                   child: Row(
                     children: <Widget>[
                       Material(
-                        color: panelColor.withValues(alpha: 0.97),
+                        color: Colors.black.withValues(alpha: 0.84),
                         shape: const CircleBorder(),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: borderColor),
-                          ),
-                          child: IconButton(
+                        child: IconButton(
                           tooltip: _text('Tutup peta', 'Close map'),
                           onPressed: () => setState(() => _liveMapExpanded = false),
-                          icon: Icon(
+                          icon: const Icon(
                             Icons.keyboard_arrow_down,
-                            color: primaryText,
+                            color: Colors.white,
                             size: 30,
-                          ),
                           ),
                         ),
                       ),
@@ -800,9 +747,8 @@ class _RunningPageState extends State<RunningPage> {
                             vertical: 9,
                           ),
                           decoration: BoxDecoration(
-                            color: panelColor.withValues(alpha: 0.97),
+                            color: Colors.black.withValues(alpha: 0.84),
                             borderRadius: BorderRadius.zero,
-                            border: Border.all(color: borderColor),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -810,18 +756,13 @@ class _RunningPageState extends State<RunningPage> {
                               Icon(
                                 paused ? Icons.pause_circle : Icons.gps_fixed,
                                 size: 16,
-                                color: paused ? secondaryText : primaryText,
+                                color: paused ? Colors.white70 : Colors.white,
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                paused
-                                    ? _text('AKTIVITAS DIJEDA', 'ACTIVITY PAUSED')
-                                    : _text(
-                                        'AKURASI GPS • $gpsAccuracy',
-                                        'GPS ACCURACY • $gpsAccuracy',
-                                      ),
+                                paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
                                 style: TextStyle(
-                                  color: primaryText,
+                                  color: Colors.white,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 11,
                                 ),
@@ -848,17 +789,10 @@ class _RunningPageState extends State<RunningPage> {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
                       decoration: BoxDecoration(
-                        color: panelColor.withValues(alpha: 0.97),
+                        color: const Color(0xED101010),
                         borderRadius: BorderRadius.zero,
-                        border: Border.all(color: borderColor),
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: dark ? 0.20 : 0.08,
-                            ),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
+                        boxShadow: const <BoxShadow>[
+                          BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
                         ],
                       ),
                       child: Column(
@@ -867,7 +801,7 @@ class _RunningPageState extends State<RunningPage> {
                           Text(
                             _activityDisplayLabel.toUpperCase(),
                             style: TextStyle(
-                              color: secondaryText,
+                              color: Colors.white70,
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1.2,
@@ -876,25 +810,25 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
-                              _liveMapMetric(_text('WAKTU', 'TIME'), _formatDuration(_controller.elapsed)),
+                              _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
                               _liveMapMetric('PACE', _formatPace(pace)),
-                              _liveMapMetric(_text('JARAK', 'DISTANCE'), '${_controller.distanceKm.toStringAsFixed(2)} km'),
+                              _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
                             ],
                           ),
                           if (_latestHeartRateBpm != null) ...<Widget>[
                             const SizedBox(height: 8),
                             Row(
                               children: <Widget>[
-                                Icon(Icons.favorite_rounded, color: secondaryText, size: 17),
+                                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 17),
                                 const SizedBox(width: 7),
                                 Text(
                                   _text('DETAK JANTUNG', 'HEART RATE'),
-                                  style: TextStyle(color: secondaryText, fontSize: 11, fontWeight: FontWeight.w800),
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800),
                                 ),
                                 const Spacer(),
                                 Text(
                                   '${_latestHeartRateBpm!} bpm',
-                                  style: TextStyle(color: primaryText, fontWeight: FontWeight.w900, fontSize: 14),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
                                 ),
                               ],
                             ),
@@ -902,29 +836,29 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 12),
                           Row(
                             children: <Widget>[
-                              Icon(Icons.speed, color: secondaryText, size: 18),
+                              const Icon(Icons.speed, color: Colors.white70, size: 18),
                               const SizedBox(width: 6),
                               Text(
                                 speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
-                                    ? '${speedKmh.toStringAsFixed(1)} ${_text('km/jam', 'km/h')}'
-                                    : '-- ${_text('km/jam', 'km/h')}',
+                                    ? '${speedKmh.toStringAsFixed(1)} km/jam'
+                                    : '-- km/jam',
                                 style: TextStyle(
-                                  color: primaryText,
+                                  color: Colors.white,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               const Spacer(),
-                              Icon(Icons.terrain, color: secondaryText, size: 18),
+                              const Icon(Icons.terrain, color: Colors.white70, size: 18),
                               const SizedBox(width: 5),
                               Flexible(
                                 child: Text(
                                   elevation.hasAltitudeData
-                                      ? _text('Selisih $netElevation', 'Net change $netElevation')
-                                      : _text('Perubahan --', 'Change --'),
+                                      ? 'Selisih $netElevation'
+                                      : 'Perubahan --',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: primaryText,
+                                    color: Colors.white,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
@@ -937,14 +871,12 @@ class _RunningPageState extends State<RunningPage> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                _text(
-                                  'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
-                                  'Ascent +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Descent −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
-                                ),
+                                'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m'
+                                ' • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: secondaryText,
+                                  color: Colors.white70,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -955,7 +887,7 @@ class _RunningPageState extends State<RunningPage> {
                           Row(
                             children: <Widget>[
                               _liveMapMiniMetric(
-                                _text('LANGKAH', 'STEPS'),
+                                'LANGKAH',
                                 _stepsThisActivity.toString(),
                               ),
                               _liveMapMiniMetric(
@@ -965,7 +897,7 @@ class _RunningPageState extends State<RunningPage> {
                                     : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm',
                               ),
                               _liveMapMiniMetric(
-                                _text('KALORI*', 'CALORIES*'),
+                                'KALORI*',
                                 '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()} kcal',
                               ),
                             ],
@@ -995,9 +927,8 @@ class _RunningPageState extends State<RunningPage> {
                     16,
                     10,
                   ),
-                  decoration: BoxDecoration(
-                    color: panelSoft,
-                    border: Border(top: BorderSide(color: borderColor)),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF101010),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Column(
@@ -1007,7 +938,7 @@ class _RunningPageState extends State<RunningPage> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: secondaryText.withValues(alpha: 0.55),
+                          color: Colors.white38,
                           borderRadius: BorderRadius.zero,
                         ),
                       ),
@@ -1020,8 +951,8 @@ class _RunningPageState extends State<RunningPage> {
                                   ? _controller.resumeRun
                                   : _controller.pauseRun,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: primaryText,
-                                side: BorderSide(color: borderColor),
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white30),
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: Icon(paused ? Icons.play_arrow : Icons.pause),
@@ -1033,8 +964,8 @@ class _RunningPageState extends State<RunningPage> {
                             child: FilledButton.icon(
                               onPressed: _finishRun,
                               style: FilledButton.styleFrom(
-                                backgroundColor: primaryText,
-                                foregroundColor: panelColor,
+                                backgroundColor: VoltWarna.merah,
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: const Icon(Icons.stop),
@@ -1044,13 +975,10 @@ class _RunningPageState extends State<RunningPage> {
                         ],
                       ),
                       const SizedBox(height: 3),
-                      Text(
-                        _text(
-                          'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
-                          'Choose a split interval on the map; tap a marker to view pace, speed, and elevation.',
-                        ),
+                      const Text(
+                        'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: secondaryText, fontSize: 10),
+                        style: TextStyle(color: Colors.white54, fontSize: 10),
                       ),
                     ],
                   ),
@@ -1059,7 +987,6 @@ class _RunningPageState extends State<RunningPage> {
             ),
           ),
         ],
-      ),
       ),
     );
   }
@@ -1075,7 +1002,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
+              color: Colors.white,
               fontSize: 19,
               fontWeight: FontWeight.w900,
             ),
@@ -1085,7 +1012,7 @@ class _RunningPageState extends State<RunningPage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: Colors.white70,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -1105,7 +1032,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface,
+              color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
@@ -1114,7 +1041,7 @@ class _RunningPageState extends State<RunningPage> {
           Text(
             label,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              color: Colors.white60,
               fontSize: 9,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,
@@ -1242,42 +1169,76 @@ class _RunningPageState extends State<RunningPage> {
 
   Widget _targetPaceAdviceCard() {
     final double? targetPace = widget.targetPaceSecondsPerKm;
-    if (targetPace == null) return const SizedBox.shrink();
+    final double? targetDistance = widget.targetDistanceKm;
+    if (targetPace == null || targetDistance == null) {
+      return const SizedBox.shrink();
+    }
 
-    final double? currentPace = _controller.currentPaceSecondsPerKm ??
-        _controller.averagePaceSecondsPerKm;
-    final bool enoughData = currentPace != null &&
-        currentPace.isFinite &&
-        currentPace > 0 &&
-        currentPace <= 3600;
-    final bool onTarget = enoughData && currentPace <= targetPace;
-    final Color statusColor = !enoughData
-        ? Theme.of(context).colorScheme.onSurfaceVariant
-        : onTarget
-            ? VoltWarna.hijau
-            : VoltWarna.merah;
-    final String currentPaceText = enoughData ? _formatPace(currentPace) : '--:--';
-    final String advice = onTarget
-        ? _text('Pace memenuhi target. Pertahankan ritme selama masih terasa nyaman.', 'You are meeting your pace target. Keep it comfortable.')
-        : _text('Pace saat ini lebih lambat dari target. Sesuaikan bertahap jika masih nyaman.', 'Your current pace is slower than the target. Adjust gradually only if it still feels comfortable.');
+    final PacerGuidance guidance = PacerGuidance.calculate(
+      targetDistanceKm: targetDistance,
+      targetAveragePaceSecondsPerKm: targetPace,
+      currentDistanceKm: _controller.distanceKm,
+      elapsed: _controller.elapsed,
+    );
+    final double? averagePace = _controller.averagePaceSecondsPerKm;
+    final bool hasAverage = averagePace != null &&
+        averagePace.isFinite &&
+        averagePace > 0 &&
+        averagePace <= 3600;
+    final bool reachedAndAchieved = guidance.targetReached &&
+        hasAverage && averagePace <= targetPace;
+    final Color statusColor = guidance.targetAchievable || reachedAndAchieved
+        ? Theme.of(context).colorScheme.onSurface
+        : Theme.of(context).colorScheme.error;
+    final String targetText = _formatPace(targetPace);
+    final String averageText = hasAverage ? _formatPace(averagePace) : '--:--';
+    final String heading = guidance.targetReached
+        ? (reachedAndAchieved
+            ? _text('TARGET TERCAPAI', 'TARGET ACHIEVED')
+            : _text('JARAK TERCAPAI', 'DISTANCE REACHED'))
+        : guidance.targetAchievable
+            ? _text('PACE YANG DIBUTUHKAN', 'REQUIRED REMAINING PACE')
+            : _text('TARGET TIDAK LAGI TERJANGKAU', 'TARGET NO LONGER REACHABLE');
+
+    final String advice;
+    if (guidance.targetReached) {
+      advice = reachedAndAchieved
+          ? _text(
+              'Rata-rata akhir $averageText/km memenuhi target $targetText/km.',
+              'Final average $averageText/km meets the $targetText/km target.',
+            )
+          : _text(
+              'Jarak target sudah tercapai, tetapi rata-rata $averageText/km belum memenuhi target $targetText/km.',
+              'Target distance is reached, but $averageText/km average did not meet $targetText/km.',
+            );
+    } else if (!guidance.targetAchievable) {
+      advice = _text(
+        'Waktu yang tersisa tidak cukup untuk mencapai target rata-rata matematis. Selesaikan dengan usaha yang aman.',
+        'There is not enough time left to reach the target average mathematically. Finish at a safe effort.',
+      );
+    } else {
+      final String required = _formatPace(
+        guidance.requiredRemainingPaceSecondsPerKm,
+      );
+      advice = _text(
+        'Untuk rata-rata $targetText/km pada ${targetDistance.toStringAsFixed(2)} km, sisa ${guidance.remainingDistanceKm.toStringAsFixed(2)} km perlu ditempuh sekitar $required/km. Rata-rata sekarang $averageText/km.',
+        'To average $targetText/km over ${targetDistance.toStringAsFixed(2)} km, cover the remaining ${guidance.remainingDistanceKm.toStringAsFixed(2)} km at about $required/km. Current average is $averageText/km.',
+      );
+    }
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.12),
+        color: statusColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.zero,
-        border: Border.all(color: statusColor.withValues(alpha: 0.75)),
+        border: Border.all(color: statusColor.withValues(alpha: 0.65)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            enoughData
-                ? (onTarget
-                    ? _text('PACE SESUAI TARGET', 'ON-TARGET PACE')
-                    : _text('PERHATIKAN PACE', 'PACE CHECK'))
-                : _text('TARGET PACE', 'TARGET PACE'),
+            heading,
             style: TextStyle(
               color: statusColor,
               fontSize: 10,
@@ -1285,28 +1246,25 @@ class _RunningPageState extends State<RunningPage> {
               letterSpacing: 0.8,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            enoughData
-                ? _text('Target ${_formatPace(targetPace)}/km  •  Saat ini $currentPaceText/km', 'Target ${_formatPace(targetPace)}/km  •  Current $currentPaceText/km')
-                : '${_text('Target', 'Target')} ${_formatPace(targetPace)}/km',
-            style: TextStyle(
-              color: statusColor,
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-            ),
-          ),
-          if (enoughData) ...<Widget>[
-            const SizedBox(height: 4),
+          const SizedBox(height: 6),
+          if (!guidance.targetReached && guidance.targetAchievable)
             Text(
-              advice,
+              '${_formatPace(guidance.requiredRemainingPaceSecondsPerKm)}/km',
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 10,
-                height: 1.35,
+                color: statusColor,
+                fontSize: 27,
+                fontWeight: FontWeight.w900,
               ),
             ),
-          ],
+          Text(
+            advice,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
         ],
       ),
     );
@@ -1593,7 +1551,7 @@ class _RunningPageState extends State<RunningPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(
+              const Icon(
                 Icons.location_off,
                 size: 64,
                 color: VoltWarna.merah,
@@ -1758,9 +1716,7 @@ class _RunningPageState extends State<RunningPage> {
 
     final int? sensorAverageHeartRate = _heartRateSamples.isEmpty
         ? null
-        : (_heartRateSamples
-                    .map((RunHeartRateSample sample) => sample.bpm)
-                    .reduce((int a, int b) => a + b) /
+        : (_heartRateSamples.reduce((int a, int b) => a + b) /
                 _heartRateSamples.length)
             .round();
     final int? averageHeartRateBpm = await _askAverageHeartRateBpm(
@@ -1770,7 +1726,7 @@ class _RunningPageState extends State<RunningPage> {
     final RunSession sessionWithHeartRate = session.copyWith(
       averageHeartRateBpm: averageHeartRateBpm,
       heartRateSamples: List<RunHeartRateSample>.unmodifiable(
-        _heartRateSamples,
+        _heartRateTrackSamples,
       ),
     );
     _completedSessionOverride = sessionWithHeartRate;
@@ -1870,10 +1826,14 @@ class _RunningPageState extends State<RunningPage> {
     final double? target = widget.targetPaceSecondsPerKm;
     if (target == null) return;
     try {
+      final double? targetDistance = widget.targetDistanceKm;
+      if (targetDistance == null) return;
       await RunningNotificationService.showPacerUpdate(
+        targetDistanceKm: targetDistance,
         targetPaceSecondsPerKm: target,
-        currentPaceSecondsPerKm: _controller.currentPaceSecondsPerKm ??
-            _controller.averagePaceSecondsPerKm,
+        currentDistanceKm: _controller.distanceKm,
+        elapsed: _controller.elapsed,
+        currentPaceSecondsPerKm: _controller.averagePaceSecondsPerKm,
         elapsedMinutes: elapsedMinutes,
       );
     } catch (_) {
@@ -1902,7 +1862,7 @@ class _RunningPageState extends State<RunningPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
+                    const Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
                     Expanded(child: Text(achievement, style: TextStyle(fontWeight: FontWeight.w700))),
                   ],
                 ),
@@ -2513,7 +2473,6 @@ class _RunningPageState extends State<RunningPage> {
                     RunRouteMapView(
                   key: const ValueKey<String>('live-run-route-map'),
                   route: route,
-                  plannedRoute: widget.plannedRoute,
                   laps: _controller.hundredMeterLaps,
                   height: 300,
                   followLastPoint: !paused,

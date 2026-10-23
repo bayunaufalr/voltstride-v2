@@ -2,8 +2,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../services/app_language_service.dart';
+import '../account/account_service.dart';
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 
@@ -97,6 +99,8 @@ class RunActivityCharts extends StatelessWidget {
               : const Color(0xFF303030),
           kind: _MetricKind.heartRate,
         ),
+        const SizedBox(height: 8),
+        _HeartRateZoneBreakdown(session: session),
         const SizedBox(height: 12),
         _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
@@ -160,6 +164,408 @@ class RunActivityCharts extends StatelessWidget {
     if (result.last != points.last) result.add(points.last);
     return result;
   }
+}
+
+class _HeartRateZoneBreakdown extends StatefulWidget {
+  const _HeartRateZoneBreakdown({required this.session});
+
+  final RunSession session;
+
+  @override
+  State<_HeartRateZoneBreakdown> createState() => _HeartRateZoneBreakdownState();
+}
+
+class _HeartRateZoneBreakdownState extends State<_HeartRateZoneBreakdown> {
+  int? _selectedZone;
+
+  @override
+  Widget build(BuildContext context) {
+    String text(String indonesia, String english) =>
+        AppLanguageService.text(context, indonesia, english);
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: AccountService.perubahanProfil,
+      builder: (BuildContext context,
+          AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot) {
+        final Map<String, dynamic> profile =
+            snapshot.data?.data() ?? <String, dynamic>{};
+        final DateTime? birthDate = DateTime.tryParse(
+          profile['tanggalLahir'] as String? ?? '',
+        );
+        if (birthDate == null) {
+          return _zoneInfoCard(
+            context,
+            text(
+              'Lengkapi tanggal lahir di profil untuk memperkirakan zona HR.',
+              'Add your birth date to the profile to estimate HR zones.',
+            ),
+          );
+        }
+        final DateTime today = DateTime.now();
+        int age = today.year - birthDate.year;
+        if (today.month < birthDate.month ||
+            (today.month == birthDate.month && today.day < birthDate.day)) {
+          age--;
+        }
+        if (age < 1 || age > 110) {
+          return _zoneInfoCard(
+            context,
+            text('Tanggal lahir pada profil tidak valid.', 'The profile birth date is invalid.'),
+          );
+        }
+        final int estimatedMaxHr = 220 - age;
+        return _buildZoneCard(context, estimatedMaxHr, text);
+      },
+    );
+  }
+
+  Widget _zoneInfoCard(BuildContext context, String message) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _buildZoneCard(
+    BuildContext context,
+    int estimatedMaxHr,
+    String Function(String, String) text,
+  ) {
+    final RunSession session = widget.session;
+    final List<RunHeartRateSample> samples = session.heartRateSamples
+        .where((RunHeartRateSample sample) =>
+            sample.elapsedSeconds >= 0 && sample.bpm >= 30 && sample.bpm <= 240)
+        .toList(growable: false)
+      ..sort((RunHeartRateSample a, RunHeartRateSample b) =>
+          a.elapsedSeconds.compareTo(b.elapsedSeconds));
+    final List<int> secondsByZone = List<int>.filled(5, 0);
+    for (int index = 0; index < samples.length; index++) {
+      final RunHeartRateSample sample = samples[index];
+      final int endSeconds = index + 1 < samples.length
+          ? samples[index + 1].elapsedSeconds
+          : session.elapsed.inSeconds;
+      final int intervalSeconds = endSeconds - sample.elapsedSeconds;
+      if (intervalSeconds <= 0) continue;
+      // A long sensor gap is not treated as if the last reading were accurate
+      // for the whole gap.
+      final int countedSeconds = intervalSeconds > 10 ? 10 : intervalSeconds;
+      secondsByZone[_zoneIndex(sample.bpm, estimatedMaxHr)] += countedSeconds;
+    }
+    final int trackedSeconds = secondsByZone.fold<int>(
+      0,
+      (int sum, int seconds) => sum + seconds,
+    );
+    final int? averageBpm = session.averageHeartRateBpm;
+    final int? averageZone = averageBpm == null
+        ? null
+        : _zoneIndex(averageBpm, estimatedMaxHr);
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
+    final List<Color> colors = dark
+        ? const <Color>[
+            Color(0xFFECECEC),
+            Color(0xFFC8C8C8),
+            Color(0xFFA5A5A5),
+            Color(0xFF828282),
+            Color(0xFF5F5F5F),
+          ]
+        : const <Color>[
+            Color(0xFF292929),
+            Color(0xFF494949),
+            Color(0xFF696969),
+            Color(0xFF898989),
+            Color(0xFFA9A9A9),
+          ];
+    const List<String> zoneShort = <String>['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
+    final List<String> zoneNames = <String>[
+      text('Pemulihan', 'Recovery'),
+      text('Mudah', 'Easy'),
+      text('Aerobik', 'Aerobic'),
+      text('Ambang batas', 'Threshold'),
+      text('Tinggi', 'High'),
+    ];
+    const List<String> zoneRanges = <String>[
+      '<60%',
+      '60–70%',
+      '70–80%',
+      '80–90%',
+      '≥90%',
+    ];
+    final int selected = _selectedZone ?? averageZone ?? 0;
+    final bool english = Localizations.localeOf(context).languageCode == 'en';
+    final double fraction = trackedSeconds > 0 && selected >= 0 && selected < 5
+        ? secondsByZone[selected] / trackedSeconds
+        : 0;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            text('WAKTU DI ZONA DETAK JANTUNG', 'HEART RATE ZONE TIME'),
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            text(
+              'Zona perkiraan berdasarkan HR maksimal $estimatedMaxHr bpm (220 − usia).',
+              'Estimated zones use max HR $estimatedMaxHr bpm (220 − age).',
+            ),
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+          ),
+          if (averageZone != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              text('Zona rata-rata: ', 'Average zone: ') +
+                  '${zoneShort[averageZone]} · ${zoneNames[averageZone]}',
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+          if (samples.isEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              text(
+                'Sampel HR tidak tersedia, jadi durasi tiap zona belum dapat dihitung.',
+                'HR samples are unavailable, so time in each zone cannot be calculated.',
+              ),
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+          ] else if (trackedSeconds == 0) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              text('Sampel HR terlalu jarang untuk menghitung durasi zona.', 'HR samples are too sparse to calculate zone duration.'),
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+          ] else ...<Widget>[
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                SizedBox(
+                  width: 112,
+                  height: 112,
+                  child: CustomPaint(
+                    painter: _HeartRateZoneDonutPainter(
+                      secondsByZone: secondsByZone,
+                      colors: colors,
+                      selectedZone: selected,
+                      backgroundColor: scheme.surfaceContainerHighest,
+                    ),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(
+                                '${(fraction * 100).round()}%',
+                                style: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              Text(
+                                text('dipilih', 'selected'),
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    children: List<Widget>.generate(5, (int index) {
+                      final bool isSelected = index == selected;
+                      final String timeText = _formatZoneDuration(
+                        secondsByZone[index],
+                        english,
+                      );
+                      return InkWell(
+                        onTap: () => setState(() => _selectedZone = index),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? scheme.surfaceContainerHighest
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: <Widget>[
+                              Container(
+                                width: 9,
+                                height: 9,
+                                decoration: BoxDecoration(
+                                  color: colors[index],
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '${zoneShort[index]} ${zoneNames[index]}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: scheme.onSurface,
+                                    fontSize: 11,
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                timeText,
+                                style: TextStyle(
+                                  color: scheme.onSurface,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${zoneShort[selected]} • ${zoneRanges[selected]} HRmax • ${(fraction * 100).round()}% ${text("dari waktu HR yang terekam", "of recorded HR time")}',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+            ),
+          ],
+          const SizedBox(height: 7),
+          Text(
+            text(
+              'Zona ini hanya perkiraan kebugaran umum; rumus HR maksimal dapat meleset untuk individu.',
+              'Zones are general estimates; age-predicted maximum HR can differ from individual values.',
+            ),
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _zoneIndex(int bpm, int estimatedMaxHr) {
+    final double fraction = bpm / estimatedMaxHr;
+    if (fraction < 0.6) return 0;
+    if (fraction < 0.7) return 1;
+    if (fraction < 0.8) return 2;
+    if (fraction < 0.9) return 3;
+    return 4;
+  }
+
+  String _formatZoneDuration(int seconds, bool english) {
+    final int minutes = seconds ~/ 60;
+    final int remainder = seconds % 60;
+    if (minutes >= 60) {
+      final int hours = minutes ~/ 60;
+      final String leftoverMinutes = (minutes % 60).toString().padLeft(2, '0');
+      return english ? '${hours}h ${leftoverMinutes}m' : '${hours}j ${leftoverMinutes}m';
+    }
+    if (minutes > 0) {
+      final String leftoverSeconds = remainder.toString().padLeft(2, '0');
+      return english ? '${minutes}m ${leftoverSeconds}s' : '${minutes}m ${leftoverSeconds}dtk';
+    }
+    return english ? '${remainder}s' : '${remainder}dtk';
+  }
+}
+
+class _HeartRateZoneDonutPainter extends CustomPainter {
+  const _HeartRateZoneDonutPainter({
+    required this.secondsByZone,
+    required this.colors,
+    required this.selectedZone,
+    required this.backgroundColor,
+  });
+
+  final List<int> secondsByZone;
+  final List<Color> colors;
+  final int? selectedZone;
+  final Color backgroundColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    final double strokeWidth = size.shortestSide * 0.15;
+    final double radius = (size.shortestSide - strokeWidth) / 2;
+    final Rect rect = Rect.fromCircle(center: center, radius: radius);
+    final Paint background = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    canvas.drawCircle(center, radius, background);
+    final int total = secondsByZone.fold<int>(
+      0,
+      (int sum, int value) => sum + value,
+    );
+    if (total <= 0) return;
+    double startAngle = -math.pi / 2;
+    for (int index = 0; index < secondsByZone.length; index++) {
+      final int value = secondsByZone[index];
+      if (value <= 0) continue;
+      final double sweep = value / total * math.pi * 2;
+      final bool selected = selectedZone == index;
+      final Paint segment = Paint()
+        ..color = colors[index]
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = selected ? strokeWidth * 1.18 : strokeWidth;
+      final double segmentSweep = sweep > 0.05 ? sweep - 0.05 : 0.0;
+      canvas.drawArc(
+        rect,
+        startAngle + 0.025,
+        segmentSweep,
+        false,
+        segment,
+      );
+      startAngle += sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeartRateZoneDonutPainter oldDelegate) =>
+      oldDelegate.secondsByZone != secondsByZone ||
+      oldDelegate.colors != colors ||
+      oldDelegate.selectedZone != selectedZone ||
+      oldDelegate.backgroundColor != backgroundColor;
 }
 
 class _InteractiveMetricChart extends StatefulWidget {

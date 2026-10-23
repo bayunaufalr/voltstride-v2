@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,9 +16,7 @@ import 'features/reminders/reminder_service.dart';
 import 'features/route_planner/route_planner_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
-import 'features/running/models/run_session.dart';
 import 'features/running/running_page.dart';
-import 'screens/muscle_page.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
 import 'services/app_language_service.dart';
@@ -35,7 +34,7 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
   SystemChrome.setSystemUIOverlayStyle(
-    SystemUiOverlayStyle(
+    const SystemUiOverlayStyle(
       statusBarColor: VoltWarna.latar,
       statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: VoltWarna.latar,
@@ -195,7 +194,6 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
-  List<RunPoint> _plannedRoute = const <RunPoint>[];
 
   final GlobalKey<HomeDashboardPageState> _homeKey =
       GlobalKey<HomeDashboardPageState>();
@@ -210,20 +208,14 @@ class _RootShellState extends State<RootShell> {
           onRecord: () => _selectTab(2),
           onHistory: () => _openAccountSection(1),
         ),
-        RoutePlannerPage(
-          active: _index == 1,
-          onUseRoute: _usePlannedRoute,
-        ),
+        RoutePlannerPage(active: _index == 1),
         ActivitySetupPage(
           key: _activityKey,
-          plannedRoute: _plannedRoute,
-          onClearPlannedRoute: _clearPlannedRoute,
           onStart: _startActivity,
         ),
         MorePage(
           key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
-          onOpenStrength: () => _openPage(const MusclePage()),
         ),
         AccountPage(key: _accountKey),
       ];
@@ -280,17 +272,6 @@ class _RootShellState extends State<RootShell> {
     ];
   }
 
-  void _usePlannedRoute(List<RunPoint> route) {
-    if (route.length < 2) return;
-    setState(() => _plannedRoute = List<RunPoint>.unmodifiable(route));
-    _selectTab(2);
-  }
-
-  void _clearPlannedRoute() {
-    if (_plannedRoute.isEmpty) return;
-    setState(() => _plannedRoute = const <RunPoint>[]);
-  }
-
   void _selectTab(int value) {
     setState(() => _index = value);
     switch (value) {
@@ -329,17 +310,13 @@ class _RootShellState extends State<RootShell> {
           targetDistanceKm: config.targetDistanceKm,
           targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
           paceNotificationsEnabled: config.paceNotificationsEnabled,
-          plannedRoute: config.plannedRoute,
           autoStart: true,
           onExit: () => Navigator.of(routeContext).pop(),
         ),
       ),
     );
     if (!mounted) return;
-    setState(() {
-      _index = 0;
-      _plannedRoute = const <RunPoint>[];
-    });
+    setState(() => _index = 0);
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
   }

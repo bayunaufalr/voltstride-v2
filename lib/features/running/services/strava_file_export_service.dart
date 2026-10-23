@@ -421,7 +421,7 @@ class StravaFileExportService {
     final String day = local.day.toString().padLeft(2, '0');
     final String hour = local.hour.toString().padLeft(2, '0');
     final String minute = local.minute.toString().padLeft(2, '0');
-    return 'VoltStride_$year$month${day}_$hour$minute.tcx';
+    return 'VoltStride_$year$month$day-$hour$minute.tcx';
   }
 }
 

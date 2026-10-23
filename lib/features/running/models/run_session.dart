@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -371,10 +372,7 @@ RunElevationStats calculateRunElevation(List<RunPoint> route) {
   for (int i = 1; i < smoothed.length; i++) {
     final double value = smoothed[i];
     final int currentSegment = segmentIds[i];
-    rawMaxAboveStart = math.max(
-      rawMaxAboveStart,
-      value - startAltitude,
-    ).toDouble();
+    rawMaxAboveStart = math.max(rawMaxAboveStart, value - startAltitude).toDouble();
 
     if (currentSegment != activeSegment) {
       activeSegment = currentSegment;
@@ -456,15 +454,15 @@ class RunCadenceSample {
       );
 }
 
-/// Sampel denyut jantung dengan waktu relatif sejak awal sesi, dalam detik.
+/// Sampel detak jantung dengan waktu relatif sejak sesi dimulai.
 class RunHeartRateSample {
-  final int elapsedSeconds;
-  final int bpm;
-
   const RunHeartRateSample({
     required this.elapsedSeconds,
     required this.bpm,
   });
+
+  final int elapsedSeconds;
+  final int bpm;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'elapsedSeconds': elapsedSeconds,
@@ -503,8 +501,8 @@ class RunSession {
   final double? averageCadenceSpm;
   final double? maxCadenceSpm;
   final int? averageHeartRateBpm;
-  final List<RunCadenceSample> cadenceSamples;
   final List<RunHeartRateSample> heartRateSamples;
+  final List<RunCadenceSample> cadenceSamples;
 
   const RunSession({
     required this.startedAt,
@@ -527,8 +525,8 @@ class RunSession {
     this.averageCadenceSpm,
     this.maxCadenceSpm,
     this.averageHeartRateBpm,
-    this.cadenceSamples = const <RunCadenceSample>[],
     this.heartRateSamples = const <RunHeartRateSample>[],
+    this.cadenceSamples = const <RunCadenceSample>[],
   });
 
   RunSession copyWith({
@@ -555,8 +553,8 @@ class RunSession {
         averageCadenceSpm: averageCadenceSpm,
         maxCadenceSpm: maxCadenceSpm,
         averageHeartRateBpm: averageHeartRateBpm ?? this.averageHeartRateBpm,
-        cadenceSamples: cadenceSamples,
         heartRateSamples: heartRateSamples ?? this.heartRateSamples,
+        cadenceSamples: cadenceSamples,
       );
 
   String get displayLabel =>
@@ -618,11 +616,11 @@ class RunSession {
         'averageCadenceSpm': averageCadenceSpm,
         'maxCadenceSpm': maxCadenceSpm,
         'averageHeartRateBpm': averageHeartRateBpm,
-        'cadenceSamples': cadenceSamples
-            .map((RunCadenceSample sample) => sample.toJson())
-            .toList(growable: false),
         'heartRateSamples': heartRateSamples
             .map((RunHeartRateSample sample) => sample.toJson())
+            .toList(growable: false),
+        'cadenceSamples': cadenceSamples
+            .map((RunCadenceSample sample) => sample.toJson())
             .toList(growable: false),
       }),
     };
@@ -721,13 +719,15 @@ class RunSession {
       averageCadenceSpm: (metrics['averageCadenceSpm'] as num?)?.toDouble(),
       maxCadenceSpm: (metrics['maxCadenceSpm'] as num?)?.toDouble(),
       averageHeartRateBpm: (metrics['averageHeartRateBpm'] as num?)?.toInt(),
+      heartRateSamples: heartRateJson
+          .whereType<Map<dynamic, dynamic>>()
+          .where((Map<dynamic, dynamic> item) =>
+              item['elapsedSeconds'] is num && item['bpm'] is num)
+          .map((Map<dynamic, dynamic> item) =>
+              RunHeartRateSample.fromJson(Map<String, dynamic>.from(item)))
+          .toList(growable: false),
       cadenceSamples: cadenceJson
           .map((dynamic item) => RunCadenceSample.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ))
-          .toList(growable: false),
-      heartRateSamples: heartRateJson
-          .map((dynamic item) => RunHeartRateSample.fromJson(
                 Map<String, dynamic>.from(item as Map),
               ))
           .toList(growable: false),

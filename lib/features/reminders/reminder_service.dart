@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars
 import 'dart:async';
 import 'dart:convert';
 
@@ -12,7 +13,7 @@ import '../../services/app_language_service.dart';
 
 /// notificationAndAlarm dipertahankan hanya untuk membaca data versi lama.
 /// Semua jadwal baru dan jadwal lama sekarang menggunakan notifikasi biasa.
-enum ReminderStyle { notificationOnly, notificationAndAlarm }
+enum ReminderStyle { notificationOnly }
 
 class TrainingReminder {
   const TrainingReminder({
@@ -64,9 +65,15 @@ class TrainingReminder {
   factory TrainingReminder.fromJson(Map<String, dynamic> json) {
     final List<dynamic> rawDays = json['weekdays'] as List<dynamic>? ??
         <dynamic>[DateTime.monday, DateTime.wednesday, DateTime.friday];
+    final String savedActivity = json['activity'] as String? ?? 'Lari';
+    final String normalizedActivity =
+        savedActivity.toLowerCase().contains('strength') ||
+                savedActivity.toLowerCase().contains('kekuatan')
+            ? 'Lari'
+            : savedActivity;
     return TrainingReminder(
       id: (json['id'] as num).toInt(),
-      activity: json['activity'] as String? ?? 'Lari',
+      activity: normalizedActivity,
       weekdays: rawDays.map((dynamic day) => (day as num).toInt()).toList(),
       hour: (json['hour'] as num?)?.toInt() ?? 7,
       minute: (json['minute'] as num?)?.toInt() ?? 0,
@@ -266,8 +273,7 @@ class ReminderService {
     await initialize();
     final List<TrainingReminder> saved = await getAll();
     for (final TrainingReminder reminder in saved) {
-      // Membatalkan ID lama sekaligus membersihkan jadwal lama yang mungkin
-      // memakai kanal alarm khusus sebelum mendaftarkan notifikasi standar.
+      // Batalkan notifikasi lama sebelum mendaftarkan jadwal standar lagi.
       await _cancelReminderNotifications(reminder.id);
       for (final int day in reminder.weekdays.toSet()) {
         try {
@@ -336,9 +342,6 @@ class ReminderService {
 
   static String _activityName(String activity) {
     final String value = activity.toLowerCase();
-    if (value.contains('kekuatan') || value.contains('strength')) {
-      return _english ? 'strength training' : 'latihan kekuatan';
-    }
     if (value.contains('interval')) return _english ? 'interval run' : 'lari interval';
     if (value.contains('jalan') || value.contains('walk')) return _english ? 'walk' : 'jalan';
     if (value.contains('lari') || value.contains('run')) return _english ? 'run' : 'lari';
@@ -351,13 +354,13 @@ class ReminderService {
 
   static NotificationDetails _details() {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'voltstride_notice_v4',
+      'voltstride_notice_priority_v6',
       _english ? 'Training reminders' : 'Pengingat latihan',
       channelDescription: _english
-          ? 'Scheduled training notifications.'
-          : 'Notifikasi jadwal latihan.',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
+          ? 'High-priority training reminders with sound and vibration.'
+          : 'Pengingat latihan berprioritas tinggi dengan suara dan getaran.',
+      importance: Importance.max,
+      priority: Priority.max,
       playSound: true,
       enableVibration: true,
       category: AndroidNotificationCategory.reminder,

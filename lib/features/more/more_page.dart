@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
 
 import '../../services/app_language_service.dart';
@@ -7,11 +8,9 @@ class MorePage extends StatefulWidget {
   const MorePage({
     super.key,
     required this.onOpenTimer,
-    required this.onOpenStrength,
   });
 
   final VoidCallback onOpenTimer;
-  final VoidCallback onOpenStrength;
 
   @override
   MorePageState createState() => MorePageState();
@@ -33,10 +32,6 @@ class MorePageState extends State<MorePage> {
           _menuItem(
             _text('Timer latihan', 'Workout timer'),
             widget.onOpenTimer,
-          ),
-          _menuItem(
-            _text('Latihan kekuatan', 'Strength training'),
-            widget.onOpenStrength,
           ),
           _menuItem(
             _text('Ekspor data latihan untuk AI', 'Export training data for AI'),

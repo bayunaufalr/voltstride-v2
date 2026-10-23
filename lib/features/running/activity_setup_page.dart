@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,7 +18,6 @@ class ActivityStartConfig {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
-  final List<RunPoint> plannedRoute;
 
   const ActivityStartConfig({
     required this.activityType,
@@ -26,23 +26,15 @@ class ActivityStartConfig {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = false,
-    this.plannedRoute = const <RunPoint>[],
   });
 }
 
 enum _ActivityMode { run, interval, walk }
 
 class ActivitySetupPage extends StatefulWidget {
-  const ActivitySetupPage({
-    super.key,
-    required this.onStart,
-    this.plannedRoute = const <RunPoint>[],
-    this.onClearPlannedRoute,
-  });
+  const ActivitySetupPage({super.key, required this.onStart});
 
   final ValueChanged<ActivityStartConfig> onStart;
-  final List<RunPoint> plannedRoute;
-  final VoidCallback? onClearPlannedRoute;
 
   @override
   State<ActivitySetupPage> createState() => ActivitySetupPageState();
@@ -153,7 +145,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 child: RunRouteMapView(
                   key: ValueKey<String>('activity-start-${_currentLocation?.timestamp.toIso8601String() ?? 'empty'}'),
                   route: _currentLocation == null ? const <RunPoint>[] : <RunPoint>[_currentLocation!],
-                  plannedRoute: widget.plannedRoute,
                   laps: const <RunLap100m>[],
                   height: 240,
                 ),
@@ -171,33 +162,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                   ),
                 ],
               ),
-              if (widget.plannedRoute.length > 1) ...<Widget>[
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(Icons.route_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _text('Rute terencana akan ditampilkan di GPS langsung.', 'The planned route will appear on the live GPS screen.'),
-                          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: _text('Lepas rute', 'Remove route'),
-                        onPressed: widget.onClearPlannedRoute,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
             const SizedBox(height: 20),
             _sectionTitle(_text('Lokasi aktivitas', 'Activity location')),
@@ -266,7 +230,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    _text('Opsional. Isi jarak dan pace target.', 'Optional. Set a target distance and pace.'),
+                    _text('Isi jarak target dan pace rata-rata yang ingin dicapai.', 'Set the target distance and desired average pace.'),
                     style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -301,7 +265,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                             color: Theme.of(context).colorScheme.onSurface,
                           ),
                           decoration: InputDecoration(
-                            labelText: _text('Pace target (m:ss/km)', 'Target pace (m:ss/km)'),
+                            labelText: _text('Target pace rata-rata (m:ss/km)', 'Target average pace (m:ss/km)'),
                             hintText: '6:00',
                             isDense: true,
                           ),
@@ -319,8 +283,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                     title: Text(_text('Pacer setiap menit', 'Minute-by-minute pacer')),
                     subtitle: Text(
                       _text(
-                        'Notifikasi pace target muncul setiap menit selama aktivitas berjalan. Isi jarak dan pace target untuk memakai fitur ini.',
-                        'Get a pace-target notification every minute while tracking. Enter both a target distance and pace to use this feature.',
+                        'Setiap menit, pacer menghitung pace yang dibutuhkan pada sisa jarak agar rata-rata akhir mencapai target.',
+                        'Every minute, the pacer calculates the pace needed over the remaining distance to reach your target average.',
                       ),
                       style: TextStyle(color: teksSekunder, fontSize: 12),
                     ),
@@ -329,6 +293,20 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               ),
             ),
             const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: 8),
+              child: Text(
+                _text(
+                  'Cadence dihitung dari sensor langkah ponsel; bawa ponsel di badan selama lari. Smartwatch tidak wajib. Sensor Bluetooth hanya diperlukan untuk data detak jantung otomatis.',
+                  'Cadence is estimated from your phone step sensor; carry the phone on your body while running. A smartwatch is not required. A Bluetooth sensor is only needed for automatic heart-rate data.',
+                ),
+                style: TextStyle(
+                  color: teksSekunder,
+                  fontSize: 11,
+                  height: 1.35,
+                ),
+              ),
+            ),
             OutlinedButton.icon(
               onPressed: _searchingHeartRate ? null : _toggleHeartRateDevice,
               icon: _searchingHeartRate
@@ -695,8 +673,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         SnackBar(
           content: Text(
             _text(
-              'Isi jarak dan pace target untuk mengaktifkan pacer.',
-              'Enter a target distance and pace to enable the pacer.',
+              'Isi jarak dan target pace rata-rata untuk mengaktifkan pacer.',
+              'Enter the target distance and average pace to enable the pacer.',
             ),
           ),
         ),
@@ -769,7 +747,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       targetDistanceKm: targetDistanceKm,
       targetPaceSecondsPerKm: targetPaceSecondsPerKm,
       paceNotificationsEnabled: _paceNotificationsEnabled,
-      plannedRoute: widget.plannedRoute,
     ));
   }
 

@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
 
 import '../../services/app_language_service.dart';
@@ -448,9 +449,6 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     if (value.contains('interval')) {
       return english ? 'Interval run' : 'Lari interval';
     }
-    if (value.contains('strength') || value.contains('kekuatan')) {
-      return english ? 'Strength training' : 'Latihan kekuatan';
-    }
     if (value.contains('walk') || value.contains('jalan')) {
       return english ? 'Walk' : 'Jalan';
     }
@@ -591,7 +589,10 @@ class _ReminderEditorState extends State<_ReminderEditor> {
     _durationController = TextEditingController(
       text: (old?.durationMinutes ?? 30).toString(),
     );
-    _activity = old?.activity ?? 'Lari';
+    final String savedActivity = old?.activity ?? 'Lari';
+    _activity = <String>['Lari', 'Lari interval', 'Jalan'].contains(savedActivity)
+        ? savedActivity
+        : 'Lari';
     _time = TimeOfDay(hour: old?.hour ?? 7, minute: 0);
     _selectedDays = (old?.weekdays ?? <int>[
       DateTime.monday,
@@ -722,10 +723,6 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                   DropdownMenuItem(
                     value: 'Jalan',
                     child: Text(_text(context, 'Jalan', 'Walk')),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Latihan kekuatan',
-                    child: Text(_text(context, 'Latihan kekuatan', 'Strength training')),
                   ),
                 ],
                 onChanged: _checkingPermission
