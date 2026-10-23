@@ -16,6 +16,7 @@ import 'features/reminders/reminder_service.dart';
 import 'features/route_planner/route_planner_page.dart';
 import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
+import 'features/running/models/run_session.dart';
 import 'features/running/running_page.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
@@ -34,7 +35,7 @@ Future<void> main() async {
     DeviceOrientation.portraitDown,
   ]);
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
+    SystemUiOverlayStyle(
       statusBarColor: VoltWarna.latar,
       statusBarIconBrightness: Brightness.dark,
       systemNavigationBarColor: VoltWarna.latar,
@@ -194,6 +195,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  List<RunPoint> _plannedRoute = <RunPoint>[];
 
   final GlobalKey<HomeDashboardPageState> _homeKey =
       GlobalKey<HomeDashboardPageState>();
@@ -208,7 +210,13 @@ class _RootShellState extends State<RootShell> {
           onRecord: () => _selectTab(2),
           onHistory: () => _openAccountSection(1),
         ),
-        RoutePlannerPage(active: _index == 1),
+        RoutePlannerPage(
+          active: _index == 1,
+          onUseRoute: (List<RunPoint> route) {
+            _plannedRoute = List<RunPoint>.unmodifiable(route);
+            _selectTab(2);
+          },
+        ),
         ActivitySetupPage(
           key: _activityKey,
           onStart: _startActivity,
@@ -309,6 +317,7 @@ class _RootShellState extends State<RootShell> {
           initialIntervalPlan: config.intervalPlan,
           targetDistanceKm: config.targetDistanceKm,
           targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
+          plannedRoute: _plannedRoute,
           paceNotificationsEnabled: config.paceNotificationsEnabled,
           autoStart: true,
           onExit: () => Navigator.of(routeContext).pop(),

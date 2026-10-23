@@ -335,8 +335,10 @@ class _HeartRateZoneBreakdownState extends State<_HeartRateZoneBreakdown> {
           if (averageZone != null) ...<Widget>[
             const SizedBox(height: 10),
             Text(
-              text('Zona rata-rata: ', 'Average zone: ') +
-                  '${zoneShort[averageZone]} · ${zoneNames[averageZone]}',
+              text(
+                'Zona rata-rata: ${zoneShort[averageZone]} · ${zoneNames[averageZone]}',
+                'Average zone: ${zoneShort[averageZone]} · ${zoneNames[averageZone]}',
+              ),
               style: TextStyle(
                 color: scheme.onSurface,
                 fontWeight: FontWeight.w800,

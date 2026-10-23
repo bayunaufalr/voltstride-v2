@@ -31,6 +31,7 @@ class RunningPage extends StatefulWidget {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = false,
+    this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
     this.onExit,
   });
@@ -41,6 +42,7 @@ class RunningPage extends StatefulWidget {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
+  final List<RunPoint> plannedRoute;
   final bool autoStart;
   final VoidCallback? onExit;
 
@@ -709,6 +711,7 @@ class _RunningPageState extends State<RunningPage> {
                   RunRouteMapView(
                 key: const ValueKey<String>('live-run-route-map-fullscreen'),
                 route: route,
+                plannedRoute: widget.plannedRoute,
                 laps: _controller.hundredMeterLaps,
                 height: MediaQuery.sizeOf(context).height,
                 followLastPoint: !paused,
@@ -1551,7 +1554,7 @@ class _RunningPageState extends State<RunningPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              const Icon(
+              Icon(
                 Icons.location_off,
                 size: 64,
                 color: VoltWarna.merah,
@@ -1862,7 +1865,7 @@ class _RunningPageState extends State<RunningPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
+                    Text('•  ', style: TextStyle(color: VoltWarna.hijau, fontWeight: FontWeight.w900)),
                     Expanded(child: Text(achievement, style: TextStyle(fontWeight: FontWeight.w700))),
                   ],
                 ),
@@ -2422,6 +2425,7 @@ class _RunningPageState extends State<RunningPage> {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: RunRouteMapView(
               route: route,
+              plannedRoute: widget.plannedRoute,
               laps: laps,
               height: 290,
               showIntervalSelector: true,
@@ -2473,6 +2477,7 @@ class _RunningPageState extends State<RunningPage> {
                     RunRouteMapView(
                   key: const ValueKey<String>('live-run-route-map'),
                   route: route,
+                  plannedRoute: widget.plannedRoute,
                   laps: _controller.hundredMeterLaps,
                   height: 300,
                   followLastPoint: !paused,

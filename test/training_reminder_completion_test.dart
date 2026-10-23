@@ -10,7 +10,7 @@ void main() {
       hour: 7,
       minute: 30,
       durationMinutes: 40,
-      style: ReminderStyle.notificationAndAlarm,
+      style: ReminderStyle.notificationOnly,
       sound: 'lembut',
       completedDates: const <String>['2026-10-19'],
     );
