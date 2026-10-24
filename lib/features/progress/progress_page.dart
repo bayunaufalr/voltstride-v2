@@ -607,8 +607,8 @@ class ProgressPageState extends State<ProgressPage> {
                 const SizedBox(height: 6),
                 Text(
                   _text(
-                    '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession!)}',
-                    '${observations.length} runs considered · latest ${_formatShortDate(lastSession!)}',
+                    '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession)}',
+                    '${observations.length} runs considered · latest ${_formatShortDate(lastSession)}',
                   ),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
