@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 
 import '../models/run_session.dart';
 
@@ -9,23 +10,24 @@ import '../models/run_session.dart';
 class StravaFileExportService {
   const StravaFileExportService._();
 
-  static Future<ShareResult> shareTcx(RunSession session) {
+  static const MethodChannel _storageChannel =
+      MethodChannel('voltstride/android_settings');
+
+  static Future<String> saveTcx(RunSession session) async {
     final String tcx = buildTcx(session);
     final String fileName = _fileName(session.startedAt);
-    return SharePlus.instance.share(
-      ShareParams(
-        title: 'Ekspor TCX untuk Strava',
-        text: 'Simpan file TCX ini, lalu unggah melalui '
-            'https://www.strava.com/upload/select.',
-        files: <XFile>[
-          XFile.fromData(
-            utf8.encode(tcx),
-            mimeType: 'application/vnd.garmin.tcx+xml',
-          ),
-        ],
-        fileNameOverrides: <String>[fileName],
-      ),
+    final String? location = await _storageChannel.invokeMethod<String>(
+      'saveFileToDownloads',
+      <String, Object?>{
+        'fileName': fileName,
+        'mimeType': 'application/vnd.garmin.tcx+xml',
+        'bytes': Uint8List.fromList(utf8.encode(tcx)),
+      },
     );
+    if (location == null || location.isEmpty) {
+      throw StateError('File TCX tidak berhasil disimpan ke perangkat.');
+    }
+    return location;
   }
 
   /// Menghasilkan TCX 2.0 dengan waktu, jarak, elevasi, HR, dan cadence.

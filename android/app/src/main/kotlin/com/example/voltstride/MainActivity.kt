@@ -2,6 +2,10 @@ package com.example.voltstride
 
 import android.Manifest
 import android.content.Context
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
+import java.io.File
 import android.content.Intent
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -104,9 +108,103 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             .setData(Uri.parse("package:$packageName")),
                         result,
                     )
+                    "moveTaskToBack" -> result.success(moveTaskToBack(true))
+                    "saveFileToDownloads" -> {
+                        val fileName = call.argument<String>("fileName")
+                        val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
+                        val bytes = call.argument<ByteArray>("bytes")
+                        if (fileName.isNullOrBlank() || bytes == null) {
+                            result.error("invalid_file", "Nama file atau isi file tidak tersedia.", null)
+                        } else {
+                            saveFileToDownloads(fileName, mimeType, bytes, result)
+                        }
+                    }
+                    "scheduleTrainingReminder" -> {
+                        try {
+                            val id = call.argument<Int>("id")
+                            val title = call.argument<String>("title")
+                            val category = call.argument<String>("category")
+                            val weekdays = call.argument<List<Int>>("weekdays")
+                            if (id == null || title.isNullOrBlank() || category.isNullOrBlank() || weekdays.isNullOrEmpty()) {
+                                result.error("invalid_reminder", "Data pengingat belum lengkap.", null)
+                            } else {
+                                ReminderPulseReceiver.schedule(
+                                    context = this,
+                                    id = id,
+                                    title = title,
+                                    category = category,
+                                    weekdays = weekdays,
+                                    hour = call.argument<Int>("hour") ?: 7,
+                                    minute = call.argument<Int>("minute") ?: 0,
+                                    durationMinutes = call.argument<Int>("durationMinutes") ?: 30,
+                                    repeatIntervalSeconds = call.argument<Int>("repeatIntervalSeconds") ?: 60,
+                                    doneLabel = call.argument<String>("doneLabel") ?: "Selesai",
+                                    bodyLabel = call.argument<String>("bodyLabel") ?: "Pengingat latihan",
+                                )
+                                result.success(true)
+                            }
+                        } catch (error: Exception) {
+                            result.error("schedule_reminder_failed", error.message ?: "Pengingat gagal dijadwalkan.", null)
+                        }
+                    }
+                    "cancelTrainingReminder" -> {
+                        val id = call.argument<Int>("id")
+                        if (id == null) {
+                            result.error("invalid_reminder", "ID pengingat tidak tersedia.", null)
+                        } else {
+                            ReminderPulseReceiver.cancel(this, id)
+                            result.success(true)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun saveFileToDownloads(
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            val safeName = fileName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                .ifBlank { "voltstride-file.bin" }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val relativePath = Environment.DIRECTORY_DOWNLOADS + "/VoltStride"
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    values,
+                ) ?: throw IllegalStateException("Penyimpanan Downloads tidak tersedia.")
+                contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(bytes)
+                    stream.flush()
+                } ?: throw IllegalStateException("File tidak dapat ditulis.")
+                val published = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                contentResolver.update(uri, published, null, null)
+                result.success("Downloads/VoltStride/$safeName")
+            } else {
+                val root = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
+                val directory = File(root, "VoltStride")
+                if (!directory.exists() && !directory.mkdirs()) {
+                    throw IllegalStateException("Folder penyimpanan tidak dapat dibuat.")
+                }
+                val file = File(directory, safeName)
+                file.writeBytes(bytes)
+                result.success(file.absolutePath)
+            }
+        } catch (error: Exception) {
+            result.error("save_file_failed", error.message ?: "File tidak dapat disimpan.", null)
+        }
     }
 
     private fun openSettings(intent: Intent, result: MethodChannel.Result) {

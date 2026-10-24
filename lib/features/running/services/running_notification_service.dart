@@ -13,6 +13,7 @@ class RunningNotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static const int _notificationId = 42601;
+  static final Set<int> _pacerNotificationIds = <int>{};
   static bool _initialized = false;
 
   static Future<void> _ensureInitialized() async {
@@ -35,26 +36,36 @@ class RunningNotificationService {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _ensureInitialized();
 
+    final bool english =
+        AppLanguageService.localeNotifier.value.languageCode == 'en';
     final String time = _formatDuration(elapsed);
     final String distance = (distanceMeters / 1000.0).toStringAsFixed(2);
     final String speed = speedKmh != null &&
             speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
-        ? '${speedKmh.toStringAsFixed(1)} km/jam'
-        : '-- km/jam';
+        ? '${speedKmh.toStringAsFixed(1)} ${english ? 'km/h' : 'km/jam'}'
+        : (english ? '-- km/h' : '-- km/jam');
     final String pace = _formatPace(paceSecondsPerKm);
     final String title = paused
-        ? 'VoltStride • $activityLabel dijeda'
-        : 'VoltStride • $activityLabel berlangsung';
+        ? (english
+            ? 'VoltStride • $activityLabel paused'
+            : 'VoltStride • $activityLabel dijeda')
+        : (english
+            ? 'VoltStride • $activityLabel in progress'
+            : 'VoltStride • $activityLabel berlangsung');
     final String body = paused
-        ? 'DIJEDA • Waktu $time • $distance km • $speed • $pace/km'
-        : 'Waktu $time • $distance km • $speed • $pace/km';
+        ? (english
+            ? 'PAUSED • Time $time • $distance km • $speed • $pace/km'
+            : 'DIJEDA • Waktu $time • $distance km • $speed • $pace/km')
+        : (english
+            ? 'Time $time • $distance km • $speed • $pace/km'
+            : 'Waktu $time • $distance km • $speed • $pace/km');
 
     const AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_live_run_stats',
-      'Statistik lari VoltStride',
-      channelDescription: 'Waktu, jarak, kecepatan, dan pace sesi lari aktif.',
-      importance: Importance.low,
-      priority: Priority.low,
+      'voltstride_live_run_stats_v2',
+      'Statistik aktivitas VoltStride',
+      channelDescription: 'Waktu, jarak, kecepatan, dan pace sesi aktif.',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
       ongoing: true,
       autoCancel: false,
       onlyAlertOnce: true,
@@ -120,7 +131,7 @@ class RunningNotificationService {
     }
 
     final AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_minute_pacer_priority_v3',
+      'voltstride_pacer_priority_v8',
       english ? 'Minute-by-minute pacer' : 'Pacer setiap menit',
       channelDescription: english
           ? 'High-priority pace guidance while a running session is active.'
@@ -132,11 +143,13 @@ class RunningNotificationService {
       onlyAlertOnce: false,
       playSound: true,
       enableVibration: true,
-      category: AndroidNotificationCategory.navigation,
+      category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.public,
     );
+    final int notificationId = 42602 + elapsedMinutes.clamp(1, 10000).toInt();
+    _pacerNotificationIds.add(notificationId);
     await _plugin.show(
-      42602,
+      notificationId,
       english
           ? 'Running pacer • Minute $elapsedMinutes'
           : 'Pacer lari • Menit $elapsedMinutes',
@@ -150,7 +163,10 @@ class RunningNotificationService {
   static Future<void> stop() async {
     if (!_initialized) return;
     await _plugin.cancel(_notificationId);
-    await _plugin.cancel(42602);
+    for (final int notificationId in _pacerNotificationIds) {
+      await _plugin.cancel(notificationId);
+    }
+    _pacerNotificationIds.clear();
   }
 
   static String _formatDuration(Duration duration) {

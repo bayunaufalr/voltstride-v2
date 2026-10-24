@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/app_language_service.dart';
 import '../account/account_service.dart';
@@ -28,30 +27,9 @@ class ProgressPageState extends State<ProgressPage> {
       RunHistoryRepository.instance.getAll();
   int _selectedWeekIndex = 11;
   _WeekChartMetric _chartMetric = _WeekChartMetric.distance;
-  static const String _cooperDistanceKey = 'voltstride.cooperTestDistanceMeters';
-  static const String _cooperDateKey = 'voltstride.cooperTestDate';
-  double? _cooperDistanceMeters;
-  DateTime? _cooperTestDate;
-
   @override
   void initState() {
     super.initState();
-    unawaited(_loadCooperTest());
-  }
-
-  Future<void> _loadCooperTest() async {
-    try {
-      final SharedPreferences preferences = await SharedPreferences.getInstance();
-      final double? distance = preferences.getDouble(_cooperDistanceKey);
-      final String? rawDate = preferences.getString(_cooperDateKey);
-      if (!mounted) return;
-      setState(() {
-        _cooperDistanceMeters = distance;
-        _cooperTestDate = rawDate == null ? null : DateTime.tryParse(rawDate);
-      });
-    } catch (_) {
-      // Kemajuan tetap dapat dibuka meskipun penyimpanan lokal tidak tersedia.
-    }
   }
 
   String _text(String indonesia, String english) =>
@@ -110,7 +88,7 @@ class ProgressPageState extends State<ProgressPage> {
             widget.belowWeeklyChart!,
           ],
           const SizedBox(height: 16),
-          _vo2MaxCard(),
+          _vo2MaxCard(sessions),
           const SizedBox(height: 16),
           _predictionSection(sessions),
           const SizedBox(height: 20),
@@ -479,7 +457,7 @@ class ProgressPageState extends State<ProgressPage> {
     }
   }
 
-  Widget _vo2MaxCard() {
+  Widget _vo2MaxCard(List<RunSession> sessions) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: AccountService.perubahanProfil,
       builder: (
@@ -492,23 +470,49 @@ class ProgressPageState extends State<ProgressPage> {
             DateTime.tryParse(profile['tanggalLahir'] as String? ?? '');
         final int? age = birthday == null ? null : _ageFromBirthday(birthday);
         final String gender = profile['jenisKelamin'] as String? ?? '';
-        final double? distance = _cooperDistanceMeters;
-        final double? vo2max = distance == null
+
+        final DateTime since = DateTime.now().subtract(
+          const Duration(days: 180),
+        );
+        final List<({RunSession session, double value})> observations =
+            sessions
+                .where((RunSession session) =>
+                    session.activityType == RunActivityType.run &&
+                    !session.startedAt.isBefore(since))
+                .map((RunSession session) {
+                  final double? value = _estimateVo2FromTraining(session);
+                  return value == null
+                      ? null
+                      : (session: session, value: value);
+                })
+                .whereType<({RunSession session, double value})>()
+                .toList(growable: false)
+              ..sort((a, b) => b.session.startedAt.compareTo(a.session.startedAt));
+
+        final List<double> recentValues = observations
+            .take(5)
+            .map((({RunSession session, double value}) item) => item.value)
+            .toList(growable: true)
+          ..sort();
+        final double? vo2max = recentValues.isEmpty
             ? null
-            : 22.351 * (distance / 1000.0) - 11.288;
+            : recentValues[recentValues.length ~/ 2];
         final List<double>? thresholds = age == null
             ? null
             : _vo2Thresholds(age, gender);
         final String? grade = vo2max == null || thresholds == null
             ? null
             : _vo2Grade(vo2max, thresholds);
+        final DateTime? lastSession = observations.isEmpty
+            ? null
+            : observations.first.session.startedAt;
 
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
-            border: Border.all(color: Theme.of(context).dividerColor),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -534,8 +538,8 @@ class ProgressPageState extends State<ProgressPage> {
               const SizedBox(height: 6),
               Text(
                 _text(
-                  'Estimasi ini memakai jarak Tes Cooper 12 menit, bukan rerata HR saja. Gunakan hasil tes yang memang dilakukan selama 12 menit, bukan sesi lari biasa.',
-                  'This estimate uses the distance from a 12-minute Cooper test, not average HR alone. Enter a result from an actual 12-minute test, not an ordinary run.',
+                  'Perkiraan otomatis dari jarak dan waktu bergerak pada sesi lari terbaru. Ini bukan pengukuran laboratorium.',
+                  'Automatically estimated from distance and moving time in recent runs. This is not a laboratory measurement.',
                 ),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -543,7 +547,7 @@ class ProgressPageState extends State<ProgressPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              if (vo2max != null && vo2max > 0) ...<Widget>[
+              if (vo2max != null) ...<Widget>[
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
@@ -576,7 +580,9 @@ class ProgressPageState extends State<ProgressPage> {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Theme.of(context).dividerColor),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
                     child: Text(
                       grade,
@@ -586,13 +592,13 @@ class ProgressPageState extends State<ProgressPage> {
                 else
                   Text(
                     _text(
-                    age == null || !_genderCanBeClassified(gender)
-                        ? 'Lengkapi tanggal lahir dan pilih jenis kelamin di profil untuk melihat kategori berdasarkan usia.'
-                        : 'Kategori pembanding saat ini tersedia untuk usia 13–79 tahun.',
-                    age == null || !_genderCanBeClassified(gender)
-                        ? 'Complete date of birth and select a gender in your profile to see the age-based category.'
-                        : 'Reference categories are currently available for ages 13–79.',
-                  ),
+                      age == null || !_genderCanBeClassified(gender)
+                          ? 'Lengkapi tanggal lahir dan jenis kelamin di profil untuk melihat kategori berdasarkan usia.'
+                          : 'Kategori pembanding tersedia untuk usia 13–79 tahun.',
+                      age == null || !_genderCanBeClassified(gender)
+                          ? 'Complete your date of birth and gender in your profile to see the age-based category.'
+                          : 'Reference categories are available for ages 13–79.',
+                    ),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 12,
@@ -600,7 +606,10 @@ class ProgressPageState extends State<ProgressPage> {
                   ),
                 const SizedBox(height: 6),
                 Text(
-                  '${_text('Jarak tes', 'Test distance')}: ${distance!.round()} m${_cooperTestDate == null ? '' : ' • ${_formatShortDate(_cooperTestDate!)}'}',
+                  _text(
+                    '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession!)}',
+                    '${observations.length} runs considered · latest ${_formatShortDate(lastSession!)}',
+                  ),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
@@ -609,24 +618,14 @@ class ProgressPageState extends State<ProgressPage> {
               ] else
                 Text(
                   _text(
-                    'Belum ada hasil Tes Cooper yang dimasukkan.',
-                    'No Cooper test result has been entered yet.',
+                    'Belum cukup data. Rekam sesi lari minimal 1,5 km dengan durasi bergerak 8 menit atau lebih.',
+                    'Not enough data yet. Record a run of at least 1.5 km with 8 minutes or more of moving time.',
                   ),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _editCooperTestDistance,
-                icon: const Icon(Icons.edit_outlined),
-                label: Text(
-                  distance == null
-                      ? _text('Masukkan hasil tes 12 menit', 'Enter 12-minute test result')
-                      : _text('Perbarui hasil tes', 'Update test result'),
-                ),
-              ),
             ],
           ),
         );
@@ -634,98 +633,33 @@ class ProgressPageState extends State<ProgressPage> {
     );
   }
 
-  Future<void> _editCooperTestDistance() async {
-    final TextEditingController controller = TextEditingController(
-      text: _cooperDistanceMeters?.round().toString() ?? '',
-    );
-    final int? distanceMeters = await showDialog<int>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(_text('Hasil Tes Cooper', 'Cooper test result')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              _text(
-                'Masukkan jarak dalam meter yang tercatat selama tes lari 12 menit. Hasil VO₂max tetap berupa estimasi.',
-                'Enter the distance in meters recorded during a 12-minute running test. The VO₂max result remains an estimate.',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: _text('Jarak (meter)', 'Distance (meters)'),
-                hintText: '2400',
-              ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(_text('Batal', 'Cancel')),
-          ),
-          FilledButton(
-            onPressed: () {
-              final int? meters = int.tryParse(controller.text.trim());
-              if (meters == null || meters < 600 || meters > 5000) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _text(
-                        'Masukkan jarak antara 600 dan 5.000 meter.',
-                        'Enter a distance between 600 and 5,000 meters.',
-                      ),
-                    ),
-                  ),
-                );
-                return;
-              }
-              Navigator.of(dialogContext).pop(meters);
-            },
-            child: Text(_text('Simpan', 'Save')),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (distanceMeters == null) return;
-
-    final DateTime measuredAt = DateTime.now();
-    try {
-      final SharedPreferences preferences = await SharedPreferences.getInstance();
-      await preferences.setDouble(
-        _cooperDistanceKey,
-        distanceMeters.toDouble(),
-      );
-      await preferences.setString(
-        _cooperDateKey,
-        measuredAt.toIso8601String(),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _text(
-              'Hasil tidak dapat disimpan di perangkat ini.',
-              'The result could not be saved on this device.',
-            ),
-          ),
-        ),
-      );
-      return;
+  double? _estimateVo2FromTraining(RunSession session) {
+    final double distanceMeters = session.distanceKm * 1000.0;
+    final Duration duration = session.movingTime > Duration.zero
+        ? session.movingTime
+        : session.elapsed;
+    final double minutes = duration.inSeconds / 60.0;
+    if (!distanceMeters.isFinite || distanceMeters < 1500 ||
+        !minutes.isFinite || minutes < 8 || minutes > 120) {
+      return null;
+    }
+    final double velocityMetersPerMinute = distanceMeters / minutes;
+    if (velocityMetersPerMinute < 50 || velocityMetersPerMinute > 450) {
+      return null;
     }
 
-    if (!mounted) return;
-    setState(() {
-      _cooperDistanceMeters = distanceMeters.toDouble();
-      _cooperTestDate = measuredAt;
-    });
+    // Persamaan performa lari Daniels/VDOT: estimasi dari kecepatan berlari
+    // dan durasi, bukan dari hasil tes yang harus dimasukkan pengguna.
+    final double oxygenDemand = -4.60 +
+        0.182258 * velocityMetersPerMinute +
+        0.000104 * velocityMetersPerMinute * velocityMetersPerMinute;
+    final double sustainableFraction = 0.8 +
+        0.1894393 * math.exp(-0.012778 * minutes) +
+        0.2989558 * math.exp(-0.1932605 * minutes);
+    if (sustainableFraction <= 0) return null;
+    final double estimate = oxygenDemand / sustainableFraction;
+    if (!estimate.isFinite || estimate < 15 || estimate > 90) return null;
+    return estimate;
   }
 
   int _ageFromBirthday(DateTime birthday) {

@@ -193,7 +193,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  _activityName(reminder.activity),
+                  _reminderTitle(reminder),
                   style: TextStyle(
                     color: colors.onSurface,
                     fontSize: 16,
@@ -367,7 +367,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      _activityName(reminder.activity),
+                      _reminderTitle(reminder),
                       style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
@@ -443,6 +443,11 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     );
   }
 
+  String _reminderTitle(TrainingReminder reminder) {
+    final String name = reminder.activityName.trim();
+    return name.isNotEmpty ? name : _activityName(reminder.activity);
+  }
+
   String _activityName(String activity) {
     final String value = activity.toLowerCase();
     final bool english = Localizations.localeOf(context).languageCode == 'en';
@@ -454,6 +459,9 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     }
     if (value.contains('run') || value.contains('lari')) {
       return english ? 'Run' : 'Lari';
+    }
+    if (value.contains('other') || value.contains('lain')) {
+      return english ? 'Other' : 'Lainnya';
     }
     return activity;
   }
@@ -573,6 +581,8 @@ class _ReminderEditorState extends State<_ReminderEditor> {
   ];
 
   late final TextEditingController _durationController;
+  late final TextEditingController _activityNameController;
+  late final TextEditingController _repeatIntervalController;
   late String _activity;
   late TimeOfDay _time;
   late Set<int> _selectedDays;
@@ -589,11 +599,20 @@ class _ReminderEditorState extends State<_ReminderEditor> {
     _durationController = TextEditingController(
       text: (old?.durationMinutes ?? 30).toString(),
     );
+    _activityNameController = TextEditingController(
+      text: old?.activityName ?? '',
+    );
+    _repeatIntervalController = TextEditingController(
+      text: (old?.repeatIntervalSeconds ?? 60).toString(),
+    );
     final String savedActivity = old?.activity ?? 'Lari';
-    _activity = <String>['Lari', 'Lari interval', 'Jalan'].contains(savedActivity)
-        ? savedActivity
-        : 'Lari';
-    _time = TimeOfDay(hour: old?.hour ?? 7, minute: 0);
+    final String normalized = savedActivity.toLowerCase();
+    _activity = normalized.contains('jalan') || normalized.contains('walk')
+        ? 'Jalan'
+        : normalized.contains('lain') || normalized.contains('other')
+            ? 'Lainnya'
+            : 'Lari';
+    _time = TimeOfDay(hour: old?.hour ?? 7, minute: old?.minute ?? 0);
     _selectedDays = (old?.weekdays ?? <int>[
       DateTime.monday,
       DateTime.wednesday,
@@ -604,6 +623,8 @@ class _ReminderEditorState extends State<_ReminderEditor> {
   @override
   void dispose() {
     _durationController.dispose();
+    _activityNameController.dispose();
+    _repeatIntervalController.dispose();
     super.dispose();
   }
 
@@ -634,6 +655,17 @@ class _ReminderEditorState extends State<_ReminderEditor> {
           context,
           'Durasi harus 5–360 menit.',
           'Duration must be 5–360 minutes.',
+        );
+      });
+      return;
+    }
+    final int? repeatSeconds = int.tryParse(_repeatIntervalController.text.trim());
+    if (repeatSeconds == null || repeatSeconds < 30 || repeatSeconds > 600) {
+      setState(() {
+        _validationMessage = _text(
+          context,
+          'Interval notifikasi harus 30–600 detik.',
+          'Notification interval must be 30–600 seconds.',
         );
       });
       return;
@@ -677,10 +709,12 @@ class _ReminderEditorState extends State<_ReminderEditor> {
       TrainingReminder(
         id: widget.initial?.id ?? widget.newId,
         activity: _activity,
+        activityName: _activityNameController.text.trim(),
         weekdays: _selectedDays.toList()..sort(),
         hour: _time.hour,
         minute: _time.minute,
         durationMinutes: duration,
+        repeatIntervalSeconds: int.parse(_repeatIntervalController.text.trim()),
         style: ReminderStyle.notificationOnly,
         sound: 'lembut',
         completedDates: widget.initial?.completedDates ?? const <String>[],
@@ -717,12 +751,12 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                     child: Text(_text(context, 'Lari', 'Run')),
                   ),
                   DropdownMenuItem(
-                    value: 'Lari interval',
-                    child: Text(_text(context, 'Lari interval', 'Interval run')),
-                  ),
-                  DropdownMenuItem(
                     value: 'Jalan',
                     child: Text(_text(context, 'Jalan', 'Walk')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Lainnya',
+                    child: Text(_text(context, 'Lainnya', 'Other')),
                   ),
                 ],
                 onChanged: _checkingPermission
@@ -730,6 +764,16 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                     : (String? value) {
                         if (value != null) setState(() => _activity = value);
                       },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _activityNameController,
+                enabled: !_checkingPermission,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: _text(context, 'Nama aktivitas (opsional)', 'Activity name (optional)'),
+                  hintText: _text(context, 'Contoh: Lari pagi', 'Example: Morning run'),
+                ),
               ),
               const SizedBox(height: 12),
               Text(_text(context, 'Hari', 'Days')),
@@ -778,28 +822,14 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                   labelText: _text(context, 'Durasi (menit)', 'Duration (min)'),
                 ),
               ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Icon(Icons.notifications_active_outlined),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(_text(
-                        context,
-                        'Pengingat dikirim sebagai notifikasi Android biasa. Fitur alarm khusus dan pilihan suara dihapus.',
-                        'Reminders use standard Android notifications. Dedicated alarms and custom sounds have been removed.',
-                      )),
-                    ),
-                  ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _repeatIntervalController,
+                enabled: !_checkingPermission,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: _text(context, 'Ulangi notifikasi setiap (detik)', 'Repeat notification every (sec)'),
+                  hintText: '60',
                 ),
               ),
               if (_validationMessage != null) ...<Widget>[

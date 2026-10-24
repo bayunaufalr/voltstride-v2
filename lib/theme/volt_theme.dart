@@ -122,12 +122,30 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
   ).copyWith(
     primary: teks,
     onPrimary: latar,
+    primaryContainer: permukaanLembut,
+    onPrimaryContainer: teks,
     secondary: teksSekunder,
-    onSecondary: latar,
+    onSecondary: permukaan,
+    secondaryContainer: permukaanLembut,
+    onSecondaryContainer: teks,
     tertiary: teksSekunder,
-    onTertiary: latar,
+    onTertiary: permukaan,
+    tertiaryContainer: permukaanLembut,
+    onTertiaryContainer: teks,
     surface: permukaan,
     onSurface: teks,
+    surfaceDim: latar,
+    surfaceBright: permukaan,
+    surfaceContainerLowest: gelap
+        ? const Color(0xFF101112)
+        : const Color(0xFFFFFFFF),
+    surfaceContainerLow: gelap
+        ? const Color(0xFF1A1B1D)
+        : const Color(0xFFF8F7F3),
+    surfaceContainer: permukaan,
+    surfaceContainerHigh: gelap
+        ? const Color(0xFF252628)
+        : const Color(0xFFF0EEE8),
     surfaceContainerHighest: permukaanLembut,
     onSurfaceVariant: teksSekunder,
     outline: garis,
@@ -135,6 +153,17 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
     surfaceTint: Colors.transparent,
     error: gelap ? const Color(0xFFE0E0E0) : const Color(0xFF202124),
     onError: gelap ? const Color(0xFF111111) : Colors.white,
+    errorContainer: gelap
+        ? const Color(0xFF303032)
+        : const Color(0xFFE7E5DF),
+    onErrorContainer: teks,
+    inverseSurface: gelap
+        ? const Color(0xFFF3F1EC)
+        : const Color(0xFF202124),
+    onInverseSurface: gelap
+        ? const Color(0xFF202124)
+        : const Color(0xFFF3F1EC),
+    inversePrimary: teksSekunder,
   );
 
   return ThemeData(
@@ -153,6 +182,73 @@ ThemeData buildVoltTheme({Brightness brightness = Brightness.light}) {
         fontSize: 20,
         fontWeight: FontWeight.w700,
       ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: permukaan,
+      surfaceTintColor: Colors.transparent,
+      titleTextStyle: TextStyle(
+        color: teks,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+      contentTextStyle: TextStyle(color: teks, fontSize: 14, height: 1.4),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    tabBarTheme: TabBarThemeData(
+      labelColor: teks,
+      unselectedLabelColor: teksSekunder,
+      indicatorColor: teks,
+      dividerColor: garis,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: permukaan,
+      surfaceTintColor: Colors.transparent,
+      textStyle: TextStyle(color: teks),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: permukaan,
+      modalBackgroundColor: permukaan,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    listTileTheme: ListTileThemeData(
+      textColor: teks,
+      iconColor: teksSekunder,
+      tileColor: permukaan,
+      selectedTileColor: permukaanLembut,
+      subtitleTextStyle: TextStyle(color: teksSekunder),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: teks,
+      foregroundColor: latar,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+        return states.contains(WidgetState.selected) ? teks : Colors.transparent;
+      }),
+      checkColor: WidgetStatePropertyAll<Color>(latar),
+      side: BorderSide(color: garis),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+    ),
+    radioTheme: RadioThemeData(
+      fillColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+        return states.contains(WidgetState.selected) ? teks : teksSekunder;
+      }),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+        return states.contains(WidgetState.selected) ? latar : teksSekunder;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
+        return states.contains(WidgetState.selected)
+            ? teks
+            : permukaanLembut;
+      }),
+      trackOutlineColor: WidgetStatePropertyAll<Color>(garis),
     ),
     cardTheme: CardThemeData(
       color: permukaan,

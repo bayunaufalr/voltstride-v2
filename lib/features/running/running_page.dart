@@ -78,6 +78,7 @@ class _RunningPageState extends State<RunningPage> {
   int _lastObservedRouteLength = 0;
   int? _countdownValue;
   bool _isStarting = false;
+  bool _showingBackgroundDialog = false;
   StreamSubscription<StepCount>? _stepSubscription;
   bool _requestingStepStream = false;
   int? _lastSystemStepCount;
@@ -92,6 +93,7 @@ class _RunningPageState extends State<RunningPage> {
   StreamSubscription<int>? _heartRateSubscription;
   int? _latestHeartRateBpm;
   int _lastPacerMinute = 0;
+  int _lastStatsNotificationSecond = -10;
   RunSession? _completedSessionOverride;
 
   @override
@@ -170,6 +172,13 @@ class _RunningPageState extends State<RunningPage> {
       if (minute > 0 && minute > _lastPacerMinute) {
         _lastPacerMinute = minute;
         unawaited(_sendPacerUpdate(minute));
+      }
+    }
+    if (currentStatus == RunStatus.running || currentStatus == RunStatus.paused) {
+      final int elapsedSecond = _controller.elapsed.inSeconds;
+      if (statusChanged || elapsedSecond - _lastStatsNotificationSecond >= 10) {
+        _lastStatsNotificationSecond = elapsedSecond;
+        unawaited(_showLiveStatsNotification(paused: currentStatus == RunStatus.paused));
       }
     }
 
@@ -306,7 +315,7 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Future<void> _runStartCountdown() async {
-    for (int value = 5; value >= 1; value--) {
+    for (int value = 3; value >= 1; value--) {
       if (!mounted) return;
       setState(() => _countdownValue = value);
       await Future<void>.delayed(const Duration(seconds: 1));
@@ -346,6 +355,7 @@ class _RunningPageState extends State<RunningPage> {
     _heartRateSamples.clear();
     _heartRateTrackSamples.clear();
     _lastPacerMinute = 0;
+    _lastStatsNotificationSecond = -10;
     _completedSessionOverride = null;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
@@ -412,21 +422,92 @@ class _RunningPageState extends State<RunningPage> {
 
   @override
   Widget build(BuildContext context) {
-    switch (_controller.status) {
+    final RunStatus status = _controller.status;
+    final bool sessionActive = status == RunStatus.acquiringGps ||
+        status == RunStatus.running || status == RunStatus.paused;
+    final Widget page;
+    switch (status) {
       case RunStatus.idle:
-        return _buildIdle();
+        page = _buildIdle();
+        break;
       case RunStatus.acquiringGps:
-        return _buildAcquiringGps();
+        page = _buildAcquiringGps();
+        break;
       case RunStatus.running:
-        return _buildLiveRun(paused: false);
+        page = _buildLiveRun(paused: false);
+        break;
       case RunStatus.paused:
-        return _buildLiveRun(paused: true);
+        page = _buildLiveRun(paused: true);
+        break;
       case RunStatus.finished:
-        return _buildSummary(
+        page = _buildSummary(
           _completedSessionOverride ?? _controller.lastFinishedSession,
         );
+        break;
       case RunStatus.error:
-        return _buildError();
+        page = _buildError();
+        break;
+    }
+    return PopScope<Object?>(
+      canPop: !sessionActive,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!didPop && sessionActive) unawaited(_handleBackDuringRun());
+      },
+      child: page,
+    );
+  }
+
+  Future<void> _handleBackDuringRun() async {
+    if (!mounted || _showingBackgroundDialog) return;
+    _showingBackgroundDialog = true;
+    try {
+      final String? choice = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(_text('Aktivitas masih berjalan', 'Activity is still running')),
+          content: Text(_text(
+            'Sesi tidak akan dihentikan. Anda dapat kembali merekam atau memindahkan VoltStride ke latar belakang.',
+            'The session will keep running. You can return to the activity or move VoltStride to the background.',
+          )),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('continue'),
+              child: Text(_text('Tetap merekam', 'Keep recording')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop('background'),
+              child: Text(_text('Ke latar belakang', 'Run in background')),
+            ),
+          ],
+        ),
+      );
+      if (choice == 'background' && mounted) {
+        try {
+          await const MethodChannel('voltstride/android_settings')
+              .invokeMethod<bool>('moveTaskToBack');
+        } on PlatformException catch (error) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(_text(
+                'VoltStride tidak dapat dipindahkan ke latar belakang: ${error.message ?? 'kesalahan Android'}',
+                'VoltStride could not move to the background: ${error.message ?? 'Android error'}',
+              ))),
+            );
+          }
+        } on MissingPluginException {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(_text(
+                'Fitur latar belakang tidak tersedia pada build ini.',
+                'Background mode is unavailable in this build.',
+              ))),
+            );
+          }
+        }
+      }
+    } finally {
+      _showingBackgroundDialog = false;
     }
   }
 
@@ -675,32 +756,19 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Future<void> _confirmExitIndoor({required bool paused}) async {
-    final bool? exit = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(_text('Akhiri aktivitas?', 'End activity?')),
-        content: Text(_text('Aktivitas yang belum diselesaikan tidak akan disimpan ke riwayat.', 'An unfinished activity will not be saved to your history.')),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(_text('Kembali', 'Keep going'))),
-          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(_text('Akhiri', 'End activity'))),
-        ],
-      ),
-    );
-    if (exit == true && mounted) {
-      _controller.resetRun();
-      final VoidCallback? onExit = widget.onExit;
-      if (onExit != null) onExit();
-    } else if (paused && mounted) {
-      // Tetap dijeda sesuai pilihan terakhir.
-    }
+    await _handleBackDuringRun();
   }
 
-  /// Map-first live running layout, similar to dedicated running apps.
-  /// The top-left control closes the map; the collapsed details screen keeps
-  /// all existing metrics and offers a way to reopen it.
   Widget _buildLiveMapExperience({required bool paused}) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
+    final Color overlayColor = dark
+        ? const Color(0xED101010)
+        : const Color(0xEEFDFCFA);
+    final Color overlayText = colors.onSurface;
+    final Color overlayMuted = colors.onSurfaceVariant;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -728,14 +796,14 @@ class _RunningPageState extends State<RunningPage> {
                   child: Row(
                     children: <Widget>[
                       Material(
-                        color: Colors.black.withValues(alpha: 0.84),
+                        color: overlayColor,
                         shape: const CircleBorder(),
                         child: IconButton(
                           tooltip: _text('Tutup peta', 'Close map'),
                           onPressed: () => setState(() => _liveMapExpanded = false),
-                          icon: const Icon(
+                          icon: Icon(
                             Icons.keyboard_arrow_down,
-                            color: Colors.white,
+                            color: overlayText,
                             size: 30,
                           ),
                         ),
@@ -750,7 +818,7 @@ class _RunningPageState extends State<RunningPage> {
                             vertical: 9,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.84),
+                            color: overlayColor,
                             borderRadius: BorderRadius.zero,
                           ),
                           child: Row(
@@ -759,13 +827,13 @@ class _RunningPageState extends State<RunningPage> {
                               Icon(
                                 paused ? Icons.pause_circle : Icons.gps_fixed,
                                 size: 16,
-                                color: paused ? Colors.white70 : Colors.white,
+                                color: paused ? overlayMuted : overlayText,
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                paused ? 'AKTIVITAS DIJEDA' : 'AKURASI GPS • $gpsAccuracy',
+                                paused ? _text('AKTIVITAS DIJEDA', 'ACTIVITY PAUSED') : _text('AKURASI GPS • $gpsAccuracy', 'GPS ACCURACY • $gpsAccuracy'),
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: overlayText,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 11,
                                 ),
@@ -792,7 +860,7 @@ class _RunningPageState extends State<RunningPage> {
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(12, 15, 12, 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xED101010),
+                        color: overlayColor,
                         borderRadius: BorderRadius.zero,
                         boxShadow: const <BoxShadow>[
                           BoxShadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 4)),
@@ -804,7 +872,7 @@ class _RunningPageState extends State<RunningPage> {
                           Text(
                             _activityDisplayLabel.toUpperCase(),
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: overlayMuted,
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1.2,
@@ -813,25 +881,25 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
-                              _liveMapMetric('WAKTU', _formatDuration(_controller.elapsed)),
-                              _liveMapMetric('PACE', _formatPace(pace)),
-                              _liveMapMetric('JARAK', '${_controller.distanceKm.toStringAsFixed(2)} km'),
+                              _liveMapMetric(_text('WAKTU', 'TIME'), _formatDuration(_controller.elapsed)),
+                              _liveMapMetric(_text('PACE', 'PACE'), _formatPace(pace)),
+                              _liveMapMetric(_text('JARAK', 'DISTANCE'), '${_controller.distanceKm.toStringAsFixed(2)} km'),
                             ],
                           ),
                           if (_latestHeartRateBpm != null) ...<Widget>[
                             const SizedBox(height: 8),
                             Row(
                               children: <Widget>[
-                                const Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 17),
+                                Icon(Icons.favorite_rounded, color: overlayText, size: 17),
                                 const SizedBox(width: 7),
                                 Text(
                                   _text('DETAK JANTUNG', 'HEART RATE'),
-                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w800),
+                                  style: TextStyle(color: overlayMuted, fontSize: 11, fontWeight: FontWeight.w800),
                                 ),
                                 const Spacer(),
                                 Text(
                                   '${_latestHeartRateBpm!} bpm',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
+                                  style: TextStyle(color: overlayText, fontWeight: FontWeight.w900, fontSize: 14),
                                 ),
                               ],
                             ),
@@ -839,29 +907,29 @@ class _RunningPageState extends State<RunningPage> {
                           const SizedBox(height: 12),
                           Row(
                             children: <Widget>[
-                              const Icon(Icons.speed, color: Colors.white70, size: 18),
+                              Icon(Icons.speed, color: overlayMuted, size: 18),
                               const SizedBox(width: 6),
                               Text(
                                 speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
-                                    ? '${speedKmh.toStringAsFixed(1)} km/jam'
-                                    : '-- km/jam',
+                                    ? (AppLanguageService.localeNotifier.value.languageCode == 'en' ? '${speedKmh.toStringAsFixed(1)} km/h' : '${speedKmh.toStringAsFixed(1)} km/jam')
+                                    : (AppLanguageService.localeNotifier.value.languageCode == 'en' ? '-- km/h' : '-- km/jam'),
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: overlayText,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
                               const Spacer(),
-                              const Icon(Icons.terrain, color: Colors.white70, size: 18),
+                              Icon(Icons.terrain, color: overlayMuted, size: 18),
                               const SizedBox(width: 5),
                               Flexible(
                                 child: Text(
                                   elevation.hasAltitudeData
-                                      ? 'Selisih $netElevation'
-                                      : 'Perubahan --',
+                                      ? _text('Selisih $netElevation', 'Net change $netElevation')
+                                      : _text('Perubahan --', 'Change --'),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: overlayText,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 12,
                                   ),
@@ -874,12 +942,14 @@ class _RunningPageState extends State<RunningPage> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m'
-                                ' • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                _text(
+                                  'Elevasi +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Elevasi −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                  'Ascent +${elevation.totalAscentMeters.toStringAsFixed(0)} m • Descent −${elevation.totalDescentMeters.toStringAsFixed(0)} m',
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Colors.white70,
+                                  color: overlayMuted,
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -890,17 +960,17 @@ class _RunningPageState extends State<RunningPage> {
                           Row(
                             children: <Widget>[
                               _liveMapMiniMetric(
-                                'LANGKAH',
+                                _text('LANGKAH', 'STEPS'),
                                 _stepsThisActivity.toString(),
                               ),
                               _liveMapMiniMetric(
-                                'CADENCE',
+                                _text('CADENCE', 'CADENCE'),
                                 _cadenceSamples.isEmpty
                                     ? '--'
                                     : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm',
                               ),
                               _liveMapMiniMetric(
-                                'KALORI*',
+                                _text('KALORI*', 'CALORIES*'),
                                 '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()} kcal',
                               ),
                             ],
@@ -930,8 +1000,9 @@ class _RunningPageState extends State<RunningPage> {
                     16,
                     10,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF101010),
+                  decoration: BoxDecoration(
+                    color: overlayColor,
+                    border: Border(top: BorderSide(color: overlayMuted.withValues(alpha: 0.35))),
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Column(
@@ -941,7 +1012,7 @@ class _RunningPageState extends State<RunningPage> {
                         width: 42,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.white38,
+                          color: overlayMuted.withValues(alpha: 0.42),
                           borderRadius: BorderRadius.zero,
                         ),
                       ),
@@ -954,8 +1025,8 @@ class _RunningPageState extends State<RunningPage> {
                                   ? _controller.resumeRun
                                   : _controller.pauseRun,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: const BorderSide(color: Colors.white30),
+                                foregroundColor: overlayText,
+                                side: BorderSide(color: overlayMuted.withValues(alpha: 0.45)),
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: Icon(paused ? Icons.play_arrow : Icons.pause),
@@ -967,8 +1038,8 @@ class _RunningPageState extends State<RunningPage> {
                             child: FilledButton.icon(
                               onPressed: _finishRun,
                               style: FilledButton.styleFrom(
-                                backgroundColor: VoltWarna.merah,
-                                foregroundColor: Colors.white,
+                                backgroundColor: colors.primary,
+                                foregroundColor: colors.onPrimary,
                                 padding: const EdgeInsets.symmetric(vertical: 15),
                               ),
                               icon: const Icon(Icons.stop),
@@ -978,10 +1049,13 @@ class _RunningPageState extends State<RunningPage> {
                         ],
                       ),
                       const SizedBox(height: 3),
-                      const Text(
-                        'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
+                      Text(
+                        _text(
+                          'Pilih interval split di peta; ketuk penanda untuk pace, kecepatan, dan elevasi.',
+                          'Choose a split interval on the map; tap a marker for pace, speed, and elevation.',
+                        ),
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white54, fontSize: 10),
+                        style: TextStyle(color: overlayMuted, fontSize: 10),
                       ),
                     ],
                   ),
@@ -1005,7 +1079,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 19,
               fontWeight: FontWeight.w900,
             ),
@@ -1015,7 +1089,7 @@ class _RunningPageState extends State<RunningPage> {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white70,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -1035,7 +1109,7 @@ class _RunningPageState extends State<RunningPage> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
@@ -1044,7 +1118,7 @@ class _RunningPageState extends State<RunningPage> {
           Text(
             label,
             style: TextStyle(
-              color: Colors.white60,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 9,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.5,
@@ -1683,6 +1757,7 @@ class _RunningPageState extends State<RunningPage> {
 
       await _stepSubscription?.cancel();
       _stepSubscription = null;
+      await RunningNotificationService.stop();
       _controller.resetRun();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1712,6 +1787,7 @@ class _RunningPageState extends State<RunningPage> {
     _stepSubscription = null;
     final RunSession? session =
         _controller.finishRun(indoorDistanceMeters: indoorDistanceMeters);
+    if (session != null) await RunningNotificationService.stop();
     if (session == null) {
       if (mounted) setState(() => _isSavingSession = false);
       return;
@@ -1823,6 +1899,24 @@ class _RunningPageState extends State<RunningPage> {
     );
     controller.dispose();
     return result;
+  }
+
+  Future<void> _showLiveStatsNotification({required bool paused}) async {
+    try {
+      final double? pace = _controller.currentPaceSecondsPerKm ??
+          _controller.averagePaceSecondsPerKm;
+      final double? speedKmh = pace != null && pace > 0 ? 3600.0 / pace : null;
+      await RunningNotificationService.showRunStats(
+        elapsed: _controller.elapsed,
+        distanceMeters: _controller.distanceKm * 1000,
+        speedKmh: speedKmh,
+        paceSecondsPerKm: pace,
+        paused: paused,
+        activityLabel: _activityDisplayLabel,
+      );
+    } catch (_) {
+      // Notifikasi status tidak boleh menghentikan sesi GPS.
+    }
   }
 
   Future<void> _sendPacerUpdate(int elapsedMinutes) async {

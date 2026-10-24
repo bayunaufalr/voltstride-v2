@@ -1,11 +1,10 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
@@ -98,13 +97,13 @@ class _RunSharePageState extends State<RunSharePage> {
   bool _showCalories = true;
   bool _showDate = true;
   bool _showSplits = false;
-  bool _sharing = false;
+  bool _savingImage = false;
 
   @override
   Widget build(BuildContext context) {
     final _ShareTheme theme = _themes[_selectedTheme];
     return Scaffold(
-      appBar: AppBar(title: const Text('Bagikan aktivitas')),
+      appBar: AppBar(title: const Text('Simpan gambar aktivitas')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
         children: <Widget>[
@@ -185,24 +184,19 @@ class _RunSharePageState extends State<RunSharePage> {
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: _sharing ? null : _sharePoster,
-            icon: _sharing
+            onPressed: _savingImage ? null : _savePoster,
+            icon: _savingImage
                 ? const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.share_rounded),
+                : const Icon(Icons.save_alt_rounded),
             label: Text(
-              _sharing ? 'Menyiapkan gambar…' : 'Bagikan gambar aktivitas',
+              _savingImage ? 'Menyimpan gambar…' : 'Simpan gambar aktivitas',
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Gambar dibuat di perangkat. Tidak perlu akun atau layanan berbayar.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: theme.muted, fontSize: 11),
-          ),
         ],
       ),
     );
@@ -597,8 +591,8 @@ class _RunSharePageState extends State<RunSharePage> {
     );
   }
 
-  Future<void> _sharePoster() async {
-    setState(() => _sharing = true);
+  Future<void> _savePoster() async {
+    setState(() => _savingImage = true);
     try {
       await WidgetsBinding.instance.endOfFrame;
       final BuildContext? boundaryContext = _posterKey.currentContext;
@@ -611,40 +605,36 @@ class _RunSharePageState extends State<RunSharePage> {
       image.dispose();
       if (byteData == null) throw StateError('Gambar tidak dapat dibuat.');
       final Uint8List bytes = byteData.buffer.asUint8List();
-      final String path = '${Directory.systemTemp.path}${Platform.pathSeparator}'
-          'voltstride-activity-${DateTime.now().millisecondsSinceEpoch}.png';
-      final File file = File(path);
-      await file.writeAsBytes(bytes, flush: true);
-      await SharePlus.instance.share(
-        ShareParams(
-          files: <XFile>[XFile(file.path, mimeType: 'image/png')],
-          title: 'Bagikan aktivitas VoltStride',
-          text: _shareText(),
-        ),
+      final String fileName = 'voltstride-activity-${DateTime.now().millisecondsSinceEpoch}.png';
+      final String? location = await const MethodChannel('voltstride/android_settings')
+          .invokeMethod<String>(
+        'saveFileToDownloads',
+        <String, Object?>{
+          'fileName': fileName,
+          'mimeType': 'image/png',
+          'bytes': bytes,
+        },
       );
+      if (location == null || location.isEmpty) {
+        throw StateError('Gambar tidak berhasil disimpan ke perangkat.');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gambar disimpan: $location')),
+        );
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membagikan gambar: $error')),
+          SnackBar(content: Text('Gambar gagal disimpan: $error')),
         );
       }
     } finally {
-      if (mounted) setState(() => _sharing = false);
+      if (mounted) setState(() => _savingImage = false);
     }
   }
 
-  String _shareText() {
-    final RunSession session = widget.session;
-    final List<String> details = <String>[];
-    if (_showDistance) details.add('${session.distanceText} km');
-    if (_showDuration) details.add(session.elapsedText);
-    if (_showPace) details.add('pace ${session.averagePaceText}/km');
-    if (_showElevation && session.elevationStats.hasAltitudeData) {
-      details.add('Elevasi +${session.elevationStats.totalAscentMeters.round()} m');
-    }
-    if (_showCalories) details.add('sekitar ${session.estimatedCalories.round()} kcal');
-    return <String>['Aktivitas VoltStride', ...details].join(' • ');
-  }
+
 }
 
 class _PosterRoutePainter extends CustomPainter {

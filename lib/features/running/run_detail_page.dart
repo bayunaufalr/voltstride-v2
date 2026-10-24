@@ -30,7 +30,11 @@ class _RunDetailPageState extends State<RunDetailPage> {
     if (_exportingTcx) return;
     setState(() => _exportingTcx = true);
     try {
-      await StravaFileExportService.shareTcx(session);
+      final String location = await StravaFileExportService.saveTcx(session);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('File TCX tersimpan di $location')),
+      );
     } on StateError catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -89,8 +93,8 @@ class _RunDetailPageState extends State<RunDetailPage> {
         title: const Text('Detail aktivitas'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Bagikan aktivitas',
-            icon: const Icon(Icons.share_rounded),
+            tooltip: 'Simpan gambar aktivitas',
+            icon: const Icon(Icons.image_outlined),
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(builder: (_) => RunSharePage(session: session)),
             ),
@@ -115,7 +119,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text('${session.environment.label} • ${_dateText(start)}', style: TextStyle(color: Theme.of(context).hintColor)),
+                    Text('${session.environment.label} • ${_dateText(start)}', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 14),
                     Row(
                       children: <Widget>[
@@ -128,7 +132,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       const SizedBox(height: 12),
                       Text(
                         'Selesai ${_dateText(finish)}',
-                        style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ],
@@ -148,19 +152,13 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Ekspor aktivitas ke Strava',
+                            'Simpan aktivitas untuk Strava',
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w800,
                                 ),
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Ekspor file TCX gratis, lalu unggah secara manual ke Strava. '
-                      'Lintasan GPS, waktu, elevasi, serta data denyut jantung '
-                      'dan cadence yang tersedia akan disertakan.',
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
@@ -175,7 +173,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                               )
                             : const Icon(Icons.file_download_outlined),
                         label: Text(
-                          _exportingTcx ? 'Menyiapkan file…' : 'Ekspor file TCX',
+                          _exportingTcx ? 'Menyimpan file…' : 'Simpan file TCX ke perangkat',
                         ),
                       ),
                     ),
@@ -186,14 +184,6 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         onPressed: _openStravaUploadPage,
                         icon: const Icon(Icons.open_in_new_rounded),
                         label: const Text('Buka halaman unggah Strava'),
-                      ),
-                    ),
-                    Text(
-                      'Setelah file dibagikan, simpan ke perangkat atau penyimpanan '
-                      'cloud, lalu pilih file tersebut di halaman unggah Strava.',
-                      style: TextStyle(
-                        color: Theme.of(context).hintColor,
-                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -233,7 +223,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Theme.of(context).hintColor,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -371,7 +361,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                 child: Text(
                   'Panjang segmen',
                   style: TextStyle(
-                    color: Theme.of(context).hintColor,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -451,7 +441,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
             'Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.',
             style: TextStyle(
               fontSize: 11,
-              color: Theme.of(context).hintColor,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -549,7 +539,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Expanded(child: Text(label, style: TextStyle(color: Theme.of(context).hintColor))),
+          Expanded(child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
           const SizedBox(width: 10),
           Flexible(child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w700))),
         ],
@@ -568,7 +558,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: Theme.of(context).hintColor,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 4),
