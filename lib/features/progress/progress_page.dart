@@ -605,16 +605,17 @@ class ProgressPageState extends State<ProgressPage> {
                     ),
                   ),
                 const SizedBox(height: 6),
-                Text(
-                  _text(
-                    '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession)}',
-                    '${observations.length} runs considered · latest ${_formatShortDate(lastSession)}',
+                if (lastSession != null)
+                  Text(
+                    _text(
+                      '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession)}',
+                      '${observations.length} runs considered · latest ${_formatShortDate(lastSession)}',
+                    ),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
                   ),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
               ] else
                 Text(
                   _text(
