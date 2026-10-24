@@ -30,7 +30,7 @@ class RunningPage extends StatefulWidget {
     this.initialIntervalPlan,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
-    this.paceNotificationsEnabled = false,
+    this.paceNotificationsEnabled = true,
     this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
     this.onExit,

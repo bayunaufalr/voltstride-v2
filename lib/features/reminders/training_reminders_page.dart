@@ -27,7 +27,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   @override
   void initState() {
     super.initState();
-    _categoryController = TabController(length: 3, vsync: this);
+    _categoryController = TabController(length: 4, vsync: this);
     _loadReminders();
   }
 
@@ -105,6 +105,108 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           content: Text(
             _text('Jadwal belum berhasil dihapus.', 'Could not delete schedule.'),
           ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _markNotCompleted(_ReminderOccurrence occurrence) async {
+    final TextEditingController otherReason = TextEditingController();
+    const List<String> reasonsId = <String>[
+      'Tidak sempat',
+      'Cuaca tidak mendukung',
+      'Kurang sehat',
+      'Nyeri atau cedera',
+      'Alasan lain',
+    ];
+    const List<String> reasonsEn = <String>[
+      'Not enough time',
+      'Weather conditions',
+      'Unwell',
+      'Pain or injury',
+      'Other reason',
+    ];
+    final bool english = Localizations.localeOf(context).languageCode == 'en';
+    final List<String> reasons = english ? reasonsEn : reasonsId;
+    String selectedReason = reasons.first;
+    final String? reason = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setDialogState) =>
+            AlertDialog(
+          title: Text(_text('Latihan tidak terlaksana', 'Workout not completed')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                DropdownButtonFormField<String>(
+                  initialValue: selectedReason,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: _text('Alasan', 'Reason'),
+                  ),
+                  items: reasons
+                      .map((String option) => DropdownMenuItem<String>(
+                            value: option,
+                            child: Text(option),
+                          ))
+                      .toList(growable: false),
+                  onChanged: (String? value) {
+                    if (value != null) {
+                      setDialogState(() => selectedReason = value);
+                    }
+                  },
+                ),
+                if (selectedReason == reasons.last) ...<Widget>[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: otherReason,
+                    autofocus: true,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: _text('Alasan', 'Reason'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('Kembali', 'Back')),
+            ),
+            FilledButton(
+              onPressed: () {
+                final String value = selectedReason == reasons.last
+                    ? otherReason.text.trim()
+                    : selectedReason;
+                if (value.isEmpty) return;
+                Navigator.of(dialogContext).pop(value);
+              },
+              child: Text(_text('Simpan alasan', 'Save reason')),
+            ),
+          ],
+        ),
+      ),
+    );
+    otherReason.dispose();
+    if (reason == null || reason.trim().isEmpty || !mounted) return;
+    try {
+      await ReminderService.setOccurrenceNotCompleted(
+        reminderId: occurrence.reminder.id,
+        dateKey: occurrence.dateKey,
+        reason: reason,
+      );
+      await _loadReminders();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Status tidak terlaksana belum berhasil disimpan.',
+            'Could not save the missed-workout status.',
+          )),
         ),
       );
     }
@@ -309,22 +411,52 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     return completed;
   }
 
-  Widget _categoryList({required bool completed}) {
+  List<_ReminderOccurrence> _notCompletedOccurrences() {
+    final List<_ReminderOccurrence> missed = <_ReminderOccurrence>[];
+    for (final TrainingReminder reminder in _reminders) {
+      for (final String dateKey in reminder.notCompletedDates) {
+        final DateTime? date = DateTime.tryParse(dateKey);
+        if (date == null) continue;
+        missed.add(_ReminderOccurrence(
+          reminder: reminder,
+          date: DateTime(date.year, date.month, date.day),
+        ));
+      }
+    }
+    missed.sort((_ReminderOccurrence a, _ReminderOccurrence b) =>
+        b.date.compareTo(a.date));
+    return missed;
+  }
+
+  Widget _categoryList({required int category}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final List<_ReminderOccurrence> items = completed
-        ? _completedOccurrences()
-        : _occurrencesForThisWeek()
-            .where((_ReminderOccurrence item) => !item.completed)
-            .toList(growable: false);
-
-    final String emptyMessage = completed
-        ? _text('Belum ada latihan yang ditandai selesai.',
-            'No completed sessions yet.')
-        : _text('Tidak ada jadwal yang belum selesai.',
-            'No unfinished sessions.');
+    final List<_ReminderOccurrence> items;
+    final String emptyMessage;
+    if (category == 1) {
+      items = _completedOccurrences();
+      emptyMessage = _text(
+        'Belum ada latihan yang ditandai selesai.',
+        'No completed sessions yet.',
+      );
+    } else if (category == 2) {
+      items = _notCompletedOccurrences();
+      emptyMessage = _text(
+        'Belum ada latihan yang tercatat tidak terlaksana.',
+        'No missed workouts recorded.',
+      );
+    } else {
+      items = _occurrencesForThisWeek()
+          .where((_ReminderOccurrence item) =>
+              !item.completed && !item.notCompleted)
+          .toList(growable: false);
+      emptyMessage = _text(
+        'Tidak ada jadwal yang belum selesai.',
+        'No unfinished sessions.',
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: _loadReminders,
@@ -349,7 +481,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
 
   Widget _occurrenceCard(_ReminderOccurrence occurrence) {
     final TrainingReminder reminder = occurrence.reminder;
-    final Color border = Theme.of(context).dividerColor;
+    final ColorScheme colors = Theme.of(context).colorScheme;
     final String days = _weekdayName(occurrence.date.weekday);
     final String dateText = '$days, ${occurrence.date.day} '
         '${_monthName(occurrence.date.month)}';
@@ -357,98 +489,70 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: border),
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      _reminderTitle(reminder),
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
+          Text(
+            _reminderTitle(reminder),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text('$dateText · ${reminder.timeText}'),
+          Text('${reminder.durationMinutes} ${_text('menit', 'min')}'),
+          const SizedBox(height: 10),
+          if (occurrence.completed || occurrence.notCompleted)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest,
+                border: Border.all(color: colors.outlineVariant),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    occurrence.completed
+                        ? _text('Selesai', 'Completed')
+                        : _text('Tidak terlaksana', 'Not completed'),
+                    style: TextStyle(
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(height: 4),
-                    Text('$dateText · ${reminder.timeText}'),
+                  ),
+                  if (occurrence.notCompleted &&
+                      (occurrence.reason?.isNotEmpty ?? false)) ...<Widget>[
+                    const SizedBox(height: 3),
                     Text(
-                      '${reminder.durationMinutes} '
-                      '${_text('menit', 'min')}',
-                    ),
-                    Text(
-                      _text('Notifikasi terjadwal', 'Scheduled notification'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                      _text('Alasan: ${occurrence.reason}', 'Reason: ${occurrence.reason}'),
+                      style: TextStyle(color: colors.onSurfaceVariant),
                     ),
                   ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                tooltip: _text('Pengaturan jadwal', 'Schedule options'),
-                onSelected: (String action) {
-                  if (action == 'edit') {
-                    _editReminder(reminder: reminder);
-                  } else {
-                    _deleteReminder(reminder);
-                  }
-                },
-                itemBuilder: (BuildContext context) =>
-                    <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(
-                    value: 'edit',
-                    child: Text(_text('Ubah jadwal', 'Edit schedule')),
-                  ),
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Text(_text('Hapus jadwal', 'Delete schedule')),
-                  ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (occurrence.completed)
-            Row(
-              children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    border: Border.all(color: border),
-                  ),
-                  child: Text(
-                    _text('Selesai', 'Completed'),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => _setCompleted(occurrence, completed: false),
-                  child: Text(_text('Batalkan', 'Undo')),
-                ),
-              ],
             )
           else
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => _setCompleted(occurrence, completed: true),
-                icon: const Icon(Icons.check_circle_outline_rounded),
-                label: Text(_text('Tandai selesai', 'Mark complete')),
-              ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _setCompleted(occurrence, completed: true),
+                    icon: const Icon(Icons.check_circle_outline_rounded),
+                    label: Text(_text('Selesai', 'Completed')),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _markNotCompleted(occurrence),
+                    icon: const Icon(Icons.event_busy_outlined),
+                    label: Text(_text('Tidak terlaksana', 'Not completed')),
+                  ),
+                ),
+              ],
             ),
         ],
       ),
@@ -518,6 +622,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
             Tab(text: _text('Jadwal rutin', 'Routine schedules')),
             Tab(text: _text('Minggu ini', 'This week')),
             Tab(text: _text('Selesai', 'Completed')),
+            Tab(text: _text('Tidak terlaksana', 'Not completed')),
           ],
         ),
         if (_saving) const LinearProgressIndicator(minHeight: 2),
@@ -526,8 +631,9 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
             controller: _categoryController,
             children: <Widget>[
               _routineScheduleList(),
-              _categoryList(completed: false),
-              _categoryList(completed: true),
+              _categoryList(category: 0),
+              _categoryList(category: 1),
+              _categoryList(category: 2),
             ],
           ),
         ),
@@ -563,6 +669,10 @@ class _ReminderOccurrence {
       '${date.day.toString().padLeft(2, '0')}';
 
   bool get completed => reminder.completedDates.contains(dateKey);
+
+  bool get notCompleted => reminder.notCompletedDates.contains(dateKey);
+
+  String? get reason => reminder.notCompletedReasons[dateKey];
 }
 
 class _ReminderEditor extends StatefulWidget {

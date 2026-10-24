@@ -25,7 +25,7 @@ class ActivityStartConfig {
     required this.intervalPlan,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
-    this.paceNotificationsEnabled = false,
+    this.paceNotificationsEnabled = true,
   });
 }
 
@@ -62,7 +62,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   final TextEditingController _recoveryDistance = TextEditingController(text: '200');
   final TextEditingController _targetDistanceKm = TextEditingController();
   final TextEditingController _targetPace = TextEditingController();
-  bool _paceNotificationsEnabled = false;
+  bool _paceNotificationsEnabled = true;
   bool _searchingHeartRate = false;
   String? _heartRateDeviceName;
 
@@ -222,7 +222,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
             const SizedBox(height: 20),
-            _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
+            _sectionTitle(_text('Target aktivitas', 'Activity target')),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(15),
@@ -235,7 +235,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    _text('Isi jarak target dan pace rata-rata yang ingin dicapai.', 'Set the target distance and desired average pace.'),
+                    _text('Isi jarak target dan pace rata-rata. Pacer aktif secara default dan memerlukan kedua nilai ini.', 'Set a target distance and average pace. The pacer is on by default and requires both values.'),
                     style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -704,7 +704,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       }
     }
 
-    if (_paceNotificationsEnabled && targetPaceSecondsPerKm == null) {
+    if (_paceNotificationsEnabled &&
+        (targetPaceSecondsPerKm == null || targetDistanceKm == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

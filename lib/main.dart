@@ -369,51 +369,43 @@ class _RootShellState extends State<RootShell> {
     return Material(
       color: colors.surface,
       elevation: 5,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: colors.outline),
-        ),
-        child: Row(
-          children: <Widget>[
-            Icon(Icons.gps_fixed_rounded, color: colors.onSurface),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    AppLanguageService.text(
-                      context,
-                      '$activity masih merekam',
-                      '$activity is still recording',
-                    ),
-                    style: TextStyle(
-                      color: colors.onSurface,
-                      fontWeight: FontWeight.w800,
-                    ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 64, maxHeight: 76),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(border: Border.all(color: colors.outline)),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.gps_fixed_rounded, color: colors.onSurface, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  AppLanguageService.text(
+                    context,
+                    '$activity masih merekam',
+                    '$activity is still recording',
                   ),
-                  Text(
-                    AppLanguageService.text(
-                      context,
-                      'Anda bisa membuka tab lain tanpa menghentikan sesi.',
-                      'You can explore other tabs without stopping the session.',
-                    ),
-                    style: TextStyle(
-                      color: colors.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: () => setState(() => _showRunningPage = true),
-              child: Text(AppLanguageService.text(context, 'Kembali', 'Resume')),
-            ),
-          ],
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: () => setState(() => _showRunningPage = true),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(AppLanguageService.text(context, 'Buka sesi', 'Resume')),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -147,6 +147,16 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             result.error("schedule_reminder_failed", error.message ?: "Pengingat gagal dijadwalkan.", null)
                         }
                     }
+                    "dismissTrainingReminder" -> {
+                        val id = call.argument<Int>("id")
+                        val dateKey = call.argument<String>("dateKey")
+                        if (id == null || dateKey.isNullOrBlank()) {
+                            result.error("invalid_reminder", "ID atau tanggal pengingat tidak tersedia.", null)
+                        } else {
+                            ReminderPulseReceiver.dismissFromFlutter(this, id, dateKey)
+                            result.success(true)
+                        }
+                    }
                     "completeTrainingReminder" -> {
                         val id = call.argument<Int>("id")
                         val dateKey = call.argument<String>("dateKey")

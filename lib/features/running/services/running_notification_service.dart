@@ -61,7 +61,7 @@ class RunningNotificationService {
             : 'Pace $pace/km • $speed • $distance km');
 
     const AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_live_run_stats_v3',
+      'voltstride_live_run_stats_v4',
       'Pace dan kecepatan VoltStride',
       channelDescription: 'Pace dan kecepatan sesi aktif.',
       importance: Importance.high,
@@ -101,17 +101,34 @@ class RunningNotificationService {
       currentDistanceKm: currentDistanceKm,
       elapsed: elapsed,
     );
+    final double? currentAveragePace = currentDistanceKm > 0 &&
+            elapsed.inSeconds > 0
+        ? elapsed.inSeconds / currentDistanceKm
+        : null;
     final String requiredPace = _formatPace(
       guidance.requiredRemainingPaceSecondsPerKm,
     );
 
     final String advice;
-    if (guidance.targetReached) {
-      advice = english ? 'Average pace target reached' : 'Target pace rata-rata tercapai';
+    if (currentDistanceKm >= targetDistanceKm && currentAveragePace != null) {
+      if (currentAveragePace < targetPaceSecondsPerKm * 0.90) {
+        advice = english ? 'Pace too fast' : 'Pace terlalu cepat';
+      } else if (currentAveragePace <= targetPaceSecondsPerKm) {
+        advice = english ? 'Pace on target' : 'Pace aman';
+      } else {
+        advice = english
+            ? 'Distance reached · ${_formatPace(currentAveragePace)}/km'
+            : 'Jarak tercapai · ${_formatPace(currentAveragePace)}/km';
+      }
+    } else if (currentAveragePace != null &&
+        currentAveragePace < targetPaceSecondsPerKm) {
+      advice = currentAveragePace < targetPaceSecondsPerKm * 0.90
+          ? (english ? 'Pace too fast' : 'Pace terlalu cepat')
+          : (english ? 'Pace on target' : 'Pace aman');
     } else if (!guidance.targetAchievable) {
       advice = english
-          ? 'Target unreachable · keep a safe pace'
-          : 'Target tak terkejar · jaga pace aman';
+          ? 'Target out of reach · keep a steady pace'
+          : 'Target sulit tercapai · jaga pace stabil';
     } else {
       advice = english
           ? 'Run at $requiredPace/km now'
@@ -119,8 +136,8 @@ class RunningNotificationService {
     }
 
     final AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_pacer_watch_v10',
-      english ? 'Minute-by-minute pacer' : 'Pacer setiap menit',
+      'voltstride_pacer_watch_v11',
+      english ? 'Pacer notifications' : 'Notifikasi pacer',
       channelDescription: english
           ? 'High-priority pace guidance while a running session is active.'
           : 'Arahan pace berprioritas tinggi selama sesi lari berlangsung.',
@@ -131,6 +148,8 @@ class RunningNotificationService {
       onlyAlertOnce: false,
       playSound: true,
       enableVibration: true,
+      timeoutAfter: 10000,
+      ticker: advice,
       category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.public,
     );

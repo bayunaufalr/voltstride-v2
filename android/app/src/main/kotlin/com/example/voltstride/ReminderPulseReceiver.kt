@@ -24,6 +24,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED -> restoreSchedules(context)
             ACTION_COMPLETE -> completeOccurrence(context, intent)
+            ACTION_DISMISS -> dismissOccurrence(context, intent)
             ACTION_REPEAT -> repeatOccurrence(context, intent)
             ACTION_START -> startOccurrence(context, intent)
         }
@@ -33,6 +34,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         const val ACTION_START = "com.example.voltstride.REMINDER_START"
         const val ACTION_REPEAT = "com.example.voltstride.REMINDER_REPEAT"
         const val ACTION_COMPLETE = "com.example.voltstride.REMINDER_COMPLETE"
+        const val ACTION_DISMISS = "com.example.voltstride.REMINDER_DISMISS"
 
         private const val PREFERENCES = "VoltStrideReminderPulse"
         private const val FLUTTER_PREFERENCES = "FlutterSharedPreferences"
@@ -80,18 +82,28 @@ class ReminderPulseReceiver : BroadcastReceiver() {
 
         fun cancel(context: Context, id: Int) {
             cancelAlarms(context, id)
-            context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                .edit()
+            val prefs = preferences(context)
+            prefs.edit()
                 .remove(scheduleKey(id))
                 .remove(activeStartKey(id))
                 .remove(activeEndKey(id))
                 .apply()
+            prefs.all.keys
+                .filter { it.startsWith("skipped_${id}_") }
+                .forEach { key -> prefs.edit().remove(key).apply() }
             notificationManager(context).cancel(NOTIFICATION_BASE + id)
         }
 
         private fun scheduleKey(id: Int) = "schedule_$id"
         private fun activeStartKey(id: Int) = "active_start_$id"
         private fun activeEndKey(id: Int) = "active_end_$id"
+        private fun skippedOccurrenceKey(id: Int, dateKey: String) =
+            "skipped_${id}_$dateKey"
+
+        private fun dateKeyFor(timestamp: Long): String =
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Jakarta")
+            }.format(Date(timestamp))
 
         private fun preferences(context: Context) =
             context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
@@ -187,6 +199,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             if (id < 0) return
             val config = loadConfig(context, id) ?: return
             val startAt = intent.getLongExtra(EXTRA_START_AT, System.currentTimeMillis())
+            val occurrenceDate = dateKeyFor(startAt)
+            if (preferences(context).getBoolean(skippedOccurrenceKey(id, occurrenceDate), false)) {
+                scheduleNextStart(context, id, startAt + 1000L)
+                return
+            }
             val durationMillis = config.optLong("durationMinutes", 30) * 60_000L
             val endAt = startAt + durationMillis
             preferences(context).edit()
@@ -308,12 +325,58 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ))
             notificationManager(context).cancel(NOTIFICATION_BASE + id)
+            prefs.edit().putBoolean(
+                skippedOccurrenceKey(id, dateKeyFor(startAt)),
+                true,
+            ).apply()
             markFlutterOccurrenceCompleted(context, id, startAt)
+        }
+
+        private fun dismissOccurrence(context: Context, intent: Intent) {
+            val id = intent.getIntExtra(EXTRA_ID, -1)
+            if (id < 0) return
+            val startAt = intent.getLongExtra(EXTRA_START_AT, 0L)
+            val prefs = preferences(context)
+            if (prefs.getLong(activeStartKey(id), 0L) == startAt) {
+                prefs.edit().remove(activeStartKey(id)).remove(activeEndKey(id)).apply()
+            }
+            val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val repeatIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
+                action = ACTION_REPEAT
+                putExtra(EXTRA_ID, id)
+                putExtra(EXTRA_START_AT, startAt)
+            }
+            alarms.cancel(PendingIntent.getBroadcast(
+                context,
+                REPEAT_REQUEST_BASE + id,
+                repeatIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            ))
+            notificationManager(context).cancel(NOTIFICATION_BASE + id)
+        }
+
+        /** Menonaktifkan notifikasi untuk satu kejadian tanpa menghapus jadwal rutin. */
+        fun dismissFromFlutter(context: Context, id: Int, dateKey: String) {
+            if (id < 0 || dateKey.isBlank()) return
+            val prefs = preferences(context)
+            prefs.edit().putBoolean(skippedOccurrenceKey(id, dateKey), true).apply()
+            val activeStartAt = prefs.getLong(activeStartKey(id), 0L)
+            if (activeStartAt > 0L && dateKeyFor(activeStartAt) == dateKey) {
+                val dismissIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
+                    action = ACTION_DISMISS
+                    putExtra(EXTRA_ID, id)
+                    putExtra(EXTRA_START_AT, activeStartAt)
+                }
+                dismissOccurrence(context, dismissIntent)
+            }
         }
 
         /** Dipanggil dari tab Minggu ini ketika pengguna menekan Tandai selesai. */
         fun completeFromFlutter(context: Context, id: Int, dateKey: String) {
             if (id < 0 || dateKey.isBlank()) return
+            preferences(context).edit()
+                .putBoolean(skippedOccurrenceKey(id, dateKey), true)
+                .apply()
             val activeStartAt = preferences(context).getLong(activeStartKey(id), 0L)
             val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
                 timeZone = TimeZone.getTimeZone("Asia/Jakarta")
@@ -360,6 +423,17 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                     }
                     if (!exists) completed.put(dateKey)
                     item.put("completedDates", completed)
+                    val missed = item.optJSONArray("notCompletedDates") ?: JSONArray()
+                    val filteredMissed = JSONArray()
+                    for (missedIndex in 0 until missed.length()) {
+                        if (missed.optString(missedIndex) != dateKey) {
+                            filteredMissed.put(missed.optString(missedIndex))
+                        }
+                    }
+                    item.put("notCompletedDates", filteredMissed)
+                    val reasons = item.optJSONObject("notCompletedReasons")
+                    reasons?.remove(dateKey)
+                    if (reasons != null) item.put("notCompletedReasons", reasons)
                     list.put(index, item)
                     storage.edit().putString(FLUTTER_REMINDERS_KEY, list.toString()).apply()
                     return

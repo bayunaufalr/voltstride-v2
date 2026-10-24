@@ -24,6 +24,36 @@ void main() {
     expect(decoded.style, ReminderStyle.notificationOnly);
   });
 
+  test('status tidak terlaksana dan alasan tersimpan setelah JSON dibuka ulang', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 11,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.tuesday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    final TrainingReminder missed = reminder.copyWith(
+      notCompletedDates: const <String>['2026-10-27'],
+      notCompletedReasons: const <String, String>{
+        '2026-10-27': 'Cuaca tidak mendukung',
+      },
+    );
+    final TrainingReminder decoded = TrainingReminder.fromJson(
+      Map<String, dynamic>.from(missed.toJson()),
+    );
+
+    expect(decoded.notCompletedDates, contains('2026-10-27'));
+    expect(
+      decoded.notCompletedReasons['2026-10-27'],
+      'Cuaca tidak mendukung',
+    );
+    expect(decoded.completedDates, isEmpty);
+  });
+
   test('menandai satu kejadian tidak mengubah jadwal berulangnya', () {
     const TrainingReminder reminder = TrainingReminder(
       id: 9,

@@ -29,6 +29,8 @@ class TrainingReminder {
     this.activityName = '',
     this.repeatIntervalSeconds = 60,
     this.completedDates = const <String>[],
+    this.notCompletedDates = const <String>[],
+    this.notCompletedReasons = const <String, String>{},
   });
 
   final int id;
@@ -44,8 +46,14 @@ class TrainingReminder {
   final ReminderStyle style;
   final String sound;
   final List<String> completedDates;
+  final List<String> notCompletedDates;
+  final Map<String, String> notCompletedReasons;
 
-  TrainingReminder copyWith({List<String>? completedDates}) => TrainingReminder(
+  TrainingReminder copyWith({
+    List<String>? completedDates,
+    List<String>? notCompletedDates,
+    Map<String, String>? notCompletedReasons,
+  }) => TrainingReminder(
         id: id,
         activity: activity,
         activityName: activityName,
@@ -57,6 +65,8 @@ class TrainingReminder {
         style: ReminderStyle.notificationOnly,
         sound: 'lembut',
         completedDates: completedDates ?? this.completedDates,
+        notCompletedDates: notCompletedDates ?? this.notCompletedDates,
+        notCompletedReasons: notCompletedReasons ?? this.notCompletedReasons,
       );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -71,6 +81,8 @@ class TrainingReminder {
         'style': ReminderStyle.notificationOnly.name,
         'sound': 'lembut',
         'completedDates': completedDates,
+        'notCompletedDates': notCompletedDates,
+        'notCompletedReasons': notCompletedReasons,
       };
 
   factory TrainingReminder.fromJson(Map<String, dynamic> json) {
@@ -96,6 +108,21 @@ class TrainingReminder {
       completedDates: (json['completedDates'] as List<dynamic>? ?? <dynamic>[])
           .whereType<String>()
           .toList(growable: false),
+      notCompletedDates:
+          (json['notCompletedDates'] as List<dynamic>? ?? <dynamic>[])
+              .whereType<String>()
+              .toList(growable: false),
+      notCompletedReasons: _decodeReasons(json['notCompletedReasons']),
+    );
+  }
+
+  static Map<String, String> _decodeReasons(Object? value) {
+    if (value is! Map) return const <String, String>{};
+    return value.map<String, String>(
+      (dynamic key, dynamic reason) => MapEntry<String, String>(
+        key.toString(),
+        reason.toString(),
+      ),
     );
   }
 
@@ -176,6 +203,8 @@ class ReminderService {
       style: ReminderStyle.notificationOnly,
       sound: 'lembut',
       completedDates: reminder.completedDates.toList(growable: false),
+      notCompletedDates: reminder.notCompletedDates.toList(growable: false),
+      notCompletedReasons: Map<String, String>.of(reminder.notCompletedReasons),
     );
     final List<TrainingReminder> current = await getAll();
     final List<TrainingReminder> updated = <TrainingReminder>[
@@ -267,23 +296,65 @@ class ReminderService {
     final List<TrainingReminder> updated = reminders
         .map((TrainingReminder item) {
           if (item.id != reminderId) return item;
-          final Set<String> dates = item.completedDates.toSet();
+          final Set<String> completedDates = item.completedDates.toSet();
+          final Set<String> missedDates = item.notCompletedDates.toSet();
+          final Map<String, String> reasons =
+              Map<String, String>.of(item.notCompletedReasons);
           if (completed) {
-            dates.add(dateKey);
+            completedDates.add(dateKey);
+            missedDates.remove(dateKey);
+            reasons.remove(dateKey);
           } else {
-            dates.remove(dateKey);
+            completedDates.remove(dateKey);
           }
-          return item.copyWith(completedDates: dates.toList()..sort());
+          return item.copyWith(
+            completedDates: completedDates.toList()..sort(),
+            notCompletedDates: missedDates.toList()..sort(),
+            notCompletedReasons: reasons,
+          );
         })
         .toList(growable: false);
     await _write(updated);
     if (completed && defaultTargetPlatform == TargetPlatform.android) {
-      await _settingsChannel.invokeMethod<bool>(
+      await _settingsChannel.invokeMethod<void>(
         'completeTrainingReminder',
-        <String, Object?>{
-          'id': reminderId,
-          'dateKey': dateKey,
-        },
+        <String, Object?>{'id': reminderId, 'dateKey': dateKey},
+      );
+    }
+  }
+
+  static Future<void> setOccurrenceNotCompleted({
+    required int reminderId,
+    required String dateKey,
+    required String reason,
+  }) async {
+    final String trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw ArgumentError.value(reason, 'reason', 'Reason cannot be empty.');
+    }
+    final List<TrainingReminder> reminders = await getAll();
+    final List<TrainingReminder> updated = reminders
+        .map((TrainingReminder item) {
+          if (item.id != reminderId) return item;
+          final Set<String> completedDates = item.completedDates.toSet()
+            ..remove(dateKey);
+          final Set<String> missedDates = item.notCompletedDates.toSet()
+            ..add(dateKey);
+          final Map<String, String> reasons =
+              Map<String, String>.of(item.notCompletedReasons)
+                ..[dateKey] = trimmedReason;
+          return item.copyWith(
+            completedDates: completedDates.toList()..sort(),
+            notCompletedDates: missedDates.toList()..sort(),
+            notCompletedReasons: reasons,
+          );
+        })
+        .toList(growable: false);
+    await _write(updated);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _settingsChannel.invokeMethod<void>(
+        'dismissTrainingReminder',
+        <String, Object?>{'id': reminderId, 'dateKey': dateKey},
       );
     }
   }
