@@ -50,22 +50,22 @@ class RunningNotificationService {
             ? 'VoltStride • $activityLabel paused'
             : 'VoltStride • $activityLabel dijeda')
         : (english
-            ? 'VoltStride • $activityLabel in progress'
-            : 'VoltStride • $activityLabel berlangsung');
+            ? 'VoltStride • $activityLabel'
+            : 'VoltStride • $activityLabel');
     final String body = paused
         ? (english
-            ? 'PAUSED • Time $time • $distance km • $speed • $pace/km'
-            : 'DIJEDA • Waktu $time • $distance km • $speed • $pace/km')
+            ? 'PAUSED • $time • $distance km'
+            : 'DIJEDA • $time • $distance km')
         : (english
-            ? 'Time $time • $distance km • $speed • $pace/km'
-            : 'Waktu $time • $distance km • $speed • $pace/km');
+            ? 'Pace $pace/km • $speed • $distance km'
+            : 'Pace $pace/km • $speed • $distance km');
 
     const AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_live_run_stats_v2',
-      'Statistik aktivitas VoltStride',
-      channelDescription: 'Waktu, jarak, kecepatan, dan pace sesi aktif.',
-      importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
+      'voltstride_live_run_stats_v3',
+      'Pace dan kecepatan VoltStride',
+      channelDescription: 'Pace dan kecepatan sesi aktif.',
+      importance: Importance.high,
+      priority: Priority.high,
       ongoing: true,
       autoCancel: false,
       onlyAlertOnce: true,
@@ -88,7 +88,6 @@ class RunningNotificationService {
     required double targetPaceSecondsPerKm,
     required double currentDistanceKm,
     required Duration elapsed,
-    required double? currentPaceSecondsPerKm,
     required int elapsedMinutes,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
@@ -102,36 +101,25 @@ class RunningNotificationService {
       currentDistanceKm: currentDistanceKm,
       elapsed: elapsed,
     );
-    final String target = _formatPace(targetPaceSecondsPerKm);
-    final bool hasCurrent = currentPaceSecondsPerKm != null &&
-        currentPaceSecondsPerKm.isFinite &&
-        currentPaceSecondsPerKm > 0 &&
-        currentPaceSecondsPerKm <= 3600;
-    final String current = hasCurrent
-        ? _formatPace(currentPaceSecondsPerKm)
-        : '--:--';
     final String requiredPace = _formatPace(
       guidance.requiredRemainingPaceSecondsPerKm,
     );
 
     final String advice;
     if (guidance.targetReached) {
-      advice = english
-          ? 'Target distance reached. Check the finished average pace against $target/km.'
-          : 'Jarak target tercapai. Bandingkan pace rata-rata akhir dengan target $target/km.';
+      advice = english ? 'Average pace target reached' : 'Target pace rata-rata tercapai';
     } else if (!guidance.targetAchievable) {
       advice = english
-          ? 'The target average pace is no longer mathematically reachable over the remaining distance. Finish at a safe effort.'
-          : 'Target pace rata-rata tidak lagi tercapai secara hitungan pada sisa jarak. Selesaikan dengan usaha yang aman.';
+          ? 'Target unreachable · keep a safe pace'
+          : 'Target tak terkejar · jaga pace aman';
     } else {
-      final String remaining = guidance.remainingDistanceKm.toStringAsFixed(2);
       advice = english
-          ? 'To finish at $target/km average, cover the remaining $remaining km at about $requiredPace/km.'
-          : 'Untuk finis dengan rata-rata $target/km, tempuh sisa $remaining km sekitar $requiredPace/km.';
+          ? 'Run at $requiredPace/km now'
+          : 'Sekarang harus lari pace $requiredPace/km';
     }
 
     final AndroidNotificationDetails android = AndroidNotificationDetails(
-      'voltstride_pacer_priority_v8',
+      'voltstride_pacer_watch_v10',
       english ? 'Minute-by-minute pacer' : 'Pacer setiap menit',
       channelDescription: english
           ? 'High-priority pace guidance while a running session is active.'
@@ -150,12 +138,8 @@ class RunningNotificationService {
     _pacerNotificationIds.add(notificationId);
     await _plugin.show(
       notificationId,
-      english
-          ? 'Running pacer • Minute $elapsedMinutes'
-          : 'Pacer lari • Menit $elapsedMinutes',
-      english
-          ? 'Target avg $target/km • Current avg $current/km. $advice'
-          : 'Target rata-rata $target/km • Rata-rata saat ini $current/km. $advice',
+      english ? 'VoltStride Pacer' : 'VoltStride Pacer',
+      advice,
       NotificationDetails(android: android),
     );
   }

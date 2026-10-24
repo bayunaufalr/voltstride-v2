@@ -122,11 +122,15 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       );
       await _loadReminders();
     } catch (_) {
+      await _loadReminders();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _text('Perubahan belum tersimpan.', 'Change was not saved.'),
+            _text(
+              'Status lokal diperbarui, tetapi notifikasi Android belum dapat diselaraskan.',
+              'The local status changed, but the Android notification could not be synchronized.',
+            ),
           ),
         ),
       );
@@ -413,31 +417,39 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: <Widget>[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(border: Border.all(color: border)),
-                child: Text(
-                  occurrence.completed
-                      ? _text('Selesai', 'Completed')
-                      : _text('Belum selesai', 'Not completed'),
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+          if (occurrence.completed)
+            Row(
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    border: Border.all(color: border),
+                  ),
+                  child: Text(
+                    _text('Selesai', 'Completed'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-              const Spacer(),
-              if (occurrence.completed)
+                const Spacer(),
                 TextButton(
                   onPressed: () => _setCompleted(occurrence, completed: false),
                   child: Text(_text('Batalkan', 'Undo')),
-                )
-              else
-                FilledButton.tonal(
-                  onPressed: () => _setCompleted(occurrence, completed: true),
-                  child: Text(_text('Tandai selesai', 'Mark complete')),
                 ),
-            ],
-          ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _setCompleted(occurrence, completed: true),
+                icon: const Icon(Icons.check_circle_outline_rounded),
+                label: Text(_text('Tandai selesai', 'Mark complete')),
+              ),
+            ),
         ],
       ),
     );

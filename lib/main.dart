@@ -196,6 +196,10 @@ class RootShell extends StatefulWidget {
 class _RootShellState extends State<RootShell> {
   int _index = 0;
   List<RunPoint> _plannedRoute = <RunPoint>[];
+  ActivityStartConfig? _activeRunConfig;
+  bool _showRunningPage = false;
+  bool _runningSessionActive = false;
+  int _runPageGeneration = 0;
 
   final GlobalKey<HomeDashboardPageState> _homeKey =
       GlobalKey<HomeDashboardPageState>();
@@ -219,6 +223,7 @@ class _RootShellState extends State<RootShell> {
         ),
         ActivitySetupPage(
           key: _activityKey,
+          sessionAlreadyActive: _runningSessionActive,
           onStart: _startActivity,
         ),
         MorePage(
@@ -308,26 +313,110 @@ class _RootShellState extends State<RootShell> {
     });
   }
 
-  Future<void> _startActivity(ActivityStartConfig config) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext routeContext) => RunningPage(
-          activityType: config.activityType,
-          environment: config.environment,
-          initialIntervalPlan: config.intervalPlan,
-          targetDistanceKm: config.targetDistanceKm,
-          targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
-          plannedRoute: _plannedRoute,
-          paceNotificationsEnabled: config.paceNotificationsEnabled,
-          autoStart: true,
-          onExit: () => Navigator.of(routeContext).pop(),
+  void _startActivity(ActivityStartConfig config) {
+    if (_runningSessionActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLanguageService.text(
+            context,
+            'Sesi sebelumnya masih merekam. Selesaikan sesi itu sebelum memulai aktivitas baru.',
+            'The current session is still recording. Finish it before starting another activity.',
+          )),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _activeRunConfig = config;
+      _runPageGeneration++;
+      _showRunningPage = true;
+      _index = 2;
+    });
+  }
+
+  void _onRunningSessionActiveChanged(bool active) {
+    if (!mounted || _runningSessionActive == active) return;
+    setState(() => _runningSessionActive = active);
+  }
+
+  void _minimizeRunningPage() {
+    if (!mounted) return;
+    setState(() {
+      _showRunningPage = false;
+      _index = 0;
+    });
+  }
+
+  void _exitRunningPage() {
+    if (!mounted) return;
+    setState(() {
+      _activeRunConfig = null;
+      _showRunningPage = false;
+      _runningSessionActive = false;
+      _index = 0;
+    });
+    unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
+    unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
+  }
+
+  Widget _activeSessionBanner(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final ActivityStartConfig? config = _activeRunConfig;
+    final String activity = config?.activityType == RunActivityType.walk
+        ? AppLanguageService.text(context, 'Jalan', 'Walk')
+        : AppLanguageService.text(context, 'Lari', 'Run');
+    return Material(
+      color: colors.surface,
+      elevation: 5,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.outline),
+        ),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.gps_fixed_rounded, color: colors.onSurface),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    AppLanguageService.text(
+                      context,
+                      '$activity masih merekam',
+                      '$activity is still recording',
+                    ),
+                    style: TextStyle(
+                      color: colors.onSurface,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    AppLanguageService.text(
+                      context,
+                      'Anda bisa membuka tab lain tanpa menghentikan sesi.',
+                      'You can explore other tabs without stopping the session.',
+                    ),
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => setState(() => _showRunningPage = true),
+              child: Text(AppLanguageService.text(context, 'Kembali', 'Resume')),
+            ),
+          ],
         ),
       ),
     );
-    if (!mounted) return;
-    setState(() => _index = 0);
-    unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
-    unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
   }
 
   Future<void> _openPage(Widget page) async {
@@ -338,13 +427,56 @@ class _RootShellState extends State<RootShell> {
 
   @override
   Widget build(BuildContext context) {
+    final ActivityStartConfig? config = _activeRunConfig;
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _selectTab,
-        destinations: _destinations(context),
+      body: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          Offstage(
+            offstage: _showRunningPage,
+            child: TickerMode(
+              enabled: !_showRunningPage,
+              child: IndexedStack(index: _index, children: _pages),
+            ),
+          ),
+          if (config != null)
+            Offstage(
+              offstage: !_showRunningPage,
+              child: TickerMode(
+                enabled: _showRunningPage,
+                child: RunningPage(
+                  key: ValueKey<int>(_runPageGeneration),
+                  activityType: config.activityType,
+                  environment: config.environment,
+                  initialIntervalPlan: config.intervalPlan,
+                  targetDistanceKm: config.targetDistanceKm,
+                  targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
+                  plannedRoute: _plannedRoute,
+                  paceNotificationsEnabled: config.paceNotificationsEnabled,
+                  autoStart: true,
+                  onExit: _exitRunningPage,
+                  onMinimize: _minimizeRunningPage,
+                  onSessionActiveChanged: _onRunningSessionActiveChanged,
+                  isVisible: _showRunningPage,
+                ),
+              ),
+            ),
+          if (!_showRunningPage && _runningSessionActive)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 10,
+              child: _activeSessionBanner(context),
+            ),
+        ],
       ),
+      bottomNavigationBar: _showRunningPage
+          ? null
+          : NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: _selectTab,
+              destinations: _destinations(context),
+            ),
     );
   }
 }

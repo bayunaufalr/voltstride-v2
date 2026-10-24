@@ -506,6 +506,9 @@ class ProgressPageState extends State<ProgressPage> {
         final DateTime? lastSession = observations.isEmpty
             ? null
             : observations.first.session.startedAt;
+        final String latestSessionDate = lastSession == null
+            ? ''
+            : _formatShortDate(lastSession);
 
         return Container(
           width: double.infinity,
@@ -605,17 +608,16 @@ class ProgressPageState extends State<ProgressPage> {
                     ),
                   ),
                 const SizedBox(height: 6),
-                if (lastSession != null)
-                  Text(
-                    _text(
-                      '${observations.length} sesi lari digunakan · terbaru ${_formatShortDate(lastSession)}',
-                      '${observations.length} runs considered · latest ${_formatShortDate(lastSession)}',
-                    ),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 11,
-                    ),
+                Text(
+                  _text(
+                    '${observations.length} sesi lari digunakan · terbaru $latestSessionDate',
+                    '${observations.length} runs considered · latest $latestSessionDate',
                   ),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
               ] else
                 Text(
                   _text(

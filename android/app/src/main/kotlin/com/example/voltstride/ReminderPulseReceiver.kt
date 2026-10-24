@@ -37,7 +37,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         private const val PREFERENCES = "VoltStrideReminderPulse"
         private const val FLUTTER_PREFERENCES = "FlutterSharedPreferences"
         private const val FLUTTER_REMINDERS_KEY = "flutter.voltstride_training_reminders_v1"
-        private const val CHANNEL_ID = "voltstride_training_pulse_v8"
+        private const val CHANNEL_ID = "voltstride_training_pulse_v9"
         private const val START_REQUEST_BASE = 510000
         private const val REPEAT_REQUEST_BASE = 610000
         private const val COMPLETE_REQUEST_BASE = 710000
@@ -311,15 +311,45 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             markFlutterOccurrenceCompleted(context, id, startAt)
         }
 
+        /** Dipanggil dari tab Minggu ini ketika pengguna menekan Tandai selesai. */
+        fun completeFromFlutter(context: Context, id: Int, dateKey: String) {
+            if (id < 0 || dateKey.isBlank()) return
+            val activeStartAt = preferences(context).getLong(activeStartKey(id), 0L)
+            val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Jakarta")
+            }
+            if (activeStartAt > 0L && formatter.format(Date(activeStartAt)) == dateKey) {
+                val completionIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
+                    action = ACTION_COMPLETE
+                    putExtra(EXTRA_ID, id)
+                    putExtra(EXTRA_START_AT, activeStartAt)
+                }
+                completeOccurrence(context, completionIntent)
+            } else {
+                markFlutterOccurrenceCompletedForDate(context, id, dateKey)
+            }
+        }
+
         private fun markFlutterOccurrenceCompleted(context: Context, id: Int, startAt: Long) {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("Asia/Jakarta")
+            }
+            markFlutterOccurrenceCompletedForDate(
+                context,
+                id,
+                dateFormat.format(Date(startAt)),
+            )
+        }
+
+        private fun markFlutterOccurrenceCompletedForDate(
+            context: Context,
+            id: Int,
+            dateKey: String,
+        ) {
             try {
                 val storage = context.getSharedPreferences(FLUTTER_PREFERENCES, Context.MODE_PRIVATE)
                 val raw = storage.getString(FLUTTER_REMINDERS_KEY, null) ?: return
                 val list = JSONArray(raw)
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("Asia/Jakarta")
-                }
-                val dateKey = dateFormat.format(Date(startAt))
                 for (index in 0 until list.length()) {
                     val item = list.optJSONObject(index) ?: continue
                     if (item.optInt("id", -1) != id) continue

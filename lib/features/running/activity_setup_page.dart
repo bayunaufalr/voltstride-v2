@@ -32,9 +32,14 @@ class ActivityStartConfig {
 enum _ActivityMode { run, interval, walk }
 
 class ActivitySetupPage extends StatefulWidget {
-  const ActivitySetupPage({super.key, required this.onStart});
+  const ActivitySetupPage({
+    super.key,
+    required this.onStart,
+    this.sessionAlreadyActive = false,
+  });
 
   final ValueChanged<ActivityStartConfig> onStart;
+  final bool sessionAlreadyActive;
 
   @override
   State<ActivitySetupPage> createState() => ActivitySetupPageState();
@@ -429,9 +434,29 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               Text(_text('Mode dalam ruangan tidak meminta GPS. Saat selesai, masukkan jarak dari treadmill atau alat yang digunakan.', 'Indoor mode does not use GPS. Enter the distance from your treadmill or equipment when you finish.'), style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4)),
             ],
             const SizedBox(height: 20),
+            if (widget.sessionAlreadyActive) ...<Widget>[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  border: Border.all(color: Theme.of(context).colorScheme.outline),
+                ),
+                child: Text(
+                  _text(
+                    'Aktivitas lain tidak dapat dimulai sebelum sesi aktif selesai.',
+                    'Another activity cannot start until the active session is finished.',
+                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             FilledButton(
-              onPressed: _start,
-              child: Text(_text('Mulai aktivitas', 'Start activity')),
+              onPressed: widget.sessionAlreadyActive ? null : _start,
+              child: Text(widget.sessionAlreadyActive
+                  ? _text('Sesi sedang berjalan', 'Session in progress')
+                  : _text('Mulai aktivitas', 'Start activity')),
             ),
             const SizedBox(height: 8),
             Text(_text('Untuk GPS yang lebih akurat, mulai di area terbuka.', 'For better GPS accuracy, start in an open area.'), textAlign: TextAlign.center, style: TextStyle(color: teksSekunder, fontSize: 11, height: 1.4)),
@@ -643,6 +668,17 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   }
 
   void _start() {
+    if (widget.sessionAlreadyActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Sesi masih berlangsung. Kembali ke sesi aktif atau selesaikan dulu.',
+            'A session is already active. Resume it or finish it first.',
+          )),
+        ),
+      );
+      return;
+    }
     double? targetDistanceKm;
     double? targetPaceSecondsPerKm;
     final String targetDistanceText = _targetDistanceKm.text.trim();

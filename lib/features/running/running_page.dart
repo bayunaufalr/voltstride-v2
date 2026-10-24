@@ -34,6 +34,9 @@ class RunningPage extends StatefulWidget {
     this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
     this.onExit,
+    this.onMinimize,
+    this.onSessionActiveChanged,
+    this.isVisible = true,
   });
 
   final RunActivityType activityType;
@@ -45,6 +48,9 @@ class RunningPage extends StatefulWidget {
   final List<RunPoint> plannedRoute;
   final bool autoStart;
   final VoidCallback? onExit;
+  final VoidCallback? onMinimize;
+  final ValueChanged<bool>? onSessionActiveChanged;
+  final bool isVisible;
 
   @override
   State<RunningPage> createState() => _RunningPageState();
@@ -78,7 +84,6 @@ class _RunningPageState extends State<RunningPage> {
   int _lastObservedRouteLength = 0;
   int? _countdownValue;
   bool _isStarting = false;
-  bool _showingBackgroundDialog = false;
   StreamSubscription<StepCount>? _stepSubscription;
   bool _requestingStepStream = false;
   int? _lastSystemStepCount;
@@ -162,6 +167,12 @@ class _RunningPageState extends State<RunningPage> {
     final RunStatus currentStatus = _controller.status;
     final bool statusChanged = currentStatus != _lastObservedStatus;
     _lastObservedStatus = currentStatus;
+    if (statusChanged) {
+      final bool active = currentStatus == RunStatus.acquiringGps ||
+          currentStatus == RunStatus.running ||
+          currentStatus == RunStatus.paused;
+      widget.onSessionActiveChanged?.call(active);
+    }
 
     if (currentStatus == RunStatus.paused) {
       _lastPacerMinute = _controller.elapsed.inMinutes;
@@ -449,65 +460,25 @@ class _RunningPageState extends State<RunningPage> {
         break;
     }
     return PopScope<Object?>(
-      canPop: !sessionActive,
+      canPop: !widget.isVisible || (widget.onExit == null && !sessionActive),
       onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (!didPop && sessionActive) unawaited(_handleBackDuringRun());
+        if (didPop || !widget.isVisible) return;
+        if (sessionActive) {
+          _minimizeSession();
+        } else {
+          widget.onExit?.call();
+        }
       },
       child: page,
     );
   }
 
-  Future<void> _handleBackDuringRun() async {
-    if (!mounted || _showingBackgroundDialog) return;
-    _showingBackgroundDialog = true;
-    try {
-      final String? choice = await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext dialogContext) => AlertDialog(
-          title: Text(_text('Aktivitas masih berjalan', 'Activity is still running')),
-          content: Text(_text(
-            'Sesi tidak akan dihentikan. Anda dapat kembali merekam atau memindahkan VoltStride ke latar belakang.',
-            'The session will keep running. You can return to the activity or move VoltStride to the background.',
-          )),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop('continue'),
-              child: Text(_text('Tetap merekam', 'Keep recording')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop('background'),
-              child: Text(_text('Ke latar belakang', 'Run in background')),
-            ),
-          ],
-        ),
-      );
-      if (choice == 'background' && mounted) {
-        try {
-          await const MethodChannel('voltstride/android_settings')
-              .invokeMethod<bool>('moveTaskToBack');
-        } on PlatformException catch (error) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(_text(
-                'VoltStride tidak dapat dipindahkan ke latar belakang: ${error.message ?? 'kesalahan Android'}',
-                'VoltStride could not move to the background: ${error.message ?? 'Android error'}',
-              ))),
-            );
-          }
-        } on MissingPluginException {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(_text(
-                'Fitur latar belakang tidak tersedia pada build ini.',
-                'Background mode is unavailable in this build.',
-              ))),
-            );
-          }
-        }
-      }
-    } finally {
-      _showingBackgroundDialog = false;
+  void _minimizeSession() {
+    if (!mounted) return;
+    if (_controller.isActive) {
+      widget.onMinimize?.call();
+    } else {
+      widget.onExit?.call();
     }
   }
 
@@ -617,6 +588,13 @@ class _RunningPageState extends State<RunningPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(countingDown ? _text('Mulai', 'Start') : _text('Bersiap', 'Get ready')),
+        actions: <Widget>[
+          IconButton(
+            tooltip: _text('Kembali ke aplikasi', 'Return to app'),
+            onPressed: _minimizeSession,
+            icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
+          ),
+        ],
       ),
       body: Center(
         child: Padding(
@@ -688,9 +666,9 @@ class _RunningPageState extends State<RunningPage> {
       appBar: AppBar(
         title: Text('$_activityDisplayLabel • ${_text('Dalam ruangan', 'Indoor')}'),
         leading: IconButton(
-          tooltip: _text('Keluar dari aktivitas', 'Exit activity'),
-          onPressed: () => _confirmExitIndoor(paused: paused),
-          icon: const Icon(Icons.close_rounded),
+          tooltip: _text('Kembali ke aplikasi', 'Return to app'),
+          onPressed: _minimizeSession,
+          icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
         ),
       ),
       body: SafeArea(
@@ -753,10 +731,6 @@ class _RunningPageState extends State<RunningPage> {
         ),
       ),
     );
-  }
-
-  Future<void> _confirmExitIndoor({required bool paused}) async {
-    await _handleBackDuringRun();
   }
 
   Widget _buildLiveMapExperience({required bool paused}) {
@@ -842,6 +816,19 @@ class _RunningPageState extends State<RunningPage> {
                           ),
                         );
                       }),
+                      const SizedBox(width: 8),
+                      Material(
+                        color: overlayColor,
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: _text('Minimalkan sesi', 'Minimize session'),
+                          onPressed: _minimizeSession,
+                          icon: Icon(
+                            Icons.keyboard_double_arrow_down_rounded,
+                            color: overlayText,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1352,6 +1339,13 @@ class _RunningPageState extends State<RunningPage> {
       appBar: AppBar(
         title: Text(paused ? '$_activityDisplayLabel ${_text('dijeda', 'paused')}' : '$_activityDisplayLabel ${_text('berlangsung', 'in progress')}'),
         automaticallyImplyLeading: false,
+        actions: <Widget>[
+          IconButton(
+            tooltip: _text('Minimalkan sesi', 'Minimize session'),
+            onPressed: _minimizeSession,
+            icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -1930,7 +1924,6 @@ class _RunningPageState extends State<RunningPage> {
         targetPaceSecondsPerKm: target,
         currentDistanceKm: _controller.distanceKm,
         elapsed: _controller.elapsed,
-        currentPaceSecondsPerKm: _controller.averagePaceSecondsPerKm,
         elapsedMinutes: elapsedMinutes,
       );
     } catch (_) {

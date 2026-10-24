@@ -277,6 +277,15 @@ class ReminderService {
         })
         .toList(growable: false);
     await _write(updated);
+    if (completed && defaultTargetPlatform == TargetPlatform.android) {
+      await _settingsChannel.invokeMethod<bool>(
+        'completeTrainingReminder',
+        <String, Object?>{
+          'id': reminderId,
+          'dateKey': dateKey,
+        },
+      );
+    }
   }
 
   static Future<void> restoreSavedSchedules() async {
