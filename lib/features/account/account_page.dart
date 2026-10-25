@@ -20,6 +20,7 @@ import '../reminders/reminder_service.dart';
 import '../../services/app_language_service.dart';
 import 'profile_training_summary.dart';
 import 'account_service.dart';
+import 'privacy_policy_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -323,6 +324,29 @@ class AccountPageState extends State<AccountPage>
         _themeCard(),
         const SizedBox(height: 12),
         const AppLanguageSettingCard(),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          ),
+          child: ListTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: Text(_text('Kebijakan Privasi', 'Privacy Policy')),
+            subtitle: Text(_text(
+              'Cara VoltStride memproses dan menyimpan data.',
+              'How VoltStride processes and stores data.',
+            )),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => const PrivacyPolicyPage(),
+                ),
+              );
+            },
+          ),
+        ),
         if (_legacyHistoryCount > 0) ...<Widget>[
           const SizedBox(height: 14),
           _legacyHistoryCard(),

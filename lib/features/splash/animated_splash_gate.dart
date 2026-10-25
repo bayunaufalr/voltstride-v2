@@ -1,3 +1,5 @@
+// ignore_for_file: lines_longer_than_80_chars
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,15 +8,20 @@ import 'package:flutter/services.dart';
 /// Menampilkan identitas VoltStride sebentar sebelum membuka halaman utama.
 /// Gambar ini hanya digunakan untuk layar pembuka; launcher icon tidak berubah.
 class AnimatedSplashGate extends StatefulWidget {
-  const AnimatedSplashGate({super.key, required this.child});
+  const AnimatedSplashGate({
+    super.key,
+    required this.child,
+    this.waitForChildReady = false,
+  });
 
   final Widget child;
+  final bool waitForChildReady;
 
   @override
-  State<AnimatedSplashGate> createState() => _AnimatedSplashGateState();
+  AnimatedSplashGateState createState() => AnimatedSplashGateState();
 }
 
-class _AnimatedSplashGateState extends State<AnimatedSplashGate>
+class AnimatedSplashGateState extends State<AnimatedSplashGate>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _logoScale;
@@ -24,10 +31,13 @@ class _AnimatedSplashGateState extends State<AnimatedSplashGate>
   late final Animation<double> _lineWidth;
   Timer? _finishTimer;
   bool _showSplash = true;
+  bool _minimumElapsed = false;
+  late bool _childReady;
 
   @override
   void initState() {
     super.initState();
+    _childReady = !widget.waitForChildReady;
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1700),
@@ -63,7 +73,20 @@ class _AnimatedSplashGateState extends State<AnimatedSplashGate>
     );
     _controller.forward();
     _finishTimer = Timer(const Duration(milliseconds: 2550), () {
-      if (mounted) setState(() => _showSplash = false);
+      if (!mounted) return;
+      setState(() {
+        _minimumElapsed = true;
+        if (_childReady) _showSplash = false;
+      });
+    });
+  }
+
+  /// Dipanggil setelah AccountGate selesai memeriksa sesi Firebase.
+  void markChildReady() {
+    if (!mounted || _childReady) return;
+    setState(() {
+      _childReady = true;
+      if (_minimumElapsed) _showSplash = false;
     });
   }
 
@@ -96,20 +119,40 @@ class _AnimatedSplashGateState extends State<AnimatedSplashGate>
                 ? Brightness.light
                 : Brightness.dark),
       ),
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 500),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.985, end: 1).animate(animation),
-              child: child,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          // AccountGate berjalan di belakang splash supaya sesi akun selesai
+          // diperiksa selama animasi, bukan setelah logo menghilang.
+          Offstage(
+            offstage: _showSplash,
+            child: TickerMode(
+              enabled: !_showSplash,
+              child: _buildApp(),
             ),
-          );
-        },
-        child: _showSplash ? _buildSplash() : _buildApp(),
+          ),
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 420),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.99, end: 1).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: _showSplash
+                  ? _buildSplash()
+                  : const SizedBox.shrink(
+                      key: ValueKey<String>('voltstride-splash-hidden'),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

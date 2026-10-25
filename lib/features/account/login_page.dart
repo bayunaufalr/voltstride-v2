@@ -1,7 +1,11 @@
+// ignore_for_file: lines_longer_than_80_chars
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../../services/app_language_service.dart';
+import 'privacy_policy_page.dart';
 import 'account_service.dart';
 
 /// Halaman masuk dan pendaftaran akun VoltStride.
@@ -24,6 +28,9 @@ class _LoginPageState extends State<LoginPage> {
   bool _sedangMemproses = false;
   String? _pesanError;
 
+  String _text(String indonesia, String english) =>
+      AppLanguageService.text(context, indonesia, english);
+
   @override
   void dispose() {
     _namaController.dispose();
@@ -31,6 +38,14 @@ class _LoginPageState extends State<LoginPage> {
     _sandiController.dispose();
     _ulangSandiController.dispose();
     super.dispose();
+  }
+
+  Future<void> _bukaKebijakanPrivasi() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => const PrivacyPolicyPage(),
+      ),
+    );
   }
 
   Future<void> _kirimFormulir() async {
@@ -71,32 +86,123 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _lupaKataSandi() async {
-    final String email = _emailController.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      setState(() => _pesanError = 'Isi email terlebih dahulu untuk menerima link pemulihan.');
+    if (_sedangMemproses) return;
+
+    final TextEditingController emailPemulihan = TextEditingController(
+      text: _emailController.text.trim(),
+    );
+    String? pesanValidasi;
+
+    final String? email = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (
+          BuildContext dialogContext,
+          StateSetter setDialogState,
+        ) {
+          return AlertDialog(
+            title: Text(_text('Atur ulang kata sandi', 'Reset password')),
+            content: TextField(
+              controller: emailPemulihan,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (String value) {
+                final String trimmed = value.trim();
+                if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                    .hasMatch(trimmed)) {
+                  setDialogState(() => pesanValidasi = _text(
+                    'Masukkan alamat email yang valid.',
+                    'Enter a valid email address.',
+                  ));
+                  return;
+                }
+                Navigator.of(dialogContext).pop(trimmed);
+              },
+              decoration: InputDecoration(
+                labelText: _text('Email akun', 'Account email'),
+                hintText: 'nama@email.com',
+                errorText: pesanValidasi,
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            actions: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(alignment: Alignment.center),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: Text(_text('Batal', 'Cancel')),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(alignment: Alignment.center),
+                      onPressed: () {
+                        final String trimmed = emailPemulihan.text.trim();
+                        if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+                            .hasMatch(trimmed)) {
+                          setDialogState(() => pesanValidasi = _text(
+                            'Masukkan alamat email yang valid.',
+                            'Enter a valid email address.',
+                          ));
+                          return;
+                        }
+                        Navigator.of(dialogContext).pop(trimmed);
+                      },
+                      child: Text(_text('Kirim tautan', 'Send link')),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (email == null || email.isEmpty) {
+      emailPemulihan.dispose();
       return;
     }
 
-    setState(() {
-      _sedangMemproses = true;
-      _pesanError = null;
-    });
+    _emailController.text = email;
+    if (mounted) {
+      setState(() {
+        _sedangMemproses = true;
+        _pesanError = null;
+      });
+    }
 
     try {
       await AccountService.kirimLinkAturUlangSandi(email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Link untuk mengatur ulang kata sandi telah dikirim jika email terdaftar.'),
+        SnackBar(
+          content: Text(_text(
+            'Jika email terdaftar, tautan pengaturan ulang kata sandi akan dikirim. Periksa kotak masuk dan folder spam.',
+            'If the email is registered, a password reset link will be sent. Check your inbox and spam folder.',
+          )),
         ),
       );
     } on FirebaseAuthException catch (error) {
-      if (mounted) setState(() => _pesanError = pesanErrorAkun(error));
+      if (mounted) setState(() => _pesanError = pesanErrorAkun(
+            error,
+            english: AppLanguageService.localeNotifier.value.languageCode == 'en',
+          ));
     } catch (_) {
       if (mounted) {
-        setState(() => _pesanError = 'Link pemulihan belum dapat dikirim. Coba lagi nanti.');
+        setState(() => _pesanError = _text(
+          'Tautan pemulihan belum dapat dikirim. Periksa koneksi internet dan pengaturan Email/Password di Firebase.',
+          'The reset link could not be sent. Check your internet connection and Firebase Email/Password settings.',
+        ));
       }
     } finally {
+      emailPemulihan.dispose();
       if (mounted) setState(() => _sedangMemproses = false);
     }
   }
@@ -145,7 +251,7 @@ class _LoginPageState extends State<LoginPage> {
                   children: <Widget>[
                     const SizedBox(height: 8),
                     Text(
-                      _sedangDaftar ? 'Buat akunmu' : 'Selamat datang kembali',
+                      _sedangDaftar ? _text('Buat akunmu', 'Create your account') : _text('Selamat datang', 'Welcome'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 27,
@@ -155,8 +261,8 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 8),
                     Text(
                       _sedangDaftar
-                          ? 'Simpan catatan latihan dan buka di perangkat lain dengan akun yang sama.'
-                          : 'Masuk untuk melanjutkan.',
+                          ? _text('Simpan catatan latihan dan buka di perangkat lain dengan akun yang sama.', 'Save training records and access them on other devices with the same account.')
+                          : _text('Masuk untuk melanjutkan.', 'Sign in to continue.'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: VoltWarna.teksAbu,
@@ -300,13 +406,22 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Gunakan email dan kata sandi milikmu sendiri.',
+                      _text(
+                        'Gunakan email dan kata sandi milikmu sendiri.',
+                        'Use your own email address and password.',
+                      ),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: VoltWarna.teksRedup,
                         fontSize: 11,
                         height: 1.5,
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                      onPressed: _bukaKebijakanPrivasi,
+                      icon: const Icon(Icons.privacy_tip_outlined, size: 17),
+                      label: Text(_text('Kebijakan Privasi', 'Privacy Policy')),
                     ),
                   ],
                 ),

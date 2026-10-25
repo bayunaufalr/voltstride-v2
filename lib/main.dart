@@ -89,12 +89,13 @@ Future<void> _restoreRemindersAfterStartup() async {
 }
 
 class VoltStrideApp extends StatelessWidget {
-  const VoltStrideApp({
+  VoltStrideApp({
     super.key,
     required this.firebaseReady,
     this.firebaseSetupError,
-  });
+  }) : _splashGateKey = GlobalKey<AnimatedSplashGateState>();
 
+  final GlobalKey<AnimatedSplashGateState> _splashGateKey;
   final bool firebaseReady;
   final String? firebaseSetupError;
 
@@ -141,8 +142,13 @@ class VoltStrideApp extends StatelessWidget {
                 return child ?? const SizedBox.shrink();
               },
               home: AnimatedSplashGate(
+                key: _splashGateKey,
+                waitForChildReady: firebaseReady,
                 child: firebaseReady
-                    ? const AccountGate()
+                    ? AccountGate(
+                        onReady: () =>
+                            _splashGateKey.currentState?.markChildReady(),
+                      )
                     : FirebaseSetupPage(detailError: firebaseSetupError),
               ),
             );
@@ -156,7 +162,9 @@ class VoltStrideApp extends StatelessWidget {
 
 /// Memilih halaman login atau halaman utama berdasarkan sesi akun Firebase.
 class AccountGate extends StatefulWidget {
-  const AccountGate({super.key});
+  const AccountGate({super.key, this.onReady});
+
+  final VoidCallback? onReady;
 
   @override
   State<AccountGate> createState() => _AccountGateState();
@@ -164,12 +172,26 @@ class AccountGate extends StatefulWidget {
 
 class _AccountGateState extends State<AccountGate> {
   late final Stream<User?> _perubahanAkun = AccountService.perubahanAkun;
+  bool _readyAlreadyReported = false;
+
+  void _reportReadyWhenResolved(AsyncSnapshot<User?> snapshot) {
+    if (_readyAlreadyReported ||
+        (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasError)) {
+      return;
+    }
+    _readyAlreadyReported = true;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (mounted) widget.onReady?.call();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: _perubahanAkun,
       builder: (BuildContext context, AsyncSnapshot<User?> snapshot) {
+        _reportReadyWhenResolved(snapshot);
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -432,14 +454,24 @@ class _RootShellState extends State<RootShell> {
             'Apakah Anda ingin keluar dari VoltStride?',
             'Do you want to exit VoltStride?',
           )),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
           actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: Text(AppLanguageService.text(context, 'Batal', 'Cancel')),
+            SizedBox(
+              width: 108,
+              child: TextButton(
+                style: TextButton.styleFrom(alignment: Alignment.center),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(AppLanguageService.text(context, 'Batal', 'Cancel')),
+              ),
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(AppLanguageService.text(context, 'Keluar', 'Exit')),
+            SizedBox(
+              width: 108,
+              child: FilledButton(
+                style: FilledButton.styleFrom(alignment: Alignment.center),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(AppLanguageService.text(context, 'Keluar', 'Exit')),
+              ),
             ),
           ],
         ),
