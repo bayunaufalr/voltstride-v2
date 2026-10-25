@@ -222,7 +222,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
             const SizedBox(height: 20),
-            _sectionTitle(_text('Target aktivitas', 'Activity target')),
+            _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(15),
@@ -235,7 +235,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    _text('Isi jarak target dan pace rata-rata. Pacer aktif secara default dan memerlukan kedua nilai ini.', 'Set a target distance and average pace. The pacer is on by default and requires both values.'),
+                    _text('Isi jarak target dan pace rata-rata yang ingin dicapai.', 'Set the target distance and desired average pace.'),
                     style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -704,8 +704,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       }
     }
 
-    if (_paceNotificationsEnabled &&
-        (targetPaceSecondsPerKm == null || targetDistanceKm == null)) {
+    if (_paceNotificationsEnabled && targetPaceSecondsPerKm == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

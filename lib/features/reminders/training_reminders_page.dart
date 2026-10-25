@@ -923,6 +923,8 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         completedDates: widget.initial?.completedDates ?? const <String>[],
         notCompletedDates: widget.initial?.notCompletedDates ?? const <String>[],
         notCompletedReasons: widget.initial?.notCompletedReasons ?? const <String, String>{},
+        activityDurationSecondsByDate:
+            widget.initial?.activityDurationSecondsByDate ?? const <String, int>{},
       ),
     );
   }

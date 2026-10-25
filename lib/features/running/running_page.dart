@@ -184,7 +184,7 @@ class _RunningPageState extends State<RunningPage> {
       final int minute = _controller.elapsed.inMinutes;
       if (minute > 0 && minute > _lastPacerMinute) {
         _lastPacerMinute = minute;
-        unawaited(_sendPacerUpdate(minute));
+        unawaited(_sendPacerUpdate());
       }
     }
     if (currentStatus == RunStatus.running || currentStatus == RunStatus.paused) {
@@ -204,7 +204,7 @@ class _RunningPageState extends State<RunningPage> {
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
       if (previousKey != null && previousKey != phaseKey) {
-        unawaited(_vibrateForIntervalTransition(phase.stage));
+        unawaited(_handleIntervalTransition(phase, plan));
       }
       _lastIntervalPhaseKey = phaseKey;
     }
@@ -243,6 +243,28 @@ class _RunningPageState extends State<RunningPage> {
       );
     } catch (_) {
       // Kegagalan sinkronisasi pengingat tidak boleh mengganggu perekaman GPS.
+    }
+  }
+
+  Future<void> _handleIntervalTransition(
+    IntervalPhase phase,
+    IntervalRunPlan plan,
+  ) async {
+    // Notifikasi dan getaran merupakan dua jalur terpisah. Kegagalan salah
+    // satunya tidak boleh mencegah pemberitahuan pergantian sesi.
+    try {
+      await _vibrateForIntervalTransition(phase.stage);
+    } catch (_) {
+      // Notification below is still useful if the haptic service is unavailable.
+    }
+    try {
+      await RunningNotificationService.showIntervalTransition(
+        stage: phase.stage.name,
+        repetition: phase.repetition,
+        totalRepetitions: plan.repetitions,
+      );
+    } catch (_) {
+      // A failed notice must not interrupt GPS recording or interval timing.
     }
   }
 
@@ -1945,7 +1967,7 @@ class _RunningPageState extends State<RunningPage> {
     }
   }
 
-  Future<void> _sendPacerUpdate(int elapsedMinutes) async {
+  Future<void> _sendPacerUpdate() async {
     final double? target = widget.targetPaceSecondsPerKm;
     if (target == null) return;
     try {
@@ -1956,7 +1978,6 @@ class _RunningPageState extends State<RunningPage> {
         targetPaceSecondsPerKm: target,
         currentDistanceKm: _controller.distanceKm,
         elapsed: _controller.elapsed,
-        elapsedMinutes: elapsedMinutes,
       );
     } catch (_) {
       // Notifikasi pacer opsional; sensor GPS dan stopwatch tetap berjalan.

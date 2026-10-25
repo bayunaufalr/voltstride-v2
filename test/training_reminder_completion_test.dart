@@ -1,3 +1,4 @@
+// ignore_for_file: lines_longer_than_80_chars
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voltstride/features/reminders/reminder_service.dart';
 
@@ -150,4 +151,105 @@ void main() {
     expect(completed.completedDates, <String>['2026-10-20']);
     expect(reminder.completedDates, isEmpty);
   });
+
+  test('jadwal otomatis selesai hanya jika durasi persis dan sesi berakhir sebelum jam rencana', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 30,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    final DateTime startedEarly = DateTime(2026, 10, 26, 6, 20);
+    expect(
+      ReminderService.isExactScheduledActivityMatch(
+        reminder: reminder,
+        startedAt: startedEarly,
+        duration: const Duration(minutes: 30),
+        activityCategory: 'run',
+      ),
+      isTrue,
+    );
+  });
+
+  test('sesi setelah jam rencana tidak menyelesaikan jadwal', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 31,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.isExactScheduledActivityMatch(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 7, 1),
+        duration: const Duration(minutes: 30),
+        activityCategory: 'run',
+      ),
+      isFalse,
+    );
+  });
+
+  test('sesi yang berakhir setelah jam rencana tidak menyelesaikan jadwal', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 32,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.isExactScheduledActivityMatch(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 6, 40),
+        duration: const Duration(minutes: 30),
+        activityCategory: 'run',
+      ),
+      isFalse,
+    );
+  });
+
+  test('durasi pendek hanya menjadi kredit durasi dan tidak menandai selesai', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 33,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+      activityDurationSecondsByDate: const <String, int>{
+        '2026-10-26': 1200,
+      },
+    );
+
+    final TrainingReminder decoded = TrainingReminder.fromJson(
+      Map<String, dynamic>.from(reminder.toJson()),
+    );
+    expect(
+      ReminderService.isExactScheduledActivityMatch(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 6, 30),
+        duration: const Duration(minutes: 20),
+        activityCategory: 'run',
+      ),
+      isFalse,
+    );
+    expect(decoded.activityDurationSecondsByDate['2026-10-26'], 1200);
+  });
+
 }

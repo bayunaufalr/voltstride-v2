@@ -18,6 +18,7 @@ import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
 import 'features/running/models/run_session.dart';
 import 'features/running/running_page.dart';
+import 'features/splash/animated_splash_gate.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
 import 'services/app_language_service.dart';
@@ -139,9 +140,11 @@ class VoltStrideApp extends StatelessWidget {
                 );
                 return child ?? const SizedBox.shrink();
               },
-              home: firebaseReady
-                  ? const AccountGate()
-                  : FirebaseSetupPage(detailError: firebaseSetupError),
+              home: AnimatedSplashGate(
+                child: firebaseReady
+                    ? const AccountGate()
+                    : FirebaseSetupPage(detailError: firebaseSetupError),
+              ),
             );
           },
         );
@@ -199,6 +202,7 @@ class _RootShellState extends State<RootShell> {
   ActivityStartConfig? _activeRunConfig;
   bool _showRunningPage = false;
   bool _runningSessionActive = false;
+  bool _exitDialogOpen = false;
   int _runPageGeneration = 0;
 
   final GlobalKey<HomeDashboardPageState> _homeKey =
@@ -369,43 +373,41 @@ class _RootShellState extends State<RootShell> {
     return Material(
       color: colors.surface,
       elevation: 5,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 64, maxHeight: 76),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(border: Border.all(color: colors.outline)),
-          child: Row(
-            children: <Widget>[
-              Icon(Icons.gps_fixed_rounded, color: colors.onSurface, size: 22),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  AppLanguageService.text(
-                    context,
-                    '$activity masih merekam',
-                    '$activity is still recording',
-                  ),
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.onSurface,
-                    fontWeight: FontWeight.w800,
-                  ),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 54, maxHeight: 64),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(border: Border.all(color: colors.outline)),
+        child: Row(
+          children: <Widget>[
+            Icon(Icons.gps_fixed_rounded, color: colors.onSurface, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                AppLanguageService.text(
+                  context,
+                  '$activity masih merekam',
+                  '$activity is still recording',
+                ),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.onSurface,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () => setState(() => _showRunningPage = true),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 40),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(AppLanguageService.text(context, 'Buka sesi', 'Resume')),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => setState(() => _showRunningPage = true),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, 36),
               ),
-            ],
-          ),
+              child: Text(AppLanguageService.text(context, 'Kembali', 'Resume')),
+            ),
+          ],
         ),
       ),
     );
@@ -417,10 +419,49 @@ class _RootShellState extends State<RootShell> {
     );
   }
 
+  Future<void> _confirmExitApplication() async {
+    if (!mounted || _exitDialogOpen) return;
+    _exitDialogOpen = true;
+    try {
+      final bool? shouldExit = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(AppLanguageService.text(
+            context,
+            'Apakah Anda ingin keluar dari VoltStride?',
+            'Do you want to exit VoltStride?',
+          )),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(AppLanguageService.text(context, 'Batal', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(AppLanguageService.text(context, 'Keluar', 'Exit')),
+            ),
+          ],
+        ),
+      );
+      if (shouldExit == true && mounted) {
+        await SystemNavigator.pop();
+      }
+    } finally {
+      _exitDialogOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ActivityStartConfig? config = _activeRunConfig;
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: _showRunningPage,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop || _showRunningPage) return;
+        unawaited(_confirmExitApplication());
+      },
+      child: Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -469,6 +510,7 @@ class _RootShellState extends State<RootShell> {
               onDestinationSelected: _selectTab,
               destinations: _destinations(context),
             ),
+      ),
     );
   }
 }

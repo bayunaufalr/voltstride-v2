@@ -187,6 +187,22 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             result.success(true)
                         }
                     }
+                    "recordTrainingActivity" -> {
+                        val id = call.argument<Int>("id")
+                        val dateKey = call.argument<String>("dateKey")
+                        val durationSeconds = call.argument<Int>("durationSeconds")
+                        if (id == null || dateKey.isNullOrBlank() || durationSeconds == null) {
+                            result.error("invalid_training_duration", "Data durasi aktivitas tidak lengkap.", null)
+                        } else {
+                            ReminderPulseReceiver.recordTrainingActivity(
+                                this,
+                                id,
+                                dateKey,
+                                durationSeconds,
+                            )
+                            result.success(true)
+                        }
+                    }
                     "cancelTrainingReminder" -> {
                         val id = call.argument<Int>("id")
                         if (id == null) {
@@ -222,9 +238,10 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                 val amplitudes: IntArray
                 when (stage) {
                     "recovery" -> {
-                        // Satu getaran panjang menandai awal pemulihan.
-                        timings = longArrayOf(0, 450)
-                        amplitudes = intArrayOf(0, 255)
+                        // Lari selesai: dua ketukan pendek dan satu ketukan panjang
+                        // agar awal pemulihan berbeda jelas dari mulai lari.
+                        timings = longArrayOf(0, 180, 100, 180, 100, 480)
+                        amplitudes = intArrayOf(0, 230, 0, 230, 0, 255)
                     }
                     "complete" -> {
                         // Tiga getaran pendek menandai interval selesai.

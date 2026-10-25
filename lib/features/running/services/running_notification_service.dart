@@ -13,8 +13,10 @@ class RunningNotificationService {
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   static const int _notificationId = 42601;
-  static final Set<int> _pacerNotificationIds = <int>{};
+  static const int _pacerNotificationId = 42602;
+  static final Set<int> _intervalNotificationIds = <int>{};
   static bool _initialized = false;
+  static bool _legacyPacerNotificationsCleared = false;
 
   static Future<void> _ensureInitialized() async {
     if (_initialized) return;
@@ -23,6 +25,21 @@ class RunningNotificationService {
     );
     await _plugin.initialize(settings);
     _initialized = true;
+    if (!_legacyPacerNotificationsCleared) {
+      _legacyPacerNotificationsCleared = true;
+      try {
+        final List<ActiveNotification> active =
+            await _plugin.getActiveNotifications();
+        for (final ActiveNotification notification in active) {
+          if (notification.id != _pacerNotificationId &&
+              (notification.title ?? '').contains('VoltStride Pacer')) {
+            await _plugin.cancel(notification.id ?? 0);
+          }
+        }
+      } catch (_) {
+        // Kegagalan membersihkan notifikasi versi lama tidak menghalangi sesi.
+      }
+    }
   }
 
   static Future<void> showRunStats({
@@ -88,7 +105,6 @@ class RunningNotificationService {
     required double targetPaceSecondsPerKm,
     required double currentDistanceKm,
     required Duration elapsed,
-    required int elapsedMinutes,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _ensureInitialized();
@@ -153,12 +169,76 @@ class RunningNotificationService {
       category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.public,
     );
-    final int notificationId = 42602 + elapsedMinutes.clamp(1, 10000).toInt();
-    _pacerNotificationIds.add(notificationId);
+    // Selalu gunakan ID yang sama. Notifikasi baru menggantikan notifikasi
+    // pacer sebelumnya, alih-alih menumpuk satu notifikasi setiap menit.
+    await _plugin.cancel(_pacerNotificationId);
+    await _plugin.show(
+      _pacerNotificationId,
+      'VoltStride Pacer',
+      advice,
+      NotificationDetails(android: android),
+    );
+  }
+
+  /// Notifikasi eksplisit saat latihan interval berpindah fase.
+  static Future<void> showIntervalTransition({
+    required String stage,
+    required int repetition,
+    required int totalRepetitions,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _ensureInitialized();
+
+    final bool english =
+        AppLanguageService.localeNotifier.value.languageCode == 'en';
+    final String title;
+    final String body;
+    switch (stage) {
+      case 'recovery':
+        title = english ? 'Start recovery' : 'Mulai pemulihan';
+        body = english
+            ? 'Run interval $repetition finished. Recovery starts now.'
+            : 'Lari selesai. Mulai pemulihan sekarang · interval $repetition/$totalRepetitions.';
+        break;
+      case 'complete':
+        title = english ? 'Interval complete' : 'Interval selesai';
+        body = english
+            ? 'All $totalRepetitions intervals are complete.'
+            : 'Semua $totalRepetitions interval sudah selesai.';
+        break;
+      default:
+        title = english ? 'Start running' : 'Mulai lari';
+        body = english
+            ? 'Recovery finished. Start running now · interval $repetition/$totalRepetitions.'
+            : 'Pemulihan selesai. Mulai lari sekarang · interval $repetition/$totalRepetitions.';
+        break;
+    }
+
+    final int stageCode = stage == 'recovery' ? 1 : (stage == 'complete' ? 2 : 0);
+    final int notificationId =
+        43000 + repetition.clamp(0, 30).toInt() * 3 + stageCode;
+    _intervalNotificationIds.add(notificationId);
+    final AndroidNotificationDetails android = AndroidNotificationDetails(
+      'voltstride_interval_transition_v2',
+      english ? 'Interval changes' : 'Pergantian interval',
+      channelDescription: english
+          ? 'Clear notices when a running or recovery interval begins.'
+          : 'Pemberitahuan saat fase lari atau pemulihan dimulai.',
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.navigation,
+      visibility: NotificationVisibility.public,
+      onlyAlertOnce: false,
+      playSound: false,
+      enableVibration: false,
+      autoCancel: true,
+      timeoutAfter: 20000,
+      ticker: title,
+    );
     await _plugin.show(
       notificationId,
-      english ? 'VoltStride Pacer' : 'VoltStride Pacer',
-      advice,
+      title,
+      body,
       NotificationDetails(android: android),
     );
   }
@@ -166,10 +246,11 @@ class RunningNotificationService {
   static Future<void> stop() async {
     if (!_initialized) return;
     await _plugin.cancel(_notificationId);
-    for (final int notificationId in _pacerNotificationIds) {
+    await _plugin.cancel(_pacerNotificationId);
+    for (final int notificationId in _intervalNotificationIds) {
       await _plugin.cancel(notificationId);
     }
-    _pacerNotificationIds.clear();
+    _intervalNotificationIds.clear();
   }
 
   static String _formatDuration(Duration duration) {

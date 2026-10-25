@@ -97,9 +97,32 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 .remove(activeEndKey(id))
                 .apply()
             prefs.all.keys
-                .filter { it.startsWith("skipped_${id}_") }
+                .filter {
+                    it.startsWith("skipped_${id}_") ||
+                        it.startsWith("duration_credit_${id}_")
+                }
                 .forEach { key -> prefs.edit().remove(key).apply() }
             notificationManager(context).cancel(NOTIFICATION_BASE + id)
+        }
+
+        /** Simpan durasi sesi yang selesai sebelum jadwal; mengurangi durasi reminder. */
+        fun recordTrainingActivity(
+            context: Context,
+            id: Int,
+            dateKey: String,
+            durationSeconds: Int,
+        ) {
+            if (id < 0 || dateKey.isBlank()) return
+            val config = loadConfig(context, id) ?: return
+            val plannedSeconds = config.optInt("durationMinutes", 30).coerceAtLeast(0) * 60
+            val credit = durationSeconds.coerceIn(0, plannedSeconds)
+            val edit = preferences(context).edit()
+            if (credit > 0 && credit < plannedSeconds) {
+                edit.putInt(durationCreditKey(id, dateKey), credit)
+            } else {
+                edit.remove(durationCreditKey(id, dateKey))
+            }
+            edit.apply()
         }
 
         /** Menahan notifikasi jadwal selama sesi lari/jalan aktif, lalu melanjutkannya. */
@@ -166,6 +189,8 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         private fun activeEndKey(id: Int) = "active_end_$id"
         private fun skippedOccurrenceKey(id: Int, dateKey: String) =
             "skipped_${id}_$dateKey"
+        private fun durationCreditKey(id: Int, dateKey: String) =
+            "duration_credit_${id}_$dateKey"
 
         private fun dateKeyFor(timestamp: Long): String =
             SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
@@ -300,9 +325,22 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 scheduleNextStart(context, id, startAt + 1000L)
                 return
             }
-            val durationMillis = config.optLong("durationMinutes", 30) * 60_000L
-            val endAt = startAt + durationMillis
-            preferences(context).edit()
+            val expectedSeconds = config.optLong("durationMinutes", 30) * 60L
+            val prefs = preferences(context)
+            val durationCredit = prefs.getInt(durationCreditKey(id, occurrenceDate), 0)
+                .coerceIn(0, expectedSeconds.toInt())
+            val remainingSeconds = expectedSeconds - durationCredit
+            prefs.edit().remove(durationCreditKey(id, occurrenceDate)).apply()
+            if (remainingSeconds <= 0L) {
+                prefs.edit().putBoolean(skippedOccurrenceKey(id, occurrenceDate), true).apply()
+                markFlutterOccurrenceCompletedForDate(context, id, occurrenceDate)
+                if (config.optString("scheduleType", "routine") == "routine") {
+                    scheduleNextStart(context, id, startAt + 1000L)
+                }
+                return
+            }
+            val endAt = startAt + remainingSeconds * 1000L
+            prefs.edit()
                 .putLong(activeStartKey(id), startAt)
                 .putLong(activeEndKey(id), endAt)
                 .apply()
@@ -365,13 +403,19 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             createNotificationChannel(context)
             val title = config.optString("title", "Latihan")
             val category = config.optString("category", "Lari")
-            val duration = config.optInt("durationMinutes", 30)
             val interval = config.optInt("repeatIntervalSeconds", 60)
+            val activeEndAt = preferences(context).getLong(activeEndKey(id), 0L)
+            val remainingSeconds = if (activeEndAt > 0L) {
+                ((activeEndAt - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L
+            } else {
+                config.optInt("durationMinutes", 30) * 60L
+            }
+            val remainingMinutes = ((remainingSeconds + 59L) / 60L).toInt()
             val english = config.optString("doneLabel", "Selesai") == "Done"
             val body = if (english) {
-                "$category · $duration min · repeats every $interval sec"
+                "$category · $remainingMinutes min remaining · repeats every $interval sec"
             } else {
-                "$category · $duration menit · diulang setiap $interval detik"
+                "$category · sisa $remainingMinutes menit · diulang setiap $interval detik"
             }
             val doneIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
                 action = ACTION_COMPLETE
@@ -427,10 +471,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ))
             notificationManager(context).cancel(NOTIFICATION_BASE + id)
-            prefs.edit().putBoolean(
-                skippedOccurrenceKey(id, dateKeyFor(startAt)),
-                true,
-            ).apply()
+            val dateKey = dateKeyFor(startAt)
+            prefs.edit()
+                .putBoolean(skippedOccurrenceKey(id, dateKey), true)
+                .remove(durationCreditKey(id, dateKey))
+                .apply()
             markFlutterOccurrenceCompleted(context, id, startAt)
         }
 
@@ -461,7 +506,10 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         fun dismissFromFlutter(context: Context, id: Int, dateKey: String) {
             if (id < 0 || dateKey.isBlank()) return
             val prefs = preferences(context)
-            prefs.edit().putBoolean(skippedOccurrenceKey(id, dateKey), true).apply()
+            prefs.edit()
+                .putBoolean(skippedOccurrenceKey(id, dateKey), true)
+                .remove(durationCreditKey(id, dateKey))
+                .apply()
             val activeStartAt = prefs.getLong(activeStartKey(id), 0L)
             if (activeStartAt > 0L && dateKeyFor(activeStartAt) == dateKey) {
                 val dismissIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
@@ -478,6 +526,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             if (id < 0 || dateKey.isBlank()) return
             preferences(context).edit()
                 .putBoolean(skippedOccurrenceKey(id, dateKey), true)
+                .remove(durationCreditKey(id, dateKey))
                 .apply()
             val activeStartAt = preferences(context).getLong(activeStartKey(id), 0L)
             val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
