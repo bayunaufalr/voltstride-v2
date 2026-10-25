@@ -91,5 +91,5 @@ void main() {
 
       expect(reply, contains('Hentikan latihan sekarang'));
     });
-  });
+  }); 
 }
