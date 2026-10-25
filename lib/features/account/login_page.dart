@@ -179,21 +179,36 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      await AccountService.kirimLinkAturUlangSandi(email);
+      await AccountService.kirimLinkAturUlangSandi(
+        email,
+        languageCode: AppLanguageService.localeNotifier.value.languageCode,
+      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(_text('Periksa email Anda', 'Check your email')),
           content: Text(_text(
-            'Jika email terdaftar, tautan pengaturan ulang kata sandi akan dikirim. Periksa kotak masuk dan folder spam.',
-            'If the email is registered, a password reset link will be sent. Check your inbox and spam folder.',
+            'Permintaan reset kata sandi diproses untuk:\n$email\n\nJika alamat ini terdaftar, Firebase akan mengirim tautan ke alamat tersebut. Periksa Kotak Masuk, Spam, dan Promosi.',
+            'The password reset request was processed for:\n$email\n\nIf an account exists for this address, Firebase will send the link there. Check Inbox, Spam, and Promotions.',
           )),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(_text('Mengerti', 'Got it')),
+            ),
+          ],
         ),
       );
     } on FirebaseAuthException catch (error) {
-      if (mounted) setState(() => _pesanError = pesanErrorAkun(
+      if (mounted) {
+        setState(() {
+          _pesanError = pesanErrorAkun(
             error,
             english: AppLanguageService.localeNotifier.value.languageCode == 'en',
-          ));
+          );
+        });
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _pesanError = _text(

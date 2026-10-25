@@ -133,9 +133,17 @@ class AccountService {
     );
   }
 
-  /// Mengirim email untuk mengatur ulang kata sandi.
-  static Future<void> kirimLinkAturUlangSandi(String email) {
-    return _auth.sendPasswordResetEmail(email: email.trim());
+  /// Mengirim email untuk mengatur ulang kata sandi dalam bahasa aplikasi.
+  /// Firebase mengirim tautan melalui template Password Reset di Firebase Console.
+  static Future<void> kirimLinkAturUlangSandi(
+    String email, {
+    String languageCode = 'id',
+  }) async {
+    final String normalizedLanguage = languageCode.toLowerCase() == 'en'
+        ? 'en'
+        : 'id';
+    await _auth.setLanguageCode(normalizedLanguage);
+    await _auth.sendPasswordResetEmail(email: email.trim());
   }
 
   /// Keluar dari akun aktif di perangkat ini.
