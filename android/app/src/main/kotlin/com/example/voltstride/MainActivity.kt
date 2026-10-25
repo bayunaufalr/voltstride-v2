@@ -28,6 +28,9 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
@@ -109,6 +112,17 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                         result,
                     )
                     "moveTaskToBack" -> result.success(moveTaskToBack(true))
+                    "vibrateIntervalTransition" -> {
+                        vibrateIntervalTransition(
+                            call.argument<String>("stage") ?: "work",
+                            result,
+                        )
+                    }
+                    "setWorkoutActive" -> {
+                        val active = call.argument<Boolean>("active") ?: false
+                        ReminderPulseReceiver.setWorkoutActive(this, active)
+                        result.success(true)
+                    }
                     "saveFileToDownloads" -> {
                         val fileName = call.argument<String>("fileName")
                         val mimeType = call.argument<String>("mimeType") ?: "application/octet-stream"
@@ -124,8 +138,12 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             val id = call.argument<Int>("id")
                             val title = call.argument<String>("title")
                             val category = call.argument<String>("category")
-                            val weekdays = call.argument<List<Int>>("weekdays")
-                            if (id == null || title.isNullOrBlank() || category.isNullOrBlank() || weekdays.isNullOrEmpty()) {
+                            val weekdays = call.argument<List<Int>>("weekdays") ?: emptyList()
+                            val scheduleType = call.argument<String>("scheduleType") ?: "routine"
+                            val specificDate = call.argument<String>("specificDate")
+                            val dateSchedule = scheduleType == "specificDate"
+                            val scheduleValid = if (dateSchedule) !specificDate.isNullOrBlank() else weekdays.isNotEmpty()
+                            if (id == null || title.isNullOrBlank() || category.isNullOrBlank() || !scheduleValid) {
                                 result.error("invalid_reminder", "Data pengingat belum lengkap.", null)
                             } else {
                                 ReminderPulseReceiver.schedule(
@@ -134,6 +152,8 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                                     title = title,
                                     category = category,
                                     weekdays = weekdays,
+                                    scheduleType = scheduleType,
+                                    specificDate = specificDate,
                                     hour = call.argument<Int>("hour") ?: 7,
                                     minute = call.argument<Int>("minute") ?: 0,
                                     durationMinutes = call.argument<Int>("durationMinutes") ?: 30,
@@ -179,6 +199,56 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibrateIntervalTransition(
+        stage: String,
+        result: MethodChannel.Result,
+    ) {
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                getSystemService(VibratorManager::class.java).defaultVibrator
+            } else {
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (!vibrator.hasVibrator()) {
+                result.success(false)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val timings: LongArray
+                val amplitudes: IntArray
+                when (stage) {
+                    "recovery" -> {
+                        // Satu getaran panjang menandai awal pemulihan.
+                        timings = longArrayOf(0, 450)
+                        amplitudes = intArrayOf(0, 255)
+                    }
+                    "complete" -> {
+                        // Tiga getaran pendek menandai interval selesai.
+                        timings = longArrayOf(0, 160, 100, 160, 100, 160)
+                        amplitudes = intArrayOf(0, 230, 0, 230, 0, 255)
+                    }
+                    else -> {
+                        // Dua getaran pendek menandai mulai lari/kerja.
+                        timings = longArrayOf(0, 180, 100, 180)
+                        amplitudes = intArrayOf(0, 230, 0, 255)
+                    }
+                }
+                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+            } else {
+                vibrator.vibrate(if (stage == "recovery") 450L else 300L)
+            }
+            result.success(true)
+        } catch (error: Exception) {
+            result.error(
+                "interval_vibration_failed",
+                error.message ?: "Vibration could not be started.",
+                null,
+            )
+        }
     }
 
     private fun saveFileToDownloads(

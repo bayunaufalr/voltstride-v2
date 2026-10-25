@@ -20,6 +20,7 @@ import 'run_share_page.dart';
 import 'services/heart_rate_service.dart';
 import 'services/running_notification_service.dart';
 import 'services/pacer_guidance.dart';
+import '../reminders/reminder_service.dart';
 
 /// Perekaman aktivitas dan ringkasan sesi pengguna.
 class RunningPage extends StatefulWidget {
@@ -172,6 +173,7 @@ class _RunningPageState extends State<RunningPage> {
           currentStatus == RunStatus.running ||
           currentStatus == RunStatus.paused;
       widget.onSessionActiveChanged?.call(active);
+      unawaited(_setTrainingRemindersSuppressed(active));
     }
 
     if (currentStatus == RunStatus.paused) {
@@ -202,7 +204,7 @@ class _RunningPageState extends State<RunningPage> {
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
       if (previousKey != null && previousKey != phaseKey) {
-        unawaited(HapticFeedback.heavyImpact());
+        unawaited(_vibrateForIntervalTransition(phase.stage));
       }
       _lastIntervalPhaseKey = phaseKey;
     }
@@ -230,6 +232,36 @@ class _RunningPageState extends State<RunningPage> {
     // seluruh halaman setiap detik karena itu ikut membangun ulang widget peta.
     _liveMetricsRevision.value++;
     if (statusChanged && mounted) setState(() {});
+  }
+
+  Future<void> _setTrainingRemindersSuppressed(bool active) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await const MethodChannel('voltstride/android_settings').invokeMethod<void>(
+        'setWorkoutActive',
+        <String, Object?>{'active': active},
+      );
+    } catch (_) {
+      // Kegagalan sinkronisasi pengingat tidak boleh mengganggu perekaman GPS.
+    }
+  }
+
+  Future<void> _vibrateForIntervalTransition(IntervalStage nextStage) async {
+    if (kIsWeb) return;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final bool? vibrated = await const MethodChannel(
+          'voltstride/android_settings',
+        ).invokeMethod<bool>(
+          'vibrateIntervalTransition',
+          <String, Object?>{'stage': nextStage.name},
+        );
+        if (vibrated == true) return;
+      } catch (_) {
+        // Jika jembatan Android tidak tersedia, gunakan haptic Flutter sebagai cadangan.
+      }
+    }
+    await HapticFeedback.heavyImpact();
   }
 
   Future<void> _ensureStepTracking() async {
@@ -1971,6 +2003,18 @@ class _RunningPageState extends State<RunningPage> {
         _isSavingSession = true;
         _saveError = null;
       });
+    }
+
+    // Tandai rencana selesai berdasarkan tanggal dan durasi aktivitas nyata.
+    // Jam yang dipilih pada jadwal tidak membatasi waktu pelaksanaan.
+    try {
+      await ReminderService.completeMatchingActivity(
+        startedAt: session.startedAt,
+        duration: session.elapsed,
+        activityCategory: session.activityType.name,
+      );
+    } catch (_) {
+      // Kegagalan update jadwal tidak menghalangi penyimpanan sesi.
     }
 
     try {

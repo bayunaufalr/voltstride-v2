@@ -28,13 +28,19 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   void initState() {
     super.initState();
     _categoryController = TabController(length: 4, vsync: this);
+    ReminderService.changes.addListener(_onReminderDataChanged);
     _loadReminders();
   }
 
   @override
   void dispose() {
+    ReminderService.changes.removeListener(_onReminderDataChanged);
     _categoryController.dispose();
     super.dispose();
+  }
+
+  void _onReminderDataChanged() {
+    if (mounted) _loadReminders();
   }
 
   Future<void> reload() => _loadReminders();
@@ -248,16 +254,20 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
         child: Padding(
           padding: const EdgeInsets.all(28),
           child: Text(_text(
-            'Belum ada jadwal rutin. Tambahkan jadwal latihan pertama.',
-            'No routine schedules yet. Add your first workout schedule.',
+            'Belum ada jadwal. Tambahkan jadwal rutin atau tanggal tertentu.',
+            'No schedules yet. Add a routine or one-time schedule.',
           )),
         ),
       );
     }
     final List<TrainingReminder> sorted = List<TrainingReminder>.of(_reminders)
       ..sort((TrainingReminder a, TrainingReminder b) {
-        final int byTime = a.hour.compareTo(b.hour);
-        return byTime != 0 ? byTime : a.minute.compareTo(b.minute);
+        final DateTime dateA = a.specificDate ?? DateTime(2100);
+        final DateTime dateB = b.specificDate ?? DateTime(2100);
+        final int byDate = dateA.compareTo(dateB);
+        if (byDate != 0) return byDate;
+        final int byHour = a.hour.compareTo(b.hour);
+        return byHour != 0 ? byHour : a.minute.compareTo(b.minute);
       });
     return RefreshIndicator(
       onRefresh: _loadReminders,
@@ -308,7 +318,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${_scheduleDaysText(reminder)} · ${reminder.timeText}',
+                  '${reminder.scheduleType == ReminderScheduleType.specificDate ? _specificDateText(reminder.specificDate) : _text('Rutin · ${_scheduleDaysText(reminder)}', 'Routine · ${_scheduleDaysText(reminder)}')} · ${reminder.timeText}',
                   style: TextStyle(color: colors.onSurfaceVariant),
                 ),
                 const SizedBox(height: 3),
@@ -369,8 +379,18 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     for (int offset = 0; offset < 7; offset++) {
       final DateTime day = monday.add(Duration(days: offset));
       for (final TrainingReminder reminder in _reminders) {
-        if (!reminder.weekdays.contains(day.weekday)) continue;
-        result.add(_ReminderOccurrence(reminder: reminder, date: day));
+        if (reminder.scheduleType == ReminderScheduleType.specificDate) {
+          final DateTime? scheduledDate = reminder.specificDate;
+          if (scheduledDate == null ||
+              scheduledDate.year != day.year ||
+              scheduledDate.month != day.month ||
+              scheduledDate.day != day.day) {
+            continue;
+          }
+          result.add(_ReminderOccurrence(reminder: reminder, date: day));
+        } else if (reminder.weekdays.contains(day.weekday)) {
+          result.add(_ReminderOccurrence(reminder: reminder, date: day));
+        }
       }
     }
 
@@ -582,6 +602,11 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     return activity;
   }
 
+  String _specificDateText(DateTime? date) {
+    if (date == null) return _text('Tanggal belum dipilih', 'No date selected');
+    return '${date.day} ${_monthName(date.month)} ${date.year}';
+  }
+
   String _weekdayName(int weekday) {
     const List<String> indonesia = <String>[
       'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu',
@@ -619,7 +644,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: <Widget>[
-            Tab(text: _text('Jadwal rutin', 'Routine schedules')),
+            Tab(text: _text('Jadwal', 'Schedules')),
             Tab(text: _text('Minggu ini', 'This week')),
             Tab(text: _text('Selesai', 'Completed')),
             Tab(text: _text('Tidak terlaksana', 'Not completed')),
@@ -708,6 +733,8 @@ class _ReminderEditorState extends State<_ReminderEditor> {
   late String _activity;
   late TimeOfDay _time;
   late Set<int> _selectedDays;
+  late ReminderScheduleType _scheduleType;
+  late DateTime _specificDate;
   String? _validationMessage;
   bool _checkingPermission = false;
 
@@ -735,7 +762,14 @@ class _ReminderEditorState extends State<_ReminderEditor> {
             ? 'Lainnya'
             : 'Lari';
     _time = TimeOfDay(hour: old?.hour ?? 7, minute: old?.minute ?? 0);
-    _selectedDays = (old?.weekdays ?? <int>[
+    _scheduleType = old?.scheduleType ?? ReminderScheduleType.routine;
+    final DateTime today = DateTime.now();
+    final DateTime? oldDate = old?.specificDate;
+    _specificDate = oldDate == null
+        ? DateTime(today.year, today.month, today.day)
+        : DateTime(oldDate.year, oldDate.month, oldDate.day);
+    final List<int> savedWeekdays = old?.weekdays ?? const <int>[];
+    _selectedDays = (savedWeekdays.isNotEmpty ? savedWeekdays : <int>[
       DateTime.monday,
       DateTime.wednesday,
       DateTime.friday,
@@ -759,9 +793,27 @@ class _ReminderEditorState extends State<_ReminderEditor> {
     if (selected != null && mounted) setState(() => _time = selected);
   }
 
+  Future<void> _chooseDate() async {
+    final DateTime today = DateTime.now();
+    final DateTime firstDate = DateTime(today.year, today.month, today.day);
+    final DateTime? selected = await showDatePicker(
+      context: context,
+      initialDate: _specificDate.isBefore(firstDate) ? firstDate : _specificDate,
+      firstDate: firstDate,
+      lastDate: DateTime(today.year + 3, 12, 31),
+      helpText: _text(context, 'Pilih tanggal latihan', 'Choose workout date'),
+    );
+    if (selected != null && mounted) {
+      setState(() {
+        _specificDate = DateTime(selected.year, selected.month, selected.day);
+        _validationMessage = null;
+      });
+    }
+  }
+
   Future<void> _save() async {
     final int? duration = int.tryParse(_durationController.text.trim());
-    if (_selectedDays.isEmpty) {
+    if (_scheduleType == ReminderScheduleType.routine && _selectedDays.isEmpty) {
       setState(() {
         _validationMessage = _text(
           context,
@@ -770,6 +822,29 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         );
       });
       return;
+    }
+    if (_scheduleType == ReminderScheduleType.specificDate) {
+      final DateTime now = DateTime.now();
+      final DateTime today = DateTime(now.year, now.month, now.day);
+      if (_specificDate.isBefore(today)) {
+        setState(() => _validationMessage = _text(
+          context,
+          'Tanggal tidak boleh di masa lalu.',
+          'The date cannot be in the past.',
+        ));
+        return;
+      }
+      final bool isToday = _specificDate.year == today.year &&
+          _specificDate.month == today.month && _specificDate.day == today.day;
+      if (isToday && (_time.hour < now.hour ||
+          (_time.hour == now.hour && _time.minute <= now.minute))) {
+        setState(() => _validationMessage = _text(
+          context,
+          'Untuk hari ini, pilih waktu yang belum lewat.',
+          'For today, choose a time that has not passed.',
+        ));
+        return;
+      }
     }
     if (duration == null || duration < 5 || duration > 360) {
       setState(() {
@@ -832,7 +907,13 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         id: widget.initial?.id ?? widget.newId,
         activity: _activity,
         activityName: _activityNameController.text.trim(),
-        weekdays: _selectedDays.toList()..sort(),
+        weekdays: _scheduleType == ReminderScheduleType.routine
+            ? (_selectedDays.toList()..sort())
+            : const <int>[],
+        scheduleType: _scheduleType,
+        specificDate: _scheduleType == ReminderScheduleType.specificDate
+            ? _specificDate
+            : null,
         hour: _time.hour,
         minute: _time.minute,
         durationMinutes: duration,
@@ -840,8 +921,22 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         style: ReminderStyle.notificationOnly,
         sound: 'lembut',
         completedDates: widget.initial?.completedDates ?? const <String>[],
+        notCompletedDates: widget.initial?.notCompletedDates ?? const <String>[],
+        notCompletedReasons: widget.initial?.notCompletedReasons ?? const <String, String>{},
       ),
     );
+  }
+
+  String _monthNameForEditor(int month, bool english) {
+    const List<String> id = <String>[
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    const List<String> en = <String>[
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return (english ? en : id)[month - 1];
   }
 
   @override
@@ -862,6 +957,33 @@ class _ReminderEditorState extends State<_ReminderEditor> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
+              DropdownButtonFormField<ReminderScheduleType>(
+                initialValue: _scheduleType,
+                decoration: InputDecoration(
+                  labelText: _text(context, 'Jenis jadwal', 'Schedule type'),
+                ),
+                items: <DropdownMenuItem<ReminderScheduleType>>[
+                  DropdownMenuItem(
+                    value: ReminderScheduleType.routine,
+                    child: Text(_text(context, 'Jadwal rutin', 'Routine schedule')),
+                  ),
+                  DropdownMenuItem(
+                    value: ReminderScheduleType.specificDate,
+                    child: Text(_text(context, 'Jadwal per tanggal', 'One-time date')),
+                  ),
+                ],
+                onChanged: _checkingPermission
+                    ? null
+                    : (ReminderScheduleType? value) {
+                        if (value != null) {
+                          setState(() {
+                            _scheduleType = value;
+                            _validationMessage = null;
+                          });
+                        }
+                      },
+              ),
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _activity,
                 decoration: InputDecoration(
@@ -898,32 +1020,45 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                 ),
               ),
               const SizedBox(height: 12),
-              Text(_text(context, 'Hari', 'Days')),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: List<Widget>.generate(_dayNumbers.length, (int index) {
-                  final int day = _dayNumbers[index];
-                  final bool selected = _selectedDays.contains(day);
-                  return FilterChip(
-                    label: Text(dayLabels[index]),
-                    selected: selected,
-                    onSelected: _checkingPermission
-                        ? null
-                        : (bool value) {
-                            setState(() {
-                              if (value) {
-                                _selectedDays.add(day);
-                              } else {
-                                _selectedDays.remove(day);
-                              }
-                              _validationMessage = null;
-                            });
-                          },
-                  );
-                }),
-              ),
+              if (_scheduleType == ReminderScheduleType.routine) ...<Widget>[
+                Text(_text(context, 'Hari', 'Days')),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: List<Widget>.generate(_dayNumbers.length, (int index) {
+                    final int day = _dayNumbers[index];
+                    final bool selected = _selectedDays.contains(day);
+                    return FilterChip(
+                      label: Text(dayLabels[index]),
+                      selected: selected,
+                      onSelected: _checkingPermission
+                          ? null
+                          : (bool value) {
+                              setState(() {
+                                if (value) {
+                                  _selectedDays.add(day);
+                                } else {
+                                  _selectedDays.remove(day);
+                                }
+                                _validationMessage = null;
+                              });
+                            },
+                    );
+                  }),
+                ),
+              ] else ...<Widget>[
+                OutlinedButton(
+                  onPressed: _checkingPermission ? null : _chooseDate,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Text(_text(context, 'Tanggal', 'Date')),
+                      Text('${_specificDate.day} ${_monthNameForEditor(_specificDate.month, english)} ${_specificDate.year}'),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: _checkingPermission ? null : _chooseTime,

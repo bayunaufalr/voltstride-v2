@@ -148,7 +148,7 @@ class RunningNotificationService {
       onlyAlertOnce: false,
       playSound: true,
       enableVibration: true,
-      timeoutAfter: 10000,
+      timeoutAfter: 30000,
       ticker: advice,
       category: AndroidNotificationCategory.reminder,
       visibility: NotificationVisibility.public,

@@ -12,9 +12,21 @@ import 'package:timezone/timezone.dart' as timezone;
 
 import '../../services/app_language_service.dart';
 
+String _reminderDateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
+
+DateTime? _parseReminderDate(Object? value) {
+  if (value is! String || value.isEmpty) return null;
+  final DateTime? parsed = DateTime.tryParse(value);
+  return parsed == null ? null : DateTime(parsed.year, parsed.month, parsed.day);
+}
+
 /// notificationAndAlarm dipertahankan hanya untuk membaca data versi lama.
 /// Semua jadwal baru dan jadwal lama sekarang menggunakan notifikasi biasa.
 enum ReminderStyle { notificationOnly }
+enum ReminderScheduleType { routine, specificDate }
 
 class TrainingReminder {
   const TrainingReminder({
@@ -28,6 +40,8 @@ class TrainingReminder {
     required this.sound,
     this.activityName = '',
     this.repeatIntervalSeconds = 60,
+    this.scheduleType = ReminderScheduleType.routine,
+    this.specificDate,
     this.completedDates = const <String>[],
     this.notCompletedDates = const <String>[],
     this.notCompletedReasons = const <String, String>{},
@@ -43,6 +57,8 @@ class TrainingReminder {
   final int minute;
   final int durationMinutes;
   final int repeatIntervalSeconds;
+  final ReminderScheduleType scheduleType;
+  final DateTime? specificDate;
   final ReminderStyle style;
   final String sound;
   final List<String> completedDates;
@@ -62,6 +78,8 @@ class TrainingReminder {
         minute: minute,
         durationMinutes: durationMinutes,
         repeatIntervalSeconds: repeatIntervalSeconds,
+        scheduleType: scheduleType,
+        specificDate: specificDate,
         style: ReminderStyle.notificationOnly,
         sound: 'lembut',
         completedDates: completedDates ?? this.completedDates,
@@ -69,21 +87,26 @@ class TrainingReminder {
         notCompletedReasons: notCompletedReasons ?? this.notCompletedReasons,
       );
 
-  Map<String, Object?> toJson() => <String, Object?>{
-        'id': id,
-        'activity': activity,
-        'activityName': activityName,
-        'weekdays': weekdays,
-        'hour': hour,
-        'minute': minute,
-        'durationMinutes': durationMinutes,
-        'repeatIntervalSeconds': repeatIntervalSeconds,
-        'style': ReminderStyle.notificationOnly.name,
-        'sound': 'lembut',
-        'completedDates': completedDates,
-        'notCompletedDates': notCompletedDates,
-        'notCompletedReasons': notCompletedReasons,
-      };
+  Map<String, Object?> toJson() {
+    final DateTime? date = specificDate;
+    return <String, Object?>{
+      'id': id,
+      'activity': activity,
+      'activityName': activityName,
+      'weekdays': weekdays,
+      'hour': hour,
+      'minute': minute,
+      'durationMinutes': durationMinutes,
+      'repeatIntervalSeconds': repeatIntervalSeconds,
+      'scheduleType': scheduleType.name,
+      'specificDate': date == null ? null : _reminderDateKey(date),
+      'style': ReminderStyle.notificationOnly.name,
+      'sound': 'lembut',
+      'completedDates': completedDates,
+      'notCompletedDates': notCompletedDates,
+      'notCompletedReasons': notCompletedReasons,
+    };
+  }
 
   factory TrainingReminder.fromJson(Map<String, dynamic> json) {
     final List<dynamic> rawDays = json['weekdays'] as List<dynamic>? ??
@@ -103,6 +126,10 @@ class TrainingReminder {
       minute: (json['minute'] as num?)?.toInt() ?? 0,
       durationMinutes: (json['durationMinutes'] as num?)?.toInt() ?? 30,
       repeatIntervalSeconds: ((json['repeatIntervalSeconds'] as num?)?.toInt() ?? 60).clamp(30, 600).toInt(),
+      scheduleType: json['scheduleType'] == ReminderScheduleType.specificDate.name
+          ? ReminderScheduleType.specificDate
+          : ReminderScheduleType.routine,
+      specificDate: _parseReminderDate(json['specificDate']),
       style: ReminderStyle.notificationOnly,
       sound: 'lembut',
       completedDates: (json['completedDates'] as List<dynamic>? ?? <dynamic>[])
@@ -148,6 +175,7 @@ class ReminderService {
       MethodChannel('voltstride/android_settings');
   static final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  static final ValueNotifier<int> changes = ValueNotifier<int>(0);
   static bool _ready = false;
   static Future<void>? _initialization;
 
@@ -191,21 +219,36 @@ class ReminderService {
   }
 
   static Future<void> save(TrainingReminder reminder) async {
+    final DateTime? suppliedDate = reminder.specificDate;
     final TrainingReminder normalized = TrainingReminder(
       id: reminder.id,
       activity: reminder.activity,
       activityName: reminder.activityName.trim(),
-      weekdays: reminder.weekdays.toSet().toList()..sort(),
+      weekdays: reminder.scheduleType == ReminderScheduleType.routine
+          ? (reminder.weekdays.toSet().toList()..sort())
+          : const <int>[],
       hour: reminder.hour,
       minute: reminder.minute,
       durationMinutes: reminder.durationMinutes,
       repeatIntervalSeconds: reminder.repeatIntervalSeconds.clamp(30, 600).toInt(),
+      scheduleType: reminder.scheduleType,
+      specificDate: suppliedDate == null
+          ? null
+          : DateTime(suppliedDate.year, suppliedDate.month, suppliedDate.day),
       style: ReminderStyle.notificationOnly,
       sound: 'lembut',
       completedDates: reminder.completedDates.toList(growable: false),
       notCompletedDates: reminder.notCompletedDates.toList(growable: false),
       notCompletedReasons: Map<String, String>.of(reminder.notCompletedReasons),
     );
+    if (normalized.scheduleType == ReminderScheduleType.routine &&
+        normalized.weekdays.isEmpty) {
+      throw ArgumentError('Pilih setidaknya satu hari.');
+    }
+    if (normalized.scheduleType == ReminderScheduleType.specificDate &&
+        normalized.specificDate == null) {
+      throw ArgumentError('Pilih tanggal jadwal.');
+    }
     final List<TrainingReminder> current = await getAll();
     final List<TrainingReminder> updated = <TrainingReminder>[
       ...current.where((TrainingReminder item) => item.id != reminder.id),
@@ -224,23 +267,35 @@ class ReminderService {
       return;
     }
 
-    // Cadangan untuk platform selain Android. Android memakai receiver native
-    // agar notifikasi bisa berulang sepanjang durasi tanpa menumpuk ratusan alarm.
-    for (final int day in normalized.weekdays.toSet()) {
-      await _plugin.zonedSchedule(
-        _notificationId(normalized.id, day),
-        _notificationTitle(normalized),
-        _notificationBody(normalized),
-        _nextDate(
-          weekday: day,
-          hour: normalized.hour,
-          minute: normalized.minute,
-        ),
-        _details(),
-        payload: 'voltstride-reminder-${normalized.id}',
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    // Cadangan untuk platform selain Android.
+    if (normalized.scheduleType == ReminderScheduleType.specificDate) {
+      final DateTime? date = normalized.specificDate;
+      if (date == null) return;
+      final timezone.TZDateTime scheduled = timezone.TZDateTime(
+        timezone.local, date.year, date.month, date.day,
+        normalized.hour, normalized.minute,
       );
+      if (scheduled.isAfter(timezone.TZDateTime.now(timezone.local))) {
+        await _plugin.zonedSchedule(
+          _notificationId(normalized.id, date.day),
+          _notificationTitle(normalized), _notificationBody(normalized),
+          scheduled, _details(),
+          payload: 'voltstride-reminder-${normalized.id}',
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        );
+      }
+    } else {
+      for (final int day in normalized.weekdays.toSet()) {
+        await _plugin.zonedSchedule(
+          _notificationId(normalized.id, day),
+          _notificationTitle(normalized), _notificationBody(normalized),
+          _nextDate(weekday: day, hour: normalized.hour, minute: normalized.minute),
+          _details(),
+          payload: 'voltstride-reminder-${normalized.id}',
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        );
+      }
     }
   }
 
@@ -249,6 +304,7 @@ class ReminderService {
     final String title = reminder.activityName.isNotEmpty
         ? reminder.activityName
         : category;
+    final DateTime? scheduledDate = reminder.specificDate;
     await _settingsChannel.invokeMethod<void>(
       'scheduleTrainingReminder',
       <String, Object?>{
@@ -256,6 +312,8 @@ class ReminderService {
         'title': title,
         'category': category,
         'weekdays': reminder.weekdays,
+        'scheduleType': reminder.scheduleType.name,
+        'specificDate': scheduledDate == null ? null : _dateKey(scheduledDate),
         'hour': reminder.hour,
         'minute': reminder.minute,
         'durationMinutes': reminder.durationMinutes,
@@ -367,17 +425,28 @@ class ReminderService {
       try {
         if (defaultTargetPlatform == TargetPlatform.android) {
           await _scheduleNativeReminder(reminder);
+        } else if (reminder.scheduleType == ReminderScheduleType.specificDate) {
+          final DateTime? date = reminder.specificDate;
+          if (date == null) continue;
+          final timezone.TZDateTime scheduled = timezone.TZDateTime(
+            timezone.local, date.year, date.month, date.day,
+            reminder.hour, reminder.minute,
+          );
+          if (scheduled.isAfter(timezone.TZDateTime.now(timezone.local))) {
+            await _plugin.zonedSchedule(
+              _notificationId(reminder.id, date.day),
+              _notificationTitle(reminder), _notificationBody(reminder),
+              scheduled, _details(),
+              payload: 'voltstride-reminder-${reminder.id}',
+              androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            );
+          }
         } else {
           for (final int day in reminder.weekdays.toSet()) {
             await _plugin.zonedSchedule(
               _notificationId(reminder.id, day),
-              _notificationTitle(reminder),
-              _notificationBody(reminder),
-              _nextDate(
-                weekday: day,
-                hour: reminder.hour,
-                minute: reminder.minute,
-              ),
+              _notificationTitle(reminder), _notificationBody(reminder),
+              _nextDate(weekday: day, hour: reminder.hour, minute: reminder.minute),
               _details(),
               payload: 'voltstride-reminder-${reminder.id}',
               androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
@@ -389,6 +458,92 @@ class ReminderService {
         // Pemulihan jadwal lain tetap berjalan jika satu jadwal gagal.
       }
     }
+  }
+
+  /// Memeriksa hari/tanggal latihan tanpa membandingkan jam yang dipilih.
+  static bool matchesScheduledDate(TrainingReminder reminder, DateTime date) {
+    final DateTime localDate = date.toLocal();
+    final DateTime? scheduledDate = reminder.specificDate;
+    if (reminder.scheduleType == ReminderScheduleType.specificDate) {
+      return scheduledDate != null &&
+          scheduledDate.year == localDate.year &&
+          scheduledDate.month == localDate.month &&
+          scheduledDate.day == localDate.day;
+    }
+    return reminder.weekdays.contains(localDate.weekday);
+  }
+
+  /// Lari dan jalan dicocokkan dengan jenis aktivitas yang direkam.
+  /// Lainnya menerima sesi aktivitas yang valid karena tidak ada tipe ketiga
+  /// di perekam saat ini.
+  static bool matchesActivityCategory(
+    TrainingReminder reminder,
+    String activityCategory,
+  ) {
+    final String planned = reminder.activity.toLowerCase();
+    final String actual = activityCategory.toLowerCase();
+    if (planned.contains('lari') || planned.contains('run')) {
+      return actual == 'run';
+    }
+    if (planned.contains('jalan') || planned.contains('walk')) {
+      return actual == 'walk';
+    }
+    return (planned.contains('lain') || planned.contains('other')) &&
+        actual.isNotEmpty;
+  }
+
+  /// Menyelesaikan jadwal yang cocok ketika aktivitas memenuhi durasi.
+  /// Jam jadwal tidak diperbandingkan; cukup cocok tanggal, kategori, dan durasi.
+  static Future<int> completeMatchingActivity({
+    required DateTime startedAt,
+    required Duration duration,
+    required String activityCategory,
+  }) async {
+    if (duration.inSeconds <= 0) return 0;
+    final DateTime localStart = startedAt.toLocal();
+    final String dateKey = _dateKey(localStart);
+    final List<TrainingReminder> current = await getAll();
+    final Set<int> matchedIds = <int>{};
+
+    final List<TrainingReminder> updated = current.map((TrainingReminder item) {
+      if (!matchesScheduledDate(item, localStart) ||
+          duration < Duration(minutes: item.durationMinutes)) {
+        return item;
+      }
+      if (!matchesActivityCategory(item, activityCategory) ||
+          item.completedDates.contains(dateKey)) {
+        return item;
+      }
+
+      matchedIds.add(item.id);
+      final Set<String> completed = item.completedDates.toSet()..add(dateKey);
+      final Set<String> missed = item.notCompletedDates.toSet()..remove(dateKey);
+      final Map<String, String> reasons =
+          Map<String, String>.of(item.notCompletedReasons)..remove(dateKey);
+      return item.copyWith(
+        completedDates: completed.toList()..sort(),
+        notCompletedDates: missed.toList()..sort(),
+        notCompletedReasons: reasons,
+      );
+    }).toList(growable: false);
+
+    if (matchedIds.isEmpty) return 0;
+    await _write(updated);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      for (final int id in matchedIds) {
+        try {
+          await _settingsChannel.invokeMethod<void>(
+            'completeTrainingReminder',
+            <String, Object?>{'id': id, 'dateKey': dateKey},
+          );
+        } on PlatformException {
+          // Status selesai tetap tersimpan lokal bila kanal Android gagal.
+        } on MissingPluginException {
+          // Platform lain tidak memiliki kanal native ini.
+        }
+      }
+    }
+    return matchedIds.length;
   }
 
   static Future<bool> requestNotificationPermission() async {
@@ -502,7 +657,9 @@ class ReminderService {
   }
 
   static Future<void> _cancelLegacyNotifications(int reminderId) async {
-    for (int day = DateTime.monday; day <= DateTime.sunday; day++) {
+    // Jadwal per tanggal menggunakan day-of-month dalam ID; batalkan juga itu
+    // ketika jadwal diedit atau dihapus.
+    for (int day = 1; day <= 31; day++) {
       try {
         await _plugin.cancel(_notificationId(reminderId, day));
       } catch (_) {
@@ -511,11 +668,17 @@ class ReminderService {
     }
   }
 
+  static String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
   static Future<void> _write(List<TrainingReminder> reminders) async {
     final SharedPreferences preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       _storageKey,
       jsonEncode(reminders.map((TrainingReminder item) => item.toJson()).toList()),
     );
+    changes.value++;
   }
 }

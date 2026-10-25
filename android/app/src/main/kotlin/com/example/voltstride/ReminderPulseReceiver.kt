@@ -44,6 +44,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         private const val REPEAT_REQUEST_BASE = 610000
         private const val COMPLETE_REQUEST_BASE = 710000
         private const val NOTIFICATION_BASE = 810000
+        private const val WORKOUT_ACTIVE_KEY = "workout_active"
         private const val EXTRA_ID = "reminderId"
         private const val EXTRA_START_AT = "occurrenceStartAt"
 
@@ -53,6 +54,8 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             title: String,
             category: String,
             weekdays: List<Int>,
+            scheduleType: String,
+            specificDate: String?,
             hour: Int,
             minute: Int,
             durationMinutes: Int,
@@ -61,11 +64,16 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             bodyLabel: String,
         ) {
             val safeDays = weekdays.distinct().filter { it in 1..7 }.sorted()
-            require(safeDays.isNotEmpty()) { "Pilih setidaknya satu hari." }
+            val isSpecificDate = scheduleType == "specificDate"
+            require(if (isSpecificDate) !specificDate.isNullOrBlank() else safeDays.isNotEmpty()) {
+                "Pilih tanggal atau hari jadwal."
+            }
             val config = JSONObject().apply {
                 put("id", id)
                 put("title", title)
                 put("category", category)
+                put("scheduleType", if (isSpecificDate) "specificDate" else "routine")
+                put("specificDate", specificDate ?: "")
                 put("weekdays", JSONArray(safeDays))
                 put("hour", hour.coerceIn(0, 23))
                 put("minute", minute.coerceIn(0, 59))
@@ -92,6 +100,65 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 .filter { it.startsWith("skipped_${id}_") }
                 .forEach { key -> prefs.edit().remove(key).apply() }
             notificationManager(context).cancel(NOTIFICATION_BASE + id)
+        }
+
+        /** Menahan notifikasi jadwal selama sesi lari/jalan aktif, lalu melanjutkannya. */
+        fun setWorkoutActive(context: Context, active: Boolean) {
+            val prefs = preferences(context)
+            val wasActive = prefs.getBoolean(WORKOUT_ACTIVE_KEY, false)
+            if (wasActive == active) return
+            prefs.edit().putBoolean(WORKOUT_ACTIVE_KEY, active).apply()
+
+            val activeIds = prefs.all.keys
+                .filter { it.startsWith("active_start_") }
+                .mapNotNull { it.removePrefix("active_start_").toIntOrNull() }
+                .distinct()
+
+            if (active) {
+                activeIds.forEach { id ->
+                    notificationManager(context).cancel(NOTIFICATION_BASE + id)
+                    cancelRepeatAlarm(context, id)
+                }
+                return
+            }
+
+            val now = System.currentTimeMillis()
+            activeIds.forEach { id ->
+                val startAt = prefs.getLong(activeStartKey(id), 0L)
+                val endAt = prefs.getLong(activeEndKey(id), 0L)
+                val dateKey = if (startAt > 0L) dateKeyFor(startAt) else ""
+                if (startAt <= 0L || endAt <= now ||
+                    prefs.getBoolean(skippedOccurrenceKey(id, dateKey), false)) {
+                    notificationManager(context).cancel(NOTIFICATION_BASE + id)
+                    prefs.edit().remove(activeStartKey(id)).remove(activeEndKey(id)).apply()
+                    return@forEach
+                }
+                val config = loadConfig(context, id) ?: return@forEach
+                showReminder(context, id, config, startAt)
+                scheduleNextPulse(
+                    context,
+                    id,
+                    startAt,
+                    endAt,
+                    config.optInt("repeatIntervalSeconds", 60),
+                )
+            }
+        }
+
+        private fun cancelRepeatAlarm(context: Context, id: Int) {
+            val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val repeatIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
+                action = ACTION_REPEAT
+                putExtra(EXTRA_ID, id)
+            }
+            alarms.cancel(
+                PendingIntent.getBroadcast(
+                    context,
+                    REPEAT_REQUEST_BASE + id,
+                    repeatIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
         }
 
         private fun scheduleKey(id: Int) = "schedule_$id"
@@ -123,18 +190,20 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 val activeStart = preferences(context).getLong(activeStartKey(id), 0L)
                 val activeEnd = preferences(context).getLong(activeEndKey(id), 0L)
                 if (activeStart > 0L) {
-                    // Pulihkan notifikasi aktif setelah reboot. Jika durasi masih berjalan,
-                    // lanjutkan pulse dari waktu sekarang; jika sudah habis, notifikasi
-                    // tetap menunggu tombol Selesai tanpa mengirim pulse baru.
-                    showReminder(context, id, config, activeStart)
-                    if (activeEnd > now) {
-                        scheduleNextPulse(
-                            context,
-                            id,
-                            activeStart,
-                            activeEnd,
-                            config.optInt("repeatIntervalSeconds", 60),
-                        )
+                    // Jangan munculkan notifikasi jadwal jika sesi olahraga masih aktif.
+                    if (preferences(context).getBoolean(WORKOUT_ACTIVE_KEY, false)) {
+                        notificationManager(context).cancel(NOTIFICATION_BASE + id)
+                    } else {
+                        showReminder(context, id, config, activeStart)
+                        if (activeEnd > now) {
+                            scheduleNextPulse(
+                                context,
+                                id,
+                                activeStart,
+                                activeEnd,
+                                config.optInt("repeatIntervalSeconds", 60),
+                            )
+                        }
                     }
                 }
                 scheduleNextStart(context, id, maxOf(now, activeEnd))
@@ -164,12 +233,34 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         }
 
         private fun nextOccurrence(config: JSONObject, afterMillis: Long): Long? {
+            val hour = config.optInt("hour", 7)
+            val minute = config.optInt("minute", 0)
+            val zone = TimeZone.getTimeZone("Asia/Jakarta")
+            if (config.optString("scheduleType", "routine") == "specificDate") {
+                val dateText = config.optString("specificDate", "")
+                if (dateText.isBlank()) return null
+                return try {
+                    val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                        isLenient = false
+                        timeZone = zone
+                    }
+                    val parsedDate = parser.parse(dateText) ?: return null
+                    val oneTime = Calendar.getInstance(zone, Locale.US).apply {
+                        timeInMillis = parsedDate.time
+                        set(Calendar.HOUR_OF_DAY, hour)
+                        set(Calendar.MINUTE, minute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    oneTime.timeInMillis.takeIf { it > afterMillis }
+                } catch (_: Exception) {
+                    null
+                }
+            }
             val days = config.optJSONArray("weekdays") ?: return null
             if (days.length() == 0) return null
             val selected = (0 until days.length()).map { days.optInt(it) }.toSet()
-            val hour = config.optInt("hour", 7)
-            val minute = config.optInt("minute", 0)
-            val calendar = Calendar.getInstance(TimeZone.getTimeZone("Asia/Jakarta"), Locale.US)
+            val calendar = Calendar.getInstance(zone, Locale.US)
             calendar.timeInMillis = afterMillis
             calendar.set(Calendar.SECOND, 0)
             calendar.set(Calendar.MILLISECOND, 0)
@@ -204,6 +295,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 scheduleNextStart(context, id, startAt + 1000L)
                 return
             }
+            if (preferences(context).getBoolean(WORKOUT_ACTIVE_KEY, false)) {
+                // Jangan mengganggu sesi yang sedang berlangsung; jadwal minggu berikutnya tetap ada.
+                scheduleNextStart(context, id, startAt + 1000L)
+                return
+            }
             val durationMillis = config.optLong("durationMinutes", 30) * 60_000L
             val endAt = startAt + durationMillis
             preferences(context).edit()
@@ -211,8 +307,10 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 .putLong(activeEndKey(id), endAt)
                 .apply()
 
-            // Jadwalkan kejadian mingguan berikutnya secara terpisah dari pulse sesi ini.
-            scheduleNextStart(context, id, endAt + 1000L)
+            // Jadwal rutin membuat kemunculan berikutnya; jadwal bertanggal hanya sekali.
+            if (config.optString("scheduleType", "routine") == "routine") {
+                scheduleNextStart(context, id, endAt + 1000L)
+            }
             showReminder(context, id, config, startAt)
             scheduleNextPulse(context, id, startAt, endAt, config.optInt("repeatIntervalSeconds", 60))
         }
@@ -227,6 +325,10 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             val endAt = prefs.getLong(activeEndKey(id), 0L)
             val now = System.currentTimeMillis()
             if (endAt <= 0L || now >= endAt) return
+            if (prefs.getBoolean(WORKOUT_ACTIVE_KEY, false)) {
+                notificationManager(context).cancel(NOTIFICATION_BASE + id)
+                return
+            }
             showReminder(context, id, config, startAt)
             scheduleNextPulse(context, id, startAt, endAt, config.optInt("repeatIntervalSeconds", 60))
         }

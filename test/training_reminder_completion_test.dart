@@ -54,6 +54,81 @@ void main() {
     expect(decoded.completedDates, isEmpty);
   });
 
+  test('jadwal per tanggal menyimpan tanggal dan tidak memerlukan hari rutin', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 15,
+      activity: 'Jalan',
+      weekdays: const <int>[],
+      scheduleType: ReminderScheduleType.specificDate,
+      specificDate: DateTime(2026, 11, 14),
+      hour: 9,
+      minute: 45,
+      durationMinutes: 25,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    final TrainingReminder decoded = TrainingReminder.fromJson(
+      Map<String, dynamic>.from(reminder.toJson()),
+    );
+
+    expect(decoded.scheduleType, ReminderScheduleType.specificDate);
+    expect(decoded.specificDate, DateTime(2026, 11, 14));
+    expect(decoded.weekdays, isEmpty);
+    expect(decoded.timeText, '09:45');
+  });
+
+  test('jadwal per tanggal cocok berdasarkan tanggal, bukan jam', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 21,
+      activity: 'Lari',
+      weekdays: const <int>[],
+      scheduleType: ReminderScheduleType.specificDate,
+      specificDate: DateTime(2026, 11, 14),
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.matchesScheduledDate(
+        reminder,
+        DateTime(2026, 11, 14, 22, 45),
+      ),
+      isTrue,
+    );
+    expect(
+      ReminderService.matchesScheduledDate(reminder, DateTime(2026, 11, 15)),
+      isFalse,
+    );
+    expect(ReminderService.matchesActivityCategory(reminder, 'run'), isTrue);
+    expect(ReminderService.matchesActivityCategory(reminder, 'walk'), isFalse);
+  });
+
+  test('jadwal rutin cocok pada hari yang dipilih tanpa membatasi jam', () {
+    const TrainingReminder reminder = TrainingReminder(
+      id: 22,
+      activity: 'Jalan',
+      weekdays: <int>[DateTime.saturday],
+      hour: 6,
+      minute: 30,
+      durationMinutes: 20,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.matchesScheduledDate(
+        reminder,
+        DateTime(2026, 10, 31, 19, 10),
+      ),
+      isTrue,
+    );
+    expect(ReminderService.matchesActivityCategory(reminder, 'walk'), isTrue);
+  });
+
   test('menandai satu kejadian tidak mengubah jadwal berulangnya', () {
     const TrainingReminder reminder = TrainingReminder(
       id: 9,
