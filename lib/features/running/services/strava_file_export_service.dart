@@ -426,10 +426,19 @@ class StravaFileExportService {
     for (final RegExpMatch match in matches) {
       final String body = match.group(2) ?? '';
       final String attributes = match.group(1) ?? '';
-      final String sport = RegExp(
-        r'\bSport\s*=\s*["\']([^"\']+)["\']',
+      final RegExp doubleQuotedSportPattern = RegExp(
+        r'\bSport\s*=\s*"([^"]+)"',
         caseSensitive: false,
-      ).firstMatch(attributes)?.group(1)?.toLowerCase() ?? 'running';
+      );
+      final RegExp singleQuotedSportPattern = RegExp(
+        r"\bSport\s*=\s*'([^']+)'",
+        caseSensitive: false,
+      );
+      final String sport = (
+        doubleQuotedSportPattern.firstMatch(attributes)?.group(1) ??
+        singleQuotedSportPattern.firstMatch(attributes)?.group(1) ??
+        'running'
+      ).toLowerCase();
       final String notes = _readTcxText(body, 'Notes') ?? '';
       final bool isHiit = notes.toLowerCase().contains('voltstride hiit');
       final bool isWalk = sport.contains('walk') ||
