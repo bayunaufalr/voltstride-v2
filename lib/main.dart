@@ -391,7 +391,9 @@ class _RootShellState extends State<RootShell> {
     final ActivityStartConfig? config = _activeRunConfig;
     final String activity = config?.activityType == RunActivityType.walk
         ? AppLanguageService.text(context, 'Jalan', 'Walk')
-        : AppLanguageService.text(context, 'Lari', 'Run');
+        : config?.activityType == RunActivityType.hiit
+            ? 'HIIT'
+            : AppLanguageService.text(context, 'Lari', 'Run');
     return Material(
       color: colors.surface,
       elevation: 5,
@@ -514,6 +516,7 @@ class _RootShellState extends State<RootShell> {
                   activityType: config.activityType,
                   environment: config.environment,
                   initialIntervalPlan: config.intervalPlan,
+                  activityDetails: config.activityDetails,
                   targetDistanceKm: config.targetDistanceKm,
                   targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
                   plannedRoute: _plannedRoute,

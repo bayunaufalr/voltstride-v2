@@ -42,7 +42,8 @@ class StravaFileExportService {
     final List<RunPoint> gpsPoints = session.route
         .where(_isValidPoint)
         .toList(growable: false);
-    final bool hasGps = session.environment == RunEnvironment.outdoor;
+    final bool hasGps =
+        session.environment == RunEnvironment.outdoor && gpsPoints.length >= 2;
     final List<List<_ExportPoint>> segments;
 
     if (hasGps) {
@@ -66,7 +67,8 @@ class StravaFileExportService {
     } else {
       if (session.elapsed.inSeconds <= 0 ||
           !session.distanceMeters.isFinite ||
-          session.distanceMeters <= 0) {
+          (session.distanceMeters <= 0 &&
+              session.activityType != RunActivityType.hiit)) {
         throw StateError(
           'Aktivitas dalam ruangan perlu durasi dan jarak yang valid.',
         );
@@ -79,9 +81,9 @@ class StravaFileExportService {
     final int? averageHeartRate = session.averageHeartRateBpm ??
         _averageHeartRate(session.heartRateSamples);
     final int? maximumHeartRate = _maximumHeartRate(session.heartRateSamples);
-    final String sport = session.activityType == RunActivityType.walk
-        ? 'Other'
-        : 'Running';
+    final String sport = session.activityType == RunActivityType.run
+        ? 'Running'
+        : 'Other';
 
     final StringBuffer xml = StringBuffer()
       ..writeln('<?xml version="1.0" encoding="UTF-8"?>')
@@ -95,7 +97,16 @@ class StravaFileExportService {
       )
       ..writeln('<Activities>')
       ..writeln('<Activity Sport="$sport">')
-      ..writeln('<Id>${_xmlTime(start)}</Id>')
+      ..writeln('<Id>${_xmlTime(start)}</Id>');
+
+    if (session.activityType == RunActivityType.hiit) {
+      final String notes = _escapeXml(session.activityDetails ?? 'HIIT');
+      xml.writeln('<Notes>VoltStride HIIT: $notes</Notes>');
+    } else if (session.activityType == RunActivityType.walk) {
+      xml.writeln('<Notes>VoltStride activity type: walk</Notes>');
+    }
+
+    xml
       ..writeln('<Lap StartTime="${_xmlTime(start)}">')
       ..writeln(
         '<TotalTimeSeconds>'
@@ -397,6 +408,205 @@ class StravaFileExportService {
     }
     return maximum;
   }
+
+  /// Membaca satu atau beberapa aktivitas dari file TCX 2.0.
+  /// Parser ini menerima namespace TCX biasa maupun prefix namespace.
+  static List<RunSession> parseTcxSessions(String contents) {
+    if (contents.trim().isEmpty ||
+        !contents.toLowerCase().contains('trainingcenterdatabase')) {
+      throw const FormatException('File bukan TCX yang valid.');
+    }
+    final RegExp activityPattern = RegExp(
+      r'<(?:[A-Za-z0-9_]+:)?Activity\b([^>]*)>(.*?)</(?:[A-Za-z0-9_]+:)?Activity\s*>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    final Iterable<RegExpMatch> matches = activityPattern.allMatches(contents);
+    final List<RunSession> sessions = <RunSession>[];
+    for (final RegExpMatch match in matches) {
+      final String body = match.group(2) ?? '';
+      final String attributes = match.group(1) ?? '';
+      final String sport = RegExp(
+        r'\bSport\s*=\s*["\']([^"\']+)["\']',
+        caseSensitive: false,
+      ).firstMatch(attributes)?.group(1)?.toLowerCase() ?? 'running';
+      final String notes = _readTcxText(body, 'Notes') ?? '';
+      final bool isHiit = notes.toLowerCase().contains('voltstride hiit');
+      final bool isWalk = sport.contains('walk') ||
+          notes.toLowerCase().contains('activity type: walk');
+      final RunActivityType activityType = isHiit
+          ? RunActivityType.hiit
+          : isWalk
+              ? RunActivityType.walk
+              : RunActivityType.run;
+
+      final List<RunPoint> route = <RunPoint>[];
+      final List<RunHeartRateSample> heartRates = <RunHeartRateSample>[];
+      final List<RunCadenceSample> cadences = <RunCadenceSample>[];
+      final List<DateTime> timestamps = <DateTime>[];
+      final RegExp pointPattern = RegExp(
+        r'<(?:[A-Za-z0-9_]+:)?Trackpoint\b[^>]*>(.*?)</(?:[A-Za-z0-9_]+:)?Trackpoint\s*>',
+        caseSensitive: false,
+        dotAll: true,
+      );
+      double lastDistance = 0;
+      double? firstDistance;
+      for (final RegExpMatch pointMatch in pointPattern.allMatches(body)) {
+        final String pointXml = pointMatch.group(1) ?? '';
+        final DateTime? timestamp = DateTime.tryParse(
+          _readTcxText(pointXml, 'Time') ?? '',
+        );
+        if (timestamp == null) continue;
+        timestamps.add(timestamp);
+        final double? distance = _readTcxNumber(pointXml, 'DistanceMeters');
+        if (distance != null && distance.isFinite && distance >= 0) {
+          firstDistance ??= distance;
+          lastDistance = math.max(lastDistance, distance).toDouble();
+        }
+        final double? latitude = _readTcxNumber(pointXml, 'LatitudeDegrees');
+        final double? longitude = _readTcxNumber(pointXml, 'LongitudeDegrees');
+        final double? altitude = _readTcxNumber(pointXml, 'AltitudeMeters');
+        if (latitude != null && longitude != null &&
+            latitude >= -90 && latitude <= 90 &&
+            longitude >= -180 && longitude <= 180) {
+          route.add(RunPoint(
+            latitude: latitude,
+            longitude: longitude,
+            timestamp: timestamp,
+            accuracyMeters: 0,
+            altitudeMeters: altitude,
+            startsNewSegment: route.isEmpty,
+          ));
+        }
+        final int? bpm = _readTcxNumber(pointXml, 'Value', parentTag: 'HeartRateBpm')?.round();
+        if (bpm != null && bpm >= 30 && bpm <= 250) {
+          final int elapsedSeconds = timestamps.first == timestamp
+              ? 0
+              : timestamp.difference(timestamps.first).inSeconds;
+          if (elapsedSeconds >= 0) {
+            heartRates.add(RunHeartRateSample(
+              elapsedSeconds: elapsedSeconds,
+              bpm: bpm,
+            ));
+          }
+        }
+        final int? cadence = _readTcxNumber(pointXml, 'Cadence')?.round();
+        if (cadence != null && cadence > 0) {
+          cadences.add(RunCadenceSample(
+            distanceMeters: distance ?? lastDistance,
+            cadenceSpm: cadence.toDouble(),
+          ));
+        }
+      }
+
+      DateTime? start = _readTcxDate(body, 'Id');
+      start ??= timestamps.isEmpty ? null : timestamps.first;
+      if (start == null) continue;
+      DateTime? finish = timestamps.isEmpty ? null : timestamps.last;
+      final double? totalSeconds = _readTcxNumber(body, 'TotalTimeSeconds');
+      final Duration elapsed = finish != null && !finish.isBefore(start)
+          ? finish.difference(start)
+          : Duration(milliseconds: ((totalSeconds ?? 0) * 1000).round());
+      if (elapsed <= Duration.zero) continue;
+      finish ??= start.add(elapsed);
+
+      double distanceMeters = lastDistance - (firstDistance ?? 0);
+      if (distanceMeters <= 0 && route.length >= 2) {
+        distanceMeters = 0;
+        for (int index = 1; index < route.length; index++) {
+          distanceMeters += _distanceBetween(route[index - 1], route[index]);
+        }
+      }
+      if (!distanceMeters.isFinite || distanceMeters < 0) distanceMeters = 0;
+      final double? averagePace = distanceMeters > 0
+          ? elapsed.inMilliseconds / 1000.0 / (distanceMeters / 1000.0)
+          : null;
+      final int? averageHeartRate = heartRates.isEmpty
+          ? null
+          : (heartRates.fold<int>(0, (int total, RunHeartRateSample sample) =>
+                  total + sample.bpm) / heartRates.length).round();
+      sessions.add(RunSession(
+        startedAt: start,
+        finishedAt: finish,
+        distanceMeters: distanceMeters,
+        elapsed: elapsed,
+        movingTime: elapsed,
+        averagePaceSecondsPerKm: averagePace,
+        currentPaceSecondsPerKm: null,
+        gpsAccuracyMeters: null,
+        acceptedPoints: route.length,
+        rejectedPoints: 0,
+        route: route,
+        splits: const <RunSplit>[],
+        hundredMeterLaps: const <RunLap100m>[],
+        intervalPlan: null,
+        activityType: activityType,
+        environment: route.length >= 2
+            ? RunEnvironment.outdoor
+            : RunEnvironment.indoor,
+        averageHeartRateBpm: averageHeartRate,
+        heartRateSamples: heartRates,
+        cadenceSamples: cadences,
+        activityDetails: isHiit
+            ? notes.replaceFirst(RegExp(r'^VoltStride HIIT:\s*', caseSensitive: false), '')
+            : null,
+      ));
+    }
+    if (sessions.isEmpty) {
+      throw const FormatException('Tidak ditemukan sesi TCX yang dapat dibaca.');
+    }
+    sessions.sort((RunSession a, RunSession b) =>
+        a.startedAt.compareTo(b.startedAt));
+    return sessions;
+  }
+
+  static String? _readTcxText(String source, String tag, {String? parentTag}) {
+    final String input = parentTag == null
+        ? source
+        : _readTcxBlock(source, parentTag) ?? '';
+    if (input.isEmpty) return null;
+    final RegExp expression = RegExp(
+      '<(?:[A-Za-z0-9_]+:)?$tag\\b[^>]*>(.*?)</(?:[A-Za-z0-9_]+:)?$tag\\s*>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    final String? value = expression.firstMatch(input)?.group(1);
+    return value?.replaceAll(RegExp(r'<[^>]+>'), '').trim();
+  }
+
+  static String? _readTcxBlock(String source, String tag) {
+    final RegExp expression = RegExp(
+      '<(?:[A-Za-z0-9_]+:)?$tag\\b[^>]*>(.*?)</(?:[A-Za-z0-9_]+:)?$tag\\s*>',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    return expression.firstMatch(source)?.group(1);
+  }
+
+  static double? _readTcxNumber(
+    String source,
+    String tag, {
+    String? parentTag,
+  }) {
+    final String? text = _readTcxText(
+      source,
+      tag,
+      parentTag: parentTag,
+    );
+    return text == null ? null : double.tryParse(text);
+  }
+
+  static DateTime? _readTcxDate(String source, String tag) {
+    final String? value = _readTcxText(source, tag);
+    return value == null ? null : DateTime.tryParse(value);
+  }
+
+  static String _escapeXml(String value) => value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
 
   static String _decimal(double value) => value.toStringAsFixed(2);
 

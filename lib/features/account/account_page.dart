@@ -16,7 +16,6 @@ import '../running/services/run_history_repository.dart';
 import '../progress/progress_page.dart';
 import '../running/run_history_page.dart';
 import '../reminders/training_reminders_page.dart';
-import '../reminders/reminder_service.dart';
 import '../../services/app_language_service.dart';
 import 'profile_training_summary.dart';
 import 'account_service.dart';
@@ -37,6 +36,12 @@ class AccountPageState extends State<AccountPage>
   bool _movingLegacyHistory = false;
   bool _showProfilePage = false;
   int _legacyHistoryCount = 0;
+  bool _cloudStorageAvailable = false;
+  bool _cloudSignedIn = false;
+  int _cloudSessionCount = 0;
+  int _cloudEstimatedBytes = 0;
+  int _cloudLargestDocumentBytes = 0;
+  int _cloudMaximumDocumentBytes = 1024 * 1024;
   late final TabController _sectionController;
   final GlobalKey<ProgressPageState> _progressKey =
       GlobalKey<ProgressPageState>();
@@ -83,74 +88,40 @@ class AccountPageState extends State<AccountPage>
 
   Future<void> _loadRecovery() async {
     try {
-      final List<RunSession> sessions =
-          await RunHistoryRepository.instance.getAll(limit: 200);
-      final int legacyCount =
-          await RunHistoryRepository.instance.pendingSessionCount();
-      if (sessions.isNotEmpty) {
-        await _markScheduledActivityCompleted(sessions.first);
-      }
+      final RunHistoryRepository repository = RunHistoryRepository.instance;
+      final List<dynamic> loaded = await Future.wait<dynamic>(<Future<dynamic>>[
+        repository.getAll(limit: 200),
+        repository.pendingSessionCount(),
+        repository.cloudStorageSummary(),
+      ]);
+      final List<RunSession> sessions = loaded[0] as List<RunSession>;
+      final int pendingCount = loaded[1] as int;
+      final Map<String, Object?> cloud =
+          loaded[2] as Map<String, Object?>;
       if (!mounted) return;
-      if (sessions.isEmpty) {
-        setState(() {
-          _latestSession = null;
-          _recommendedResumeAt = null;
-          _legacyHistoryCount = legacyCount;
-          _loading = false;
-        });
-        return;
-      }
-      final RunSession session = sessions.first;
-      final int hours = _suggestedRestHours(session);
-      final DateTime activityEnd = (session.finishedAt ?? session.startedAt).toLocal();
+
+      final RunSession? session = sessions.isEmpty ? null : sessions.first;
+      final DateTime? resumeAt = session == null
+          ? null
+          : (session.finishedAt ?? session.startedAt)
+              .toLocal()
+              .add(Duration(hours: _suggestedRestHours(session)));
       setState(() {
         _latestSession = session;
-        _recommendedResumeAt = activityEnd.add(Duration(hours: hours));
-        _legacyHistoryCount = legacyCount;
+        _recommendedResumeAt = resumeAt;
+        _legacyHistoryCount = pendingCount;
+        _cloudSignedIn = cloud['signedIn'] == true;
+        _cloudStorageAvailable = cloud['available'] == true;
+        _cloudSessionCount = (cloud['sessionCount'] as num?)?.toInt() ?? 0;
+        _cloudEstimatedBytes = (cloud['estimatedBytes'] as num?)?.toInt() ?? 0;
+        _cloudLargestDocumentBytes =
+            (cloud['largestDocumentBytes'] as num?)?.toInt() ?? 0;
+        _cloudMaximumDocumentBytes =
+            (cloud['maximumDocumentBytes'] as num?)?.toInt() ?? 1024 * 1024;
         _loading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _markScheduledActivityCompleted(RunSession session) async {
-    if (session.finishedAt == null || session.distanceKm <= 0) return;
-
-    final DateTime start = session.startedAt.toLocal();
-    final String dateKey = '${start.year.toString().padLeft(4, '0')}-'
-        '${start.month.toString().padLeft(2, '0')}-'
-        '${start.day.toString().padLeft(2, '0')}';
-    final List<TrainingReminder> reminders = await ReminderService.getAll();
-    for (final TrainingReminder reminder in reminders) {
-      if (!reminder.weekdays.contains(start.weekday) ||
-          reminder.completedDates.contains(dateKey)) {
-        continue;
-      }
-
-      final String planned = reminder.activity.toLowerCase();
-      final bool isWalk = session.activityType == RunActivityType.walk;
-      final bool matchesActivity = planned.contains('jalan')
-          ? isWalk
-          : planned.contains('interval')
-              ? !isWalk && session.intervalPlan != null
-              : planned.contains('lari') && !isWalk;
-      if (!matchesActivity) continue;
-
-      final DateTime plannedStart = DateTime(
-        start.year,
-        start.month,
-        start.day,
-        reminder.hour,
-        reminder.minute,
-      );
-      if (start.difference(plannedStart).abs() <= const Duration(hours: 2)) {
-        await ReminderService.setOccurrenceCompleted(
-          reminderId: reminder.id,
-          dateKey: dateKey,
-          completed: true,
-        );
-      }
     }
   }
 
@@ -319,6 +290,8 @@ class AccountPageState extends State<AccountPage>
       children: <Widget>[
         _accountCard(),
         const SizedBox(height: 12),
+        _cloudSyncStorageCard(),
+        const SizedBox(height: 12),
         const ProfileTrainingSummary(),
         const SizedBox(height: 12),
         _themeCard(),
@@ -353,6 +326,138 @@ class AccountPageState extends State<AccountPage>
         ],
       ],
     );
+  }
+
+  Widget _cloudSyncStorageCard() {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    final String status;
+    final String detail;
+    if (!_cloudSignedIn) {
+      status = _text('Belum masuk akun', 'Not signed in');
+      detail = _text(
+        'Aktivitas hanya tersimpan di perangkat sampai Anda masuk dan menyinkronkannya.',
+        'Activities remain on this device until you sign in and sync them.',
+      );
+    } else if (!_cloudStorageAvailable) {
+      status = _text('Status cloud belum tersedia', 'Cloud status unavailable');
+      detail = _text(
+        'Periksa koneksi. Salinan lokal tetap digunakan dan tidak dihapus saat sinkronisasi gagal.',
+        'Check your connection. Local copies remain available and are not deleted when sync fails.',
+      );
+    } else if (_legacyHistoryCount > 0) {
+      status = _text('Menunggu sinkronisasi', 'Sync pending');
+      detail = _text(
+        '$_legacyHistoryCount aktivitas belum terkonfirmasi tersimpan di akun.',
+        '$_legacyHistoryCount activities are not yet confirmed in your account.',
+      );
+    } else {
+      status = _text('Tersinkron', 'Synced');
+      detail = _text(
+        'Aktivitas baru langsung dicoba sinkron saat disimpan. Aktivitas tertunda dicoba lagi saat riwayat dibuka atau ketika Anda menekan Sinkronkan sekarang.',
+        'New activities are sent to your account when saved. Pending activities are retried when history is opened or when you select Sync now.',
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.cloud_sync_outlined, color: colors.onSurface),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _text('Penyimpanan dan sinkronisasi', 'Storage and sync'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(status, style: TextStyle(fontWeight: FontWeight.w800, color: colors.onSurface)),
+          const SizedBox(height: 4),
+          Text(detail, style: TextStyle(color: colors.onSurfaceVariant, height: 1.35)),
+          if (_cloudSignedIn) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              _text(
+                'Salinan yang sudah tersimpan di akun tidak terhapus saat aplikasi dihapus atau data lokal dibersihkan. Aktivitas yang belum tersinkron masih hanya ada di perangkat.',
+                'Activities already saved to your account remain there if the app is uninstalled or local app data is cleared. Unsynced activities still exist only on this device.',
+              ),
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 11,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (_cloudSignedIn && _cloudStorageAvailable) ...<Widget>[
+            const SizedBox(height: 12),
+            Row(
+              children: <Widget>[
+                Expanded(child: _storageValue(_text('Aktivitas di akun', 'Account activities'), '$_cloudSessionCount')),
+                Expanded(child: _storageValue(_text('Perkiraan data cloud', 'Estimated cloud data'), _formatBytes(_cloudEstimatedBytes))),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _text(
+                'Batas satu dokumen Firestore: ${_formatBytes(_cloudMaximumDocumentBytes)}. Pemakaian total proyek mengikuti kuota Firebase, bukan batas per akun.',
+                'Firestore limit per document: ${_formatBytes(_cloudMaximumDocumentBytes)}. Total project usage follows Firebase quotas, not a per-account limit.',
+              ),
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11, height: 1.35),
+            ),
+            if (_cloudLargestDocumentBytes > 0)
+              Text(
+                _text(
+                  'Aktivitas terbesar: ${_formatBytes(_cloudLargestDocumentBytes)}',
+                  'Largest activity: ${_formatBytes(_cloudLargestDocumentBytes)}',
+                ),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11),
+              ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            _text(
+              'Menghapus aplikasi tidak menghapus data yang sudah tersimpan di akun. Data yang belum tersinkron hanya ada di perangkat.',
+              'Uninstalling the app does not delete data already stored in your account. Unsynced data exists only on this device.',
+            ),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 11, height: 1.35),
+          ),
+          if (_cloudSignedIn && _legacyHistoryCount > 0) ...<Widget>[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _movingLegacyHistory ? null : _sinkronkanAktivitas,
+              icon: const Icon(Icons.sync_rounded),
+              label: Text(_text('Sinkronkan sekarang', 'Sync now')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _storageValue(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11)),
+        const SizedBox(height: 3),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
   }
 
   Widget _themeCard() {

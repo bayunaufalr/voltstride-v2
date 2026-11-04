@@ -497,6 +497,62 @@ class RunHistoryRepository {
     }
   }
 
+  /// Ringkasan sinkronisasi dan pemakaian Firestore untuk akun aktif.
+  /// Firestore membatasi ukuran satu dokumen, bukan memberi kuota total per akun.
+  Future<Map<String, Object?>> cloudStorageSummary() async {
+    const int maximumDocumentBytes = 1024 * 1024;
+    final String? uid = _akunAktifId;
+    if (uid == null) {
+      return <String, Object?>{
+        'signedIn': false,
+        'available': false,
+        'sessionCount': 0,
+        'estimatedBytes': 0,
+        'largestDocumentBytes': 0,
+        'maximumDocumentBytes': maximumDocumentBytes,
+      };
+    }
+
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snapshot =
+          await _koleksiAktivitas(uid).get().timeout(
+                const Duration(seconds: 12),
+              );
+      int estimatedBytes = 0;
+      int largestDocumentBytes = 0;
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> document
+          in snapshot.docs) {
+        final int bytes = utf8.encode(
+          jsonEncode(
+            document.data(),
+            toEncodable: (Object? value) => value is Timestamp
+                ? value.toDate().toIso8601String()
+                : value.toString(),
+          ),
+        ).length;
+        estimatedBytes += bytes;
+        if (bytes > largestDocumentBytes) largestDocumentBytes = bytes;
+      }
+      return <String, Object?>{
+        'signedIn': true,
+        'available': true,
+        'sessionCount': snapshot.docs.length,
+        'estimatedBytes': estimatedBytes,
+        'largestDocumentBytes': largestDocumentBytes,
+        'maximumDocumentBytes': maximumDocumentBytes,
+      };
+    } catch (_) {
+      return <String, Object?>{
+        'signedIn': true,
+        'available': false,
+        'sessionCount': 0,
+        'estimatedBytes': 0,
+        'largestDocumentBytes': 0,
+        'maximumDocumentBytes': maximumDocumentBytes,
+      };
+    }
+  }
+
   /// Nama lama tetap disediakan untuk kode yang masih memakainya.
   Future<int> legacySessionCount() => pendingSessionCount();
 

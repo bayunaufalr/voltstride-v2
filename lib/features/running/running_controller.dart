@@ -47,12 +47,14 @@ class RunningController extends ChangeNotifier {
     bool useGps = true,
     RunActivityType activityType = RunActivityType.run,
     RunEnvironment environment = RunEnvironment.outdoor,
+    String? activityDetails,
     Future<void> Function()? onGpsReady,
   }) => _engine.start(
         intervalPlan: intervalPlan,
         useGps: useGps,
         activityType: activityType,
         environment: environment,
+        activityDetails: activityDetails,
         onGpsReady: onGpsReady,
       );
 

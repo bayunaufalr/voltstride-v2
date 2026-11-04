@@ -124,6 +124,7 @@ class RunningEngine extends ChangeNotifier {
   bool _useGps = true;
   RunActivityType _activityType = RunActivityType.run;
   RunEnvironment _environment = RunEnvironment.outdoor;
+  String? _activityDetails;
 
   /// Setelah resume, titik GPS pertama hanya menjadi anchor baru.
   /// Titik tersebut tidak menghasilkan jarak terhadap posisi sebelum pause.
@@ -213,6 +214,7 @@ class RunningEngine extends ChangeNotifier {
     bool useGps = true,
     RunActivityType activityType = RunActivityType.run,
     RunEnvironment environment = RunEnvironment.outdoor,
+    String? activityDetails,
     Future<void> Function()? onGpsReady,
   }) async {
     if (_disposed || isActive) return;
@@ -223,6 +225,9 @@ class RunningEngine extends ChangeNotifier {
     _useGps = useGps;
     _activityType = activityType;
     _environment = environment;
+    _activityDetails = activityDetails?.trim().isEmpty == true
+        ? null
+        : activityDetails?.trim();
     _errorMessage = null;
     _status = RunStatus.acquiringGps;
     _notifyIfAlive();
@@ -963,6 +968,7 @@ class RunningEngine extends ChangeNotifier {
       intervalPlan: _intervalPlan,
       activityType: _activityType,
       environment: _environment,
+      activityDetails: _activityDetails,
       totalSteps: _totalSteps,
       averageCadenceSpm: _averageCadenceSpm,
       maxCadenceSpm: _maxCadenceSpm,
@@ -994,7 +1000,11 @@ class RunningEngine extends ChangeNotifier {
         speedKmh: speedKmh,
         paceSecondsPerKm: pace,
         paused: _status == RunStatus.paused,
-        activityLabel: _intervalPlan == null ? _activityType.label : 'Lari interval',
+        activityLabel: _activityType == RunActivityType.hiit
+            ? 'HIIT'
+            : _intervalPlan != null
+                ? 'Lari interval'
+                : _activityType.label,
       );
     } catch (_) {
       // Kegagalan notifikasi tidak boleh menghentikan perekaman GPS.

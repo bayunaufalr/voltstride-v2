@@ -14,6 +14,7 @@ class RunningNotificationService {
       FlutterLocalNotificationsPlugin();
   static const int _notificationId = 42601;
   static const int _pacerNotificationId = 42602;
+  static const int _intervalTimerNotificationId = 42603;
   static final Set<int> _intervalNotificationIds = <int>{};
   static bool _initialized = false;
   static bool _legacyPacerNotificationsCleared = false;
@@ -185,6 +186,7 @@ class RunningNotificationService {
     required String stage,
     required int repetition,
     required int totalRepetitions,
+    String activityLabel = 'Lari',
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _ensureInitialized();
@@ -197,8 +199,8 @@ class RunningNotificationService {
       case 'recovery':
         title = english ? 'Start recovery' : 'Mulai pemulihan';
         body = english
-            ? 'Run interval $repetition finished. Recovery starts now.'
-            : 'Lari selesai. Mulai pemulihan sekarang · interval $repetition/$totalRepetitions.';
+            ? '$activityLabel work interval $repetition finished. Start recovery now.'
+            : '$activityLabel fase kerja selesai. Mulai pemulihan sekarang · interval $repetition/$totalRepetitions.';
         break;
       case 'complete':
         title = english ? 'Interval complete' : 'Interval selesai';
@@ -207,10 +209,10 @@ class RunningNotificationService {
             : 'Semua $totalRepetitions interval sudah selesai.';
         break;
       default:
-        title = english ? 'Start running' : 'Mulai lari';
+        title = english ? 'Start work interval' : 'Mulai sesi kerja';
         body = english
-            ? 'Recovery finished. Start running now · interval $repetition/$totalRepetitions.'
-            : 'Pemulihan selesai. Mulai lari sekarang · interval $repetition/$totalRepetitions.';
+            ? 'Recovery finished. Start $activityLabel now · interval $repetition/$totalRepetitions.'
+            : 'Pemulihan selesai. Mulai $activityLabel sekarang · interval $repetition/$totalRepetitions.';
         break;
     }
 
@@ -243,10 +245,49 @@ class RunningNotificationService {
     );
   }
 
+  /// Notifikasi timer interval. ID tetap agar pembaruan fase mengganti
+  /// notifikasi sebelumnya, bukan menumpuk setiap pergantian.
+  static Future<void> showIntervalTimerState({
+    required String title,
+    required String body,
+    required bool ongoing,
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _ensureInitialized();
+    final AndroidNotificationDetails android = AndroidNotificationDetails(
+      'voltstride_interval_timer_priority_v1',
+      'Timer interval',
+      channelDescription: 'Status ronde, pemulihan, jeda, dan timer interval.',
+      importance: Importance.max,
+      priority: Priority.max,
+      category: AndroidNotificationCategory.navigation,
+      visibility: NotificationVisibility.public,
+      ongoing: ongoing,
+      autoCancel: !ongoing,
+      onlyAlertOnce: false,
+      playSound: true,
+      enableVibration: true,
+      timeoutAfter: ongoing ? null : 20000,
+      ticker: title,
+    );
+    await _plugin.show(
+      _intervalTimerNotificationId,
+      title,
+      body,
+      NotificationDetails(android: android),
+    );
+  }
+
+  static Future<void> stopIntervalTimer() async {
+    if (!_initialized) return;
+    await _plugin.cancel(_intervalTimerNotificationId);
+  }
+
   static Future<void> stop() async {
     if (!_initialized) return;
     await _plugin.cancel(_notificationId);
     await _plugin.cancel(_pacerNotificationId);
+    await _plugin.cancel(_intervalTimerNotificationId);
     for (final int notificationId in _intervalNotificationIds) {
       await _plugin.cancel(notificationId);
     }

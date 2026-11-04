@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/volt_theme.dart';
+import '../features/running/services/running_notification_service.dart';
 
 /// ============================================================
 /// TIMER PAGE: INTERVAL ROUND TIMER
@@ -90,6 +91,7 @@ class _TimerPageState extends State<TimerPage> {
 
   /// Total ronde yang harus diselesaikan.
   int _totalRonde = 6;
+  bool _paused = false;
 
   /// Lama hitung mundur sebelum ronde dimulai, dalam detik.
   ///
@@ -114,6 +116,7 @@ class _TimerPageState extends State<TimerPage> {
     // Dijepit ke rentang yang masuk akal.
     _totalRonde = jumlah.clamp(1, 99);
     _rondeSekarang = 0;
+    _paused = false;
     _sisaDetik = durasi.clamp(5, 3600);
 
     // Reset stopwatch supaya waktu mulai dari nol.
@@ -136,6 +139,7 @@ class _TimerPageState extends State<TimerPage> {
     // Getaran tanda mulai.
     HapticFeedback.mediumImpact();
     setState(() {});
+    _notifyTimerState(ongoing: true);
   }
 
   /// Menghentikan sesi sepenuhnya.
@@ -146,8 +150,10 @@ class _TimerPageState extends State<TimerPage> {
     _fase = 'siap';
     _sisaDetik = 0;
     _rondeSekarang = 0;
+    _paused = false;
     HapticFeedback.mediumImpact();
     setState(() {});
+    unawaited(RunningNotificationService.stopIntervalTimer());
   }
 
   /// Satu siklus pemeriksaan, dipanggil setiap 200 milidetik.
@@ -158,7 +164,7 @@ class _TimerPageState extends State<TimerPage> {
   /// operasi menunda callback.
   void _tick(Timer _) {
     // Sesi yang belum mulai atau sudah selesai tidak dihitung.
-    if (_fase == 'siap' || _fase == 'selesai') return;
+    if (_fase == 'siap' || _fase == 'selesai' || _paused) return;
 
     // Waktu yang sudah berjalan di fase ini, dalam detik desimal.
     final double sejakMulaiFase =
@@ -226,6 +232,7 @@ class _TimerPageState extends State<TimerPage> {
     // Getaran kuat: ronde dimulai.
     HapticFeedback.heavyImpact();
     setState(() {});
+    _notifyTimerState(ongoing: true);
   }
 
   /// Ronde selesai: pindah ke istirahat, atau ke selesai kalau ini
@@ -254,6 +261,7 @@ class _TimerPageState extends State<TimerPage> {
     // Getaran ringan: sekarang istirahat.
     HapticFeedback.lightImpact();
     setState(() {});
+    _notifyTimerState(ongoing: true);
   }
 
   /// Istirahat selesai: lanjut ronde berikutnya.
@@ -265,6 +273,7 @@ class _TimerPageState extends State<TimerPage> {
         _sw.elapsedMilliseconds / 1000.0;
     _sisaDetik = durasiHitungMundur;
     setState(() {});
+    _notifyTimerState(ongoing: true);
   }
 
   /// Sesi selesai sepenuhnya.
@@ -278,6 +287,59 @@ class _TimerPageState extends State<TimerPage> {
     // Getaran sangat berat: sesi khatam.
     HapticFeedback.heavyImpact();
     setState(() {});
+    _notifyTimerState(ongoing: false);
+  }
+
+  Future<void> _notifyTimerState({required bool ongoing}) async {
+    final String phase = _labelFase;
+    final String detail;
+    if (_fase == 'ronde') {
+      detail = 'Ronde $_rondeSekarang/$_totalRonde · ${_fmtMenitDetik(_sisaDetik)} tersisa';
+    } else if (_fase == 'istirahat') {
+      detail = 'Pemulihan · ${_fmtMenitDetik(_sisaDetik)} tersisa';
+    } else if (_fase == 'jeda') {
+      detail = 'Bersiap · ${_fmtMenitDetik(_sisaDetik)}';
+    } else {
+      detail = '$_totalRonde ronde selesai';
+    }
+    try {
+      await RunningNotificationService.showIntervalTimerState(
+        title: 'VoltStride · $phase',
+        body: detail,
+        ongoing: ongoing,
+      );
+    } catch (_) {
+      // Timer di layar tetap berfungsi walau Android menolak notifikasi.
+    }
+  }
+
+  void _pauseResume() {
+    if (_fase == 'siap' || _fase == 'selesai') return;
+    if (_paused) {
+      _sw.start();
+      _paused = false;
+    } else {
+      _sw.stop();
+      _paused = true;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {});
+    _notifyTimerState(ongoing: true);
+  }
+
+  void _skipPhase() {
+    if (_fase == 'siap' || _fase == 'selesai' || _paused) return;
+    switch (_fase) {
+      case 'jeda':
+        _mulaiRonde();
+        break;
+      case 'ronde':
+        _selesaiRonde();
+        break;
+      case 'istirahat':
+        _selesaiIstirahat();
+        break;
+    }
   }
 
   // ------------------------------------------------------------
@@ -493,25 +555,43 @@ class _TimerPageState extends State<TimerPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Tombol mulai atau henti.
-                  FilledButton.icon(
-                    onPressed:
-                        aktif ? _hentiSesi : _mulaiSesi,
-                    icon: Icon(
-                      aktif
-                          ? Icons.stop
-                          : Icons.play_arrow,
+                  if (aktif) ...<Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pauseResume,
+                            icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                            label: Text(_paused ? 'Lanjutkan' : 'Jeda'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _skipPhase,
+                            icon: const Icon(Icons.skip_next_rounded),
+                            label: const Text('Lewati'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _hentiSesi,
+                            icon: const Icon(Icons.stop),
+                            label: const Text('Henti'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: VoltWarna.merah,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    label: Text(
-                      aktif ? 'Henti' : 'Mulai Sesi',
+                  ] else
+                    FilledButton.icon(
+                      onPressed: _mulaiSesi,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Mulai Sesi'),
                     ),
-                    style: aktif
-                        ? FilledButton.styleFrom(
-                            backgroundColor:
-                                VoltWarna.merah,
-                          )
-                        : null,
-                  ),
                 ],
               ),
             ),

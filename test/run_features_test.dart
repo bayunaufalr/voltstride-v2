@@ -43,6 +43,45 @@ void main() {
   });
 
 
+  test('HIIT session details and heart-rate data survive local serialization', () {
+    final RunSession original = RunSession(
+      startedAt: DateTime.utc(2026, 11, 4, 6),
+      finishedAt: DateTime.utc(2026, 11, 4, 6, 20),
+      distanceMeters: 0,
+      elapsed: const Duration(minutes: 20),
+      movingTime: const Duration(minutes: 20),
+      averagePaceSecondsPerKm: null,
+      currentPaceSecondsPerKm: null,
+      gpsAccuracyMeters: null,
+      acceptedPoints: 0,
+      rejectedPoints: 0,
+      route: const <RunPoint>[],
+      splits: const <RunSplit>[],
+      activityType: RunActivityType.hiit,
+      environment: RunEnvironment.indoor,
+      intervalPlan: const IntervalRunPlan(
+        workSeconds: 40,
+        recoverySeconds: 20,
+        repetitions: 10,
+      ),
+      activityDetails: 'Burpee, squat jump, mountain climber',
+      averageHeartRateBpm: 148,
+      heartRateSamples: const <RunHeartRateSample>[
+        RunHeartRateSample(elapsedSeconds: 5, bpm: 132),
+        RunHeartRateSample(elapsedSeconds: 15, bpm: 164),
+      ],
+    );
+
+    final RunSession restored =
+        RunSession.fromStorageMap(original.toStorageMap());
+
+    expect(restored.activityType, RunActivityType.hiit);
+    expect(restored.activityDetails, original.activityDetails);
+    expect(restored.averageHeartRateBpm, 148);
+    expect(restored.heartRateSamples, hasLength(2));
+    expect(restored.intervalPlan?.repetitions, 10);
+  });
+
   test('run session storage map preserves 100m laps and interval plan', () {
     final RunSession original = RunSession(
       startedAt: DateTime.utc(2026, 10, 13),

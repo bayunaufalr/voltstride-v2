@@ -6,8 +6,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/volt_theme.dart';
+import '../reminders/reminder_service.dart';
 import 'models/run_session.dart';
 import 'services/run_history_repository.dart';
+import 'services/strava_file_export_service.dart';
 import 'run_detail_page.dart';
 import 'run_route_map_view.dart';
 
@@ -137,6 +139,49 @@ class RunHistoryPageState extends State<RunHistoryPage> {
     }
   }
 
+  Future<void> _importTcx() async {
+    try {
+      final PlatformFile? selected = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: <String>['tcx'],
+      );
+      if (selected == null || !mounted) return;
+      final Uint8List bytes = await selected.readAsBytes();
+      final String contents = utf8.decode(bytes, allowMalformed: true);
+      final List<RunSession> imported =
+          StravaFileExportService.parseTcxSessions(contents);
+      int savedCount = 0;
+      int localOnlyCount = 0;
+      for (final RunSession session in imported) {
+        await ReminderService.completeMatchingActivity(
+          startedAt: session.startedAt,
+          duration: session.elapsed,
+          activityCategory: session.activityType.name,
+          finishedAt: session.finishedAt,
+        );
+        try {
+          await _repository.save(session);
+        } on RunSyncException {
+          // Repository sudah menyimpan salinan lokal sebelum mencoba Firestore.
+          // Hanya kegagalan sinkronisasi yang dihitung sebagai local-only;
+          // error penyimpanan lokal harus tetap terlihat sebagai kegagalan impor.
+          localOnlyCount++;
+        }
+        savedCount++;
+      }
+      await reload();
+      if (!mounted) return;
+      _showSnackBar(
+        localOnlyCount == 0
+            ? '$savedCount aktivitas TCX berhasil diimpor dan disimpan.'
+            : '$savedCount aktivitas TCX disimpan. $localOnlyCount menunggu sinkronisasi akun.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar('File TCX gagal diimpor. Pastikan file berisi data aktivitas yang valid. ($error)');
+    }
+  }
+
   Future<void> _showStorageDiagnostics() async {
     try {
       final Map<String, Object?> info = await _repository.diagnostics();
@@ -256,6 +301,9 @@ class RunHistoryPageState extends State<RunHistoryPage> {
           case 'import':
             unawaited(_importBackup());
             break;
+          case 'import_tcx':
+            unawaited(_importTcx());
+            break;
           case 'diagnostics':
             unawaited(_showStorageDiagnostics());
             break;
@@ -276,6 +324,14 @@ class RunHistoryPageState extends State<RunHistoryPage> {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.upload_file_outlined),
             title: Text('Pulihkan cadangan'),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'import_tcx',
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.file_open_outlined),
+            title: Text('Impor aktivitas TCX'),
           ),
         ),
         PopupMenuItem<String>(
@@ -368,9 +424,13 @@ class RunHistoryPageState extends State<RunHistoryPage> {
                   CircleAvatar(
                     backgroundColor: VoltWarna.surface,
                     foregroundColor: VoltWarna.aksen,
-                    child: Icon(session.activityType == RunActivityType.walk
-                        ? Icons.directions_walk_rounded
-                        : Icons.directions_run_rounded),
+                    child: Icon(
+                      session.activityType == RunActivityType.hiit
+                          ? Icons.fitness_center_rounded
+                          : session.activityType == RunActivityType.walk
+                              ? Icons.directions_walk_rounded
+                              : Icons.directions_run_rounded,
+                    ),
                   ),
                   const SizedBox(width: 11),
                   Expanded(

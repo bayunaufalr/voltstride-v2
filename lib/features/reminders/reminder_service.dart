@@ -45,6 +45,7 @@ class TrainingReminder {
     this.completedDates = const <String>[],
     this.notCompletedDates = const <String>[],
     this.notCompletedReasons = const <String, String>{},
+    this.completionReasons = const <String, String>{},
     this.activityDurationSecondsByDate = const <String, int>{},
   });
 
@@ -65,6 +66,8 @@ class TrainingReminder {
   final List<String> completedDates;
   final List<String> notCompletedDates;
   final Map<String, String> notCompletedReasons;
+  /// Alasan pengguna menyelesaikan jadwal yang durasinya tidak sesuai target.
+  final Map<String, String> completionReasons;
   /// Durasi aktivitas yang dilakukan sebelum jam jadwal pada tanggal terkait.
   /// Nilai ini mengurangi durasi pengingat jika aktivitas belum cukup lama.
   final Map<String, int> activityDurationSecondsByDate;
@@ -73,6 +76,7 @@ class TrainingReminder {
     List<String>? completedDates,
     List<String>? notCompletedDates,
     Map<String, String>? notCompletedReasons,
+    Map<String, String>? completionReasons,
     Map<String, int>? activityDurationSecondsByDate,
   }) => TrainingReminder(
         id: id,
@@ -90,6 +94,7 @@ class TrainingReminder {
         completedDates: completedDates ?? this.completedDates,
         notCompletedDates: notCompletedDates ?? this.notCompletedDates,
         notCompletedReasons: notCompletedReasons ?? this.notCompletedReasons,
+        completionReasons: completionReasons ?? this.completionReasons,
         activityDurationSecondsByDate: activityDurationSecondsByDate ??
             this.activityDurationSecondsByDate,
       );
@@ -112,6 +117,7 @@ class TrainingReminder {
       'completedDates': completedDates,
       'notCompletedDates': notCompletedDates,
       'notCompletedReasons': notCompletedReasons,
+      'completionReasons': completionReasons,
       'activityDurationSecondsByDate': activityDurationSecondsByDate,
     };
   }
@@ -148,6 +154,7 @@ class TrainingReminder {
               .whereType<String>()
               .toList(growable: false),
       notCompletedReasons: _decodeReasons(json['notCompletedReasons']),
+      completionReasons: _decodeReasons(json['completionReasons']),
       activityDurationSecondsByDate:
           _decodeDurationProgress(json['activityDurationSecondsByDate']),
     );
@@ -258,6 +265,7 @@ class ReminderService {
       completedDates: reminder.completedDates.toList(growable: false),
       notCompletedDates: reminder.notCompletedDates.toList(growable: false),
       notCompletedReasons: Map<String, String>.of(reminder.notCompletedReasons),
+      completionReasons: Map<String, String>.of(reminder.completionReasons),
       activityDurationSecondsByDate:
           Map<String, int>.of(reminder.activityDurationSecondsByDate),
     );
@@ -380,6 +388,7 @@ class ReminderService {
     required int reminderId,
     required String dateKey,
     required bool completed,
+    String reason = '',
   }) async {
     final List<TrainingReminder> reminders = await getAll();
     final List<TrainingReminder> updated = reminders
@@ -389,6 +398,8 @@ class ReminderService {
           final Set<String> missedDates = item.notCompletedDates.toSet();
           final Map<String, String> reasons =
               Map<String, String>.of(item.notCompletedReasons);
+          final Map<String, String> completionReasons =
+              Map<String, String>.of(item.completionReasons);
           final Map<String, int> progress =
               Map<String, int>.of(item.activityDurationSecondsByDate)
                 ..remove(dateKey);
@@ -396,6 +407,11 @@ class ReminderService {
             completedDates.add(dateKey);
             missedDates.remove(dateKey);
             reasons.remove(dateKey);
+            if (reason.trim().isNotEmpty) {
+              completionReasons[dateKey] = reason.trim();
+            } else {
+              completionReasons.remove(dateKey);
+            }
           } else {
             completedDates.remove(dateKey);
           }
@@ -403,6 +419,7 @@ class ReminderService {
             completedDates: completedDates.toList()..sort(),
             notCompletedDates: missedDates.toList()..sort(),
             notCompletedReasons: reasons,
+            completionReasons: completionReasons,
             activityDurationSecondsByDate: progress,
           );
         })
@@ -436,6 +453,8 @@ class ReminderService {
           final Map<String, String> reasons =
               Map<String, String>.of(item.notCompletedReasons)
                 ..[dateKey] = trimmedReason;
+          final Map<String, String> completionReasons =
+              Map<String, String>.of(item.completionReasons)..remove(dateKey);
           final Map<String, int> progress =
               Map<String, int>.of(item.activityDurationSecondsByDate)
                 ..remove(dateKey);
@@ -443,6 +462,7 @@ class ReminderService {
             completedDates: completedDates.toList()..sort(),
             notCompletedDates: missedDates.toList()..sort(),
             notCompletedReasons: reasons,
+            completionReasons: completionReasons,
             activityDurationSecondsByDate: progress,
           );
         })
@@ -531,6 +551,19 @@ class ReminderService {
         actual.isNotEmpty;
   }
 
+  /// Memeriksa tanggal dan kategori tanpa membandingkan jam selesai.
+  /// Dipakai UI untuk menawarkan penyelesaian manual berwarna merah ketika
+  /// aktivitas memang ada, tetapi tidak memenuhi durasi atau waktu rencana.
+  static bool matchesDateAndCategory({
+    required TrainingReminder reminder,
+    required DateTime startedAt,
+    required String activityCategory,
+  }) {
+    final DateTime localStart = startedAt.toLocal();
+    return matchesScheduledDate(reminder, localStart) &&
+        matchesActivityCategory(reminder, activityCategory);
+  }
+
   /// Waktu mulai rencana pada tanggal aktivitas setempat.
   static DateTime plannedStartForDate(
     TrainingReminder reminder,
@@ -551,6 +584,7 @@ class ReminderService {
     required DateTime startedAt,
     required Duration duration,
     required String activityCategory,
+    DateTime? finishedAt,
   }) {
     if (duration <= Duration.zero) return false;
     final DateTime start = startedAt.toLocal();
@@ -559,8 +593,10 @@ class ReminderService {
       return false;
     }
     final DateTime plannedStart = plannedStartForDate(reminder, start);
-    final DateTime finishedAt = start.add(duration);
-    return start.isBefore(plannedStart) && !finishedAt.isAfter(plannedStart);
+    final DateTime actualFinishedAt =
+        finishedAt?.toLocal() ?? start.add(duration);
+    return start.isBefore(plannedStart) &&
+        !actualFinishedAt.isAfter(plannedStart);
   }
 
   /// Otomatis selesai hanya bila satu sesi berakhir sebelum jadwal dan
@@ -570,12 +606,14 @@ class ReminderService {
     required DateTime startedAt,
     required Duration duration,
     required String activityCategory,
+    DateTime? finishedAt,
   }) {
     return activityFinishedBeforePlannedTime(
           reminder: reminder,
           startedAt: startedAt,
           duration: duration,
           activityCategory: activityCategory,
+          finishedAt: finishedAt,
         ) &&
         duration == Duration(minutes: reminder.durationMinutes);
   }
@@ -588,6 +626,7 @@ class ReminderService {
     required DateTime startedAt,
     required Duration duration,
     required String activityCategory,
+    DateTime? finishedAt,
   }) async {
     if (duration.inSeconds <= 0) return 0;
     final DateTime localStart = startedAt.toLocal();
@@ -607,6 +646,7 @@ class ReminderService {
             startedAt: localStart,
             duration: duration,
             activityCategory: activityCategory,
+            finishedAt: finishedAt,
           )) {
         return item;
       }
@@ -614,7 +654,10 @@ class ReminderService {
       final Map<String, int> progress =
           Map<String, int>.of(item.activityDurationSecondsByDate);
       final int requiredSeconds = item.durationMinutes * 60;
-      if (duration.inSeconds == requiredSeconds) {
+      final int accumulatedSeconds =
+          (progress[dateKey] ?? 0) + duration.inSeconds;
+
+      if (accumulatedSeconds == requiredSeconds) {
         completedIds.add(item.id);
         progress.remove(dateKey);
         changed = true;
@@ -630,21 +673,18 @@ class ReminderService {
         );
       }
 
-      if (duration.inSeconds < requiredSeconds) {
-        // Catat sesi terakhir yang pendek untuk mengurangi notifikasi pada jam
-        // rencana. Tidak mengakumulasi beberapa sesi yang terpisah.
-        progress[dateKey] = duration.inSeconds;
-        partialCredits[item.id] = duration.inSeconds;
+      if (accumulatedSeconds < requiredSeconds) {
+        progress[dateKey] = accumulatedSeconds;
+        partialCredits[item.id] = accumulatedSeconds;
         changed = true;
         return item.copyWith(activityDurationSecondsByDate: progress);
       }
 
-      // Durasi lebih panjang tidak sama dengan durasi yang diminta. Hapus kredit
-      // parsial lama agar jadwal tetap mengingatkan seluruh durasi rencana.
-      if (progress.remove(dateKey) != null) {
-        changed = true;
-        partialCredits[item.id] = 0;
-      }
+      // Total durasi yang melewati target tidak dianggap cocok otomatis.
+      // Pengguna tetap dapat menyelesaikan manual dengan alasan.
+      progress.remove(dateKey);
+      changed = true;
+      partialCredits[item.id] = 0;
       return item.copyWith(activityDurationSecondsByDate: progress);
     }).toList(growable: false);
 

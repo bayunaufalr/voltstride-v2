@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../services/app_language_service.dart';
 import 'reminder_service.dart';
+import '../running/models/run_session.dart';
+import '../running/services/run_history_repository.dart';
 
 class TrainingRemindersPage extends StatefulWidget {
   const TrainingRemindersPage({super.key, this.embedded = false});
@@ -17,6 +19,7 @@ class TrainingRemindersPage extends StatefulWidget {
 class TrainingRemindersPageState extends State<TrainingRemindersPage>
     with SingleTickerProviderStateMixin {
   List<TrainingReminder> _reminders = <TrainingReminder>[];
+  List<RunSession> _sessions = <RunSession>[];
   bool _loading = true;
   bool _saving = false;
   late final TabController _categoryController;
@@ -47,10 +50,16 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
 
   Future<void> _loadReminders() async {
     try {
-      final List<TrainingReminder> saved = await ReminderService.getAll();
+      final List<dynamic> loaded = await Future.wait<dynamic>(<Future<dynamic>>[
+        ReminderService.getAll(),
+        RunHistoryRepository.instance.getAll(),
+      ]);
+      final List<TrainingReminder> saved = loaded[0] as List<TrainingReminder>;
+      final List<RunSession> sessions = loaded[1] as List<RunSession>;
       if (!mounted) return;
       setState(() {
         _reminders = saved;
+        _sessions = sessions;
         _loading = false;
       });
     } catch (_) {
@@ -221,12 +230,14 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   Future<void> _setCompleted(
     _ReminderOccurrence occurrence, {
     required bool completed,
+    String reason = '',
   }) async {
     try {
       await ReminderService.setOccurrenceCompleted(
         reminderId: occurrence.reminder.id,
         dateKey: occurrence.dateKey,
         completed: completed,
+        reason: reason,
       );
       await _loadReminders();
     } catch (_) {
@@ -243,6 +254,108 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
         ),
       );
     }
+  }
+
+  List<RunSession> _matchingActivitySessions(_ReminderOccurrence occurrence) {
+    final TrainingReminder reminder = occurrence.reminder;
+    final List<RunSession> matches = _sessions.where((RunSession session) {
+      return ReminderService.matchesDateAndCategory(
+        reminder: reminder,
+        startedAt: session.startedAt,
+        activityCategory: session.activityType.name,
+      );
+    }).toList(growable: false)
+      ..sort((RunSession a, RunSession b) =>
+          b.startedAt.compareTo(a.startedAt));
+    return matches;
+  }
+
+  List<RunSession> _eligibleActivitySessions(
+    _ReminderOccurrence occurrence,
+  ) {
+    return _matchingActivitySessions(occurrence)
+        .where((RunSession session) =>
+            ReminderService.activityFinishedBeforePlannedTime(
+              reminder: occurrence.reminder,
+              startedAt: session.startedAt,
+              duration: session.elapsed,
+              activityCategory: session.activityType.name,
+              finishedAt: session.finishedAt,
+            ))
+        .toList(growable: false);
+  }
+
+  Future<void> _completeWithReason(
+    _ReminderOccurrence occurrence,
+    RunSession session,
+  ) async {
+    final TextEditingController reasonController = TextEditingController();
+    final int creditedSeconds =
+        occurrence.reminder.activityDurationSecondsByDate[occurrence.dateKey] ?? 0;
+    final List<RunSession> sessions = _eligibleActivitySessions(occurrence);
+    final int recordedSeconds = sessions.fold<int>(
+      0,
+      (int total, RunSession item) => total + item.elapsed.inSeconds,
+    );
+    // Durasi parsial disimpan juga untuk pemulihan alarm native. Jika riwayat
+    // tersedia, gunakan total sesi sebenarnya agar tidak menghitung ganda.
+    final int actualSeconds = recordedSeconds > 0
+        ? recordedSeconds
+        : creditedSeconds > 0
+            ? creditedSeconds
+            : session.elapsed.inSeconds;
+    final String actualMinutes = (actualSeconds / 60).toStringAsFixed(1);
+    final int targetMinutes = occurrence.reminder.durationMinutes;
+    final String? reason = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Selesaikan jadwal?', 'Complete this schedule?')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(_text(
+                'Aktivitas tercatat $actualMinutes menit, sedangkan targetnya $targetMinutes menit. Durasi tidak sesuai dengan rencana.',
+                'The activity lasted $actualMinutes minutes, while the target was $targetMinutes minutes. The recorded duration does not match the plan.',
+              )),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonController,
+                autofocus: true,
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: _text('Alasan menyelesaikan jadwal', 'Reason for completing the schedule'),
+                  hintText: _text('Contoh: latihan dipersingkat karena hujan', 'Example: shortened the workout because of rain'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(_text('Kembali', 'Back')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () {
+              final String value = reasonController.text.trim();
+              if (value.isEmpty) return;
+              Navigator.of(dialogContext).pop(value);
+            },
+            child: Text(_text('Tetap selesai', 'Complete anyway')),
+          ),
+        ],
+      ),
+    );
+    reasonController.dispose();
+    if (reason == null || reason.isEmpty || !mounted) return;
+    await _setCompleted(occurrence, completed: true, reason: reason);
   }
 
   Widget _routineScheduleList() {
@@ -551,31 +664,92 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),
                   ],
+                  if (occurrence.completed &&
+                      (occurrence.completionReason?.isNotEmpty ?? false)) ...<Widget>[
+                    const SizedBox(height: 3),
+                    Text(
+                      _text('Alasan: ${occurrence.completionReason}', 'Reason: ${occurrence.completionReason}'),
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
                 ],
               ),
             )
           else
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _setCompleted(occurrence, completed: true),
-                    icon: const Icon(Icons.check_circle_outline_rounded),
-                    label: Text(_text('Selesai', 'Completed')),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _markNotCompleted(occurrence),
-                    icon: const Icon(Icons.event_busy_outlined),
-                    label: Text(_text('Tidak terlaksana', 'Not completed')),
-                  ),
-                ),
-              ],
-            ),
+            _buildOccurrenceActions(occurrence, colors),
         ],
       ),
+    );
+  }
+
+  Widget _buildOccurrenceActions(
+    _ReminderOccurrence occurrence,
+    ColorScheme colors,
+  ) {
+    final List<RunSession> activities =
+        _eligibleActivitySessions(occurrence);
+    final RunSession? latest = activities.isEmpty ? null : activities.first;
+    final int partialSeconds =
+        occurrence.reminder.activityDurationSecondsByDate[occurrence.dateKey] ?? 0;
+    final int targetSeconds = occurrence.reminder.durationMinutes * 60;
+    final int eligibleSeconds = activities.fold<int>(
+      0,
+      (int total, RunSession session) => total + session.elapsed.inSeconds,
+    );
+    // Durasi dapat berasal dari beberapa sesi sebelum waktu jadwal.
+    final bool exactMatch = eligibleSeconds == targetSeconds ||
+        (eligibleSeconds == 0 && partialSeconds == targetSeconds);
+
+    if (latest == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _text(
+              'Belum ada aktivitas yang memenuhi waktu jadwal pada tanggal ini. Tandai tidak terlaksana dan masukkan alasannya.',
+              'No activity met the scheduled time on this date. Mark it not completed and provide a reason.',
+            ),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _markNotCompleted(occurrence),
+              icon: const Icon(Icons.event_busy_outlined),
+              label: Text(_text('Tidak terlaksana', 'Not completed')),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: FilledButton.icon(
+            style: exactMatch
+                ? null
+                : FilledButton.styleFrom(
+                    backgroundColor: colors.error,
+                    foregroundColor: colors.onError,
+                  ),
+            onPressed: exactMatch
+                ? () => _setCompleted(occurrence, completed: true)
+                : () => _completeWithReason(occurrence, latest),
+            icon: const Icon(Icons.check_circle_outline_rounded),
+            label: Text(_text('Selesai', 'Complete')),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _markNotCompleted(occurrence),
+            icon: const Icon(Icons.event_busy_outlined),
+            label: Text(_text('Tidak terlaksana', 'Not completed')),
+          ),
+        ),
+      ],
     );
   }
 
@@ -698,6 +872,8 @@ class _ReminderOccurrence {
   bool get notCompleted => reminder.notCompletedDates.contains(dateKey);
 
   String? get reason => reminder.notCompletedReasons[dateKey];
+
+  String? get completionReason => reminder.completionReasons[dateKey];
 }
 
 class _ReminderEditor extends StatefulWidget {
@@ -923,6 +1099,7 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         completedDates: widget.initial?.completedDates ?? const <String>[],
         notCompletedDates: widget.initial?.notCompletedDates ?? const <String>[],
         notCompletedReasons: widget.initial?.notCompletedReasons ?? const <String, String>{},
+        completionReasons: widget.initial?.completionReasons ?? const <String, String>{},
         activityDurationSecondsByDate:
             widget.initial?.activityDurationSecondsByDate ?? const <String, int>{},
       ),

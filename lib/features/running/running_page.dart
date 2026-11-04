@@ -29,6 +29,7 @@ class RunningPage extends StatefulWidget {
     this.activityType = RunActivityType.run,
     this.environment = RunEnvironment.outdoor,
     this.initialIntervalPlan,
+    this.activityDetails,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = true,
@@ -43,6 +44,7 @@ class RunningPage extends StatefulWidget {
   final RunActivityType activityType;
   final RunEnvironment environment;
   final IntervalRunPlan? initialIntervalPlan;
+  final String? activityDetails;
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
@@ -262,6 +264,7 @@ class _RunningPageState extends State<RunningPage> {
         stage: phase.stage.name,
         repetition: phase.repetition,
         totalRepetitions: plan.repetitions,
+        activityLabel: widget.activityType == RunActivityType.hiit ? 'HIIT' : 'Lari',
       );
     } catch (_) {
       // A failed notice must not interrupt GPS recording or interval timing.
@@ -461,6 +464,7 @@ class _RunningPageState extends State<RunningPage> {
         useGps: widget.environment == RunEnvironment.outdoor,
         activityType: widget.activityType,
         environment: widget.environment,
+        activityDetails: widget.activityDetails,
         onGpsReady: _runStartCountdown,
       );
       if (!mounted) return;
@@ -631,11 +635,13 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
-  String get _activityDisplayLabel => _activeIntervalPlan != null
-      ? _text('Lari interval', 'Interval run')
-      : widget.activityType == RunActivityType.walk
-          ? _text('Berjalan', 'Walk')
-          : _text('Lari', 'Run');
+  String get _activityDisplayLabel => widget.activityType == RunActivityType.hiit
+      ? 'HIIT'
+      : _activeIntervalPlan != null
+          ? _text('Lari interval', 'Interval run')
+          : widget.activityType == RunActivityType.walk
+              ? _text('Berjalan', 'Walk')
+              : _text('Lari', 'Run');
 
   Widget _buildAcquiringGps() {
     final bool countingDown = _countdownValue != null;
@@ -1537,11 +1543,13 @@ class _RunningPageState extends State<RunningPage> {
       );
     }
 
-    final String routeActivityLabel = session.activityType == RunActivityType.walk
-        ? _text('Berjalan', 'Walk')
-        : session.intervalPlan != null
-            ? _text('Lari interval', 'Interval run')
-            : _text('Lari', 'Run');
+    final String routeActivityLabel = session.activityType == RunActivityType.hiit
+        ? 'HIIT'
+        : session.activityType == RunActivityType.walk
+            ? _text('Berjalan', 'Walk')
+            : session.intervalPlan != null
+                ? _text('Lari interval', 'Interval run')
+                : _text('Lari', 'Run');
 
     return Scaffold(
       appBar: AppBar(
@@ -1718,7 +1726,8 @@ class _RunningPageState extends State<RunningPage> {
 
     double? indoorDistanceMeters;
     bool shouldResumeOnCancel = _controller.status == RunStatus.running;
-    if (widget.environment == RunEnvironment.indoor) {
+    if (widget.environment == RunEnvironment.indoor &&
+        widget.activityType != RunActivityType.hiit) {
       if (shouldResumeOnCancel) _controller.pauseRun();
       final TextEditingController distanceController =
           TextEditingController(text: '0.00');
@@ -1770,7 +1779,8 @@ class _RunningPageState extends State<RunningPage> {
         indoorDistanceMeters ?? (_controller.distanceKm * 1000);
     final bool terlaluSingkat =
         _controller.elapsed < const Duration(seconds: 30) ||
-        distanceForValidation < 100;
+        (widget.activityType != RunActivityType.hiit &&
+            distanceForValidation < 100);
 
     if (terlaluSingkat) {
       if (_controller.status == RunStatus.running) {
@@ -2033,6 +2043,7 @@ class _RunningPageState extends State<RunningPage> {
         startedAt: session.startedAt,
         duration: session.elapsed,
         activityCategory: session.activityType.name,
+        finishedAt: session.finishedAt,
       );
     } catch (_) {
       // Kegagalan update jadwal tidak menghalangi penyimpanan sesi.

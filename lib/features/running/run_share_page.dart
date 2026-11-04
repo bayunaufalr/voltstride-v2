@@ -266,11 +266,13 @@ class _RunSharePageState extends State<RunSharePage> {
 
   Widget _poster(_ShareTheme theme) {
     final RunSession session = widget.session;
-    final String activityLabel = session.intervalPlan != null
-        ? 'LARI INTERVAL'
-        : session.activityType == RunActivityType.walk
-            ? 'BERJALAN'
-            : 'BERLARI';
+    final String activityLabel = session.activityType == RunActivityType.hiit
+        ? 'HIIT'
+        : session.intervalPlan != null
+            ? 'LARI INTERVAL'
+            : session.activityType == RunActivityType.walk
+                ? 'BERJALAN'
+                : 'BERLARI';
     final double aspectRatio = _layout == _PosterLayout.minimal ? 0.76 : 0.64;
 
     return AspectRatio(

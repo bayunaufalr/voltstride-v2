@@ -12,11 +12,15 @@ enum RunStatus {
   error,
 }
 
-enum RunActivityType { run, walk }
+enum RunActivityType { run, walk, hiit }
 enum RunEnvironment { outdoor, indoor }
 
 extension RunActivityTypeLabel on RunActivityType {
-  String get label => this == RunActivityType.walk ? 'Berjalan' : 'Berlari';
+  String get label => switch (this) {
+        RunActivityType.walk => 'Berjalan',
+        RunActivityType.hiit => 'HIIT',
+        RunActivityType.run => 'Berlari',
+      };
 }
 
 extension RunEnvironmentLabel on RunEnvironment {
@@ -503,6 +507,7 @@ class RunSession {
   final int? averageHeartRateBpm;
   final List<RunHeartRateSample> heartRateSamples;
   final List<RunCadenceSample> cadenceSamples;
+  final String? activityDetails;
 
   const RunSession({
     required this.startedAt,
@@ -527,6 +532,7 @@ class RunSession {
     this.averageHeartRateBpm,
     this.heartRateSamples = const <RunHeartRateSample>[],
     this.cadenceSamples = const <RunCadenceSample>[],
+    this.activityDetails,
   });
 
   RunSession copyWith({
@@ -555,10 +561,14 @@ class RunSession {
         averageHeartRateBpm: averageHeartRateBpm ?? this.averageHeartRateBpm,
         heartRateSamples: heartRateSamples ?? this.heartRateSamples,
         cadenceSamples: cadenceSamples,
+        activityDetails: activityDetails,
       );
 
-  String get displayLabel =>
-      intervalPlan == null ? activityType.label : 'Lari interval';
+  String get displayLabel => activityType == RunActivityType.hiit
+      ? 'HIIT'
+      : intervalPlan == null
+          ? activityType.label
+          : 'Lari interval';
 
   double get distanceKm => distanceMeters / 1000.0;
 
@@ -622,6 +632,7 @@ class RunSession {
         'cadenceSamples': cadenceSamples
             .map((RunCadenceSample sample) => sample.toJson())
             .toList(growable: false),
+        'activityDetails': activityDetails,
       }),
     };
   }
@@ -731,6 +742,7 @@ class RunSession {
                 Map<String, dynamic>.from(item as Map),
               ))
           .toList(growable: false),
+      activityDetails: metrics['activityDetails'] as String?,
     );
   }
 

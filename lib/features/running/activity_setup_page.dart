@@ -18,6 +18,7 @@ class ActivityStartConfig {
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
+  final String? activityDetails;
 
   const ActivityStartConfig({
     required this.activityType,
@@ -26,10 +27,11 @@ class ActivityStartConfig {
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = true,
+    this.activityDetails,
   });
 }
 
-enum _ActivityMode { run, interval, walk }
+enum _ActivityMode { run, interval, walk, hiit }
 
 class ActivitySetupPage extends StatefulWidget {
   const ActivitySetupPage({
@@ -62,6 +64,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   final TextEditingController _recoveryDistance = TextEditingController(text: '200');
   final TextEditingController _targetDistanceKm = TextEditingController();
   final TextEditingController _targetPace = TextEditingController();
+  final TextEditingController _hiitDetails = TextEditingController();
   bool _paceNotificationsEnabled = true;
   bool _searchingHeartRate = false;
   String? _heartRateDeviceName;
@@ -81,6 +84,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     _recoveryDistance.dispose();
     _targetDistanceKm.dispose();
     _targetPace.dispose();
+    _hiitDetails.dispose();
     super.dispose();
   }
 
@@ -221,10 +225,23 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
+            const SizedBox(height: 9),
+            _choiceCard(
+              selected: _mode == _ActivityMode.hiit,
+              title: 'HIIT',
+              subtitle: _text('Interval kerja dan pemulihan, dengan detak jantung.', 'Work and recovery intervals with heart-rate tracking.'),
+              horizontal: true,
+              onTap: () => setState(() {
+                _mode = _ActivityMode.hiit;
+                _intervalMeasure = IntervalMeasure.time;
+              }),
+            ),
             const SizedBox(height: 20),
-            _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
+            if (_mode == _ActivityMode.run || _mode == _ActivityMode.interval)
+              _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
             const SizedBox(height: 8),
-            Container(
+            if (_mode == _ActivityMode.run || _mode == _ActivityMode.interval)
+              Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
@@ -340,7 +357,20 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               ),
               style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.35),
             ),
-            if (_mode == _ActivityMode.interval) ...<Widget>[
+            if (_mode == _ActivityMode.hiit) ...<Widget>[
+              const SizedBox(height: 14),
+              TextField(
+                controller: _hiitDetails,
+                minLines: 2,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: _text('Detail latihan HIIT', 'HIIT workout details'),
+                  hintText: _text('Contoh: squat jump, burpee, mountain climber', 'Example: squat jump, burpee, mountain climber'),
+                ),
+              ),
+            ],
+            if (_mode == _ActivityMode.interval || _mode == _ActivityMode.hiit) ...<Widget>[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(15),
@@ -357,7 +387,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       style: TextStyle(fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 10),
-                    SegmentedButton<IntervalMeasure>(
+                    if (_mode == _ActivityMode.interval) SegmentedButton<IntervalMeasure>(
                       style: ButtonStyle(
                         foregroundColor:
                             WidgetStateProperty.resolveWith<Color?>(
@@ -400,7 +430,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    if (_intervalMeasure == IntervalMeasure.time) ...<Widget>[
+                    if (_mode == _ActivityMode.hiit || _intervalMeasure == IntervalMeasure.time) ...<Widget>[
                       Row(
                         children: <Widget>[
                           Expanded(child: _numberField(_text('Kerja (detik)', 'Work (seconds)'), _workSeconds)),
@@ -704,7 +734,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       }
     }
 
-    if (_paceNotificationsEnabled && targetPaceSecondsPerKm == null) {
+    if ((_mode == _ActivityMode.run || _mode == _ActivityMode.interval) &&
+        _paceNotificationsEnabled && targetPaceSecondsPerKm == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -719,7 +750,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     }
 
     IntervalRunPlan? plan;
-    if (_mode == _ActivityMode.interval) {
+    if (_mode == _ActivityMode.interval || _mode == _ActivityMode.hiit) {
       final int? repetitions = int.tryParse(_repetitions.text.trim());
       if (repetitions == null || repetitions < 1 || repetitions > 30) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -728,7 +759,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
         return;
       }
 
-      if (_intervalMeasure == IntervalMeasure.time) {
+      if (_mode == _ActivityMode.hiit || _intervalMeasure == IntervalMeasure.time) {
         final int? work = int.tryParse(_workSeconds.text.trim());
         final int? recovery = int.tryParse(_recoverySeconds.text.trim());
         if (work == null || work < 10 || work > 3600 ||
@@ -777,12 +808,19 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       }
     }
     widget.onStart(ActivityStartConfig(
-      activityType: _mode == _ActivityMode.walk ? RunActivityType.walk : RunActivityType.run,
+      activityType: _mode == _ActivityMode.walk
+          ? RunActivityType.walk
+          : _mode == _ActivityMode.hiit
+              ? RunActivityType.hiit
+              : RunActivityType.run,
       environment: _environment,
       intervalPlan: plan,
       targetDistanceKm: targetDistanceKm,
       targetPaceSecondsPerKm: targetPaceSecondsPerKm,
-      paceNotificationsEnabled: _paceNotificationsEnabled,
+      paceNotificationsEnabled: _mode == _ActivityMode.run || _mode == _ActivityMode.interval
+          ? _paceNotificationsEnabled
+          : false,
+      activityDetails: _mode == _ActivityMode.hiit ? _hiitDetails.text.trim() : null,
     ));
   }
 

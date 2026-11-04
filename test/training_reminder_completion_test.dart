@@ -152,6 +152,37 @@ void main() {
     expect(reminder.completedDates, isEmpty);
   });
 
+  test('sesi dengan kategori dan tanggal yang cocok tetap dapat ditinjau jika selesai setelah jam rencana', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 29,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.matchesDateAndCategory(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 7, 5),
+        activityCategory: 'run',
+      ),
+      isTrue,
+    );
+    expect(
+      ReminderService.activityFinishedBeforePlannedTime(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 7, 5),
+        duration: const Duration(minutes: 30),
+        activityCategory: 'run',
+      ),
+      isFalse,
+    );
+  });
+
   test('jadwal otomatis selesai hanya jika durasi persis dan sesi berakhir sebelum jam rencana', () {
     final TrainingReminder reminder = TrainingReminder(
       id: 30,
@@ -250,6 +281,30 @@ void main() {
       isFalse,
     );
     expect(decoded.activityDurationSecondsByDate['2026-10-26'], 1200);
+  });
+
+  test('pauze lama tidak membuat sesi yang selesai setelah jadwal dianggap cocok', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 34,
+      activity: 'Lari',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(
+      ReminderService.isExactScheduledActivityMatch(
+        reminder: reminder,
+        startedAt: DateTime(2026, 10, 26, 6, 10),
+        duration: const Duration(minutes: 30),
+        finishedAt: DateTime(2026, 10, 26, 7, 20),
+        activityCategory: 'run',
+      ),
+      isFalse,
+    );
   });
 
 }

@@ -39,7 +39,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
         private const val PREFERENCES = "VoltStrideReminderPulse"
         private const val FLUTTER_PREFERENCES = "FlutterSharedPreferences"
         private const val FLUTTER_REMINDERS_KEY = "flutter.voltstride_training_reminders_v1"
-        private const val CHANNEL_ID = "voltstride_training_pulse_v9"
+        private const val CHANNEL_ID = "voltstride_training_pulse_v10"
         private const val START_REQUEST_BASE = 510000
         private const val REPEAT_REQUEST_BASE = 610000
         private const val COMPLETE_REQUEST_BASE = 710000
@@ -145,12 +145,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 return
             }
 
-            val now = System.currentTimeMillis()
             activeIds.forEach { id ->
                 val startAt = prefs.getLong(activeStartKey(id), 0L)
                 val endAt = prefs.getLong(activeEndKey(id), 0L)
                 val dateKey = if (startAt > 0L) dateKeyFor(startAt) else ""
-                if (startAt <= 0L || endAt <= now ||
+                if (startAt <= 0L ||
                     prefs.getBoolean(skippedOccurrenceKey(id, dateKey), false)) {
                     notificationManager(context).cancel(NOTIFICATION_BASE + id)
                     prefs.edit().remove(activeStartKey(id)).remove(activeEndKey(id)).apply()
@@ -220,16 +219,14 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                         notificationManager(context).cancel(NOTIFICATION_BASE + id)
                     } else {
                         showReminder(context, id, config, activeStart)
-                        if (activeEnd > now) {
-                            scheduleNextPulse(
-                                context,
-                                id,
-                                activeStart,
-                                activeEnd,
-                                config.optInt("repeatIntervalSeconds", 60),
-                            )
-                        }
                     }
+                    scheduleNextPulse(
+                        context,
+                        id,
+                        activeStart,
+                        activeEnd,
+                        config.optInt("repeatIntervalSeconds", 60),
+                    )
                 }
                 scheduleNextStart(context, id, maxOf(now, activeEnd))
             }
@@ -320,11 +317,6 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 scheduleNextStart(context, id, startAt + 1000L)
                 return
             }
-            if (preferences(context).getBoolean(WORKOUT_ACTIVE_KEY, false)) {
-                // Jangan mengganggu sesi yang sedang berlangsung; jadwal minggu berikutnya tetap ada.
-                scheduleNextStart(context, id, startAt + 1000L)
-                return
-            }
             val expectedSeconds = config.optLong("durationMinutes", 30) * 60L
             val prefs = preferences(context)
             val durationCredit = prefs.getInt(durationCreditKey(id, occurrenceDate), 0)
@@ -349,7 +341,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             if (config.optString("scheduleType", "routine") == "routine") {
                 scheduleNextStart(context, id, endAt + 1000L)
             }
-            showReminder(context, id, config, startAt)
+            if (!prefs.getBoolean(WORKOUT_ACTIVE_KEY, false)) {
+                showReminder(context, id, config, startAt)
+            } else {
+                notificationManager(context).cancel(NOTIFICATION_BASE + id)
+            }
             scheduleNextPulse(context, id, startAt, endAt, config.optInt("repeatIntervalSeconds", 60))
         }
 
@@ -361,10 +357,10 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             val prefs = preferences(context)
             if (prefs.getLong(activeStartKey(id), 0L) != startAt) return
             val endAt = prefs.getLong(activeEndKey(id), 0L)
-            val now = System.currentTimeMillis()
-            if (endAt <= 0L || now >= endAt) return
+            if (endAt <= 0L) return
             if (prefs.getBoolean(WORKOUT_ACTIVE_KEY, false)) {
                 notificationManager(context).cancel(NOTIFICATION_BASE + id)
+                scheduleNextPulse(context, id, startAt, endAt, config.optInt("repeatIntervalSeconds", 60))
                 return
             }
             showReminder(context, id, config, startAt)
@@ -378,8 +374,8 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             endAt: Long,
             intervalSeconds: Int,
         ) {
+            if (endAt <= 0L) return
             val nextAt = System.currentTimeMillis() + intervalSeconds.coerceIn(30, 600) * 1000L
-            if (nextAt >= endAt) return
             val intent = Intent(context, ReminderPulseReceiver::class.java).apply {
                 action = ACTION_REPEAT
                 putExtra(EXTRA_ID, id)
@@ -412,20 +408,24 @@ class ReminderPulseReceiver : BroadcastReceiver() {
             }
             val remainingMinutes = ((remainingSeconds + 59L) / 60L).toInt()
             val english = config.optString("doneLabel", "Selesai") == "Done"
-            val body = if (english) {
+            val body = if (remainingSeconds <= 0L) {
+                if (english) {
+                    "Planned time has passed. Open VoltStride to complete or report this session."
+                } else {
+                    "Waktu rencana terlewati. Buka VoltStride untuk menyelesaikan atau menandai tidak terlaksana."
+                }
+            } else if (english) {
                 "$category · $remainingMinutes min remaining · repeats every $interval sec"
             } else {
                 "$category · sisa $remainingMinutes menit · diulang setiap $interval detik"
             }
-            val doneIntent = Intent(context, ReminderPulseReceiver::class.java).apply {
-                action = ACTION_COMPLETE
-                putExtra(EXTRA_ID, id)
-                putExtra(EXTRA_START_AT, startAt)
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            val donePending = PendingIntent.getBroadcast(
+            val openAppPending = PendingIntent.getActivity(
                 context,
                 COMPLETE_REQUEST_BASE + id,
-                doneIntent,
+                openAppIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             val notification = Notification.Builder(context, CHANNEL_ID)
@@ -441,10 +441,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(false)
                 .setDefaults(Notification.DEFAULT_ALL)
-                .addAction(android.R.drawable.ic_menu_save, config.optString("doneLabel", "Selesai"), donePending)
+                .setContentIntent(openAppPending)
                 .build()
-            // FLAG_NO_CLEAR memastikan notifikasi tidak terhapus dari tombol hapus semua.
-            // Tombol aksi Selesai tetap menjadi jalur normal untuk menutup notifikasi.
+            // FLAG_NO_CLEAR menjaga pengingat tetap tampil sampai statusnya diputuskan
+            // di aplikasi. Dari sini pengguna masuk ke VoltStride untuk memilih
+            // Selesai atau Tidak terlaksana dengan alasan yang wajib diisi.
             notification.flags = notification.flags or
                 Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT
             notificationManager(context).notify(NOTIFICATION_BASE + id, notification)

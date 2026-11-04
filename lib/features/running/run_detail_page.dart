@@ -82,11 +82,13 @@ class _RunDetailPageState extends State<RunDetailPage> {
     final DateTime? finish = session.finishedAt?.toLocal();
     final RunElevationStats elevation = session.elevationStats;
     final RunEvaluation evaluation = evaluateRun(session);
-    final String routeActivityLabel = session.activityType == RunActivityType.walk
-        ? 'BERJALAN'
-        : session.intervalPlan != null
-            ? 'LARI INTERVAL'
-            : 'LARI';
+    final String routeActivityLabel = session.activityType == RunActivityType.hiit
+        ? 'HIIT'
+        : session.activityType == RunActivityType.walk
+            ? 'BERJALAN'
+            : session.intervalPlan != null
+                ? 'LARI INTERVAL'
+                : 'LARI';
 
     return Scaffold(
       appBar: AppBar(
@@ -268,6 +270,8 @@ class _RunDetailPageState extends State<RunDetailPage> {
               child: Column(
                 children: <Widget>[
                   _dataRow('Jenis aktivitas', session.displayLabel),
+                  if (session.activityDetails?.trim().isNotEmpty ?? false)
+                    _dataRow('Detail latihan', session.activityDetails!.trim()),
                   _dataRow('Lokasi', session.environment.label),
                   _dataRow('Jarak', '${session.distanceMeters.toStringAsFixed(0)} m'),
                   _dataRow('Waktu total', session.elapsedText),
