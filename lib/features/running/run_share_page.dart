@@ -168,12 +168,20 @@ class _RunSharePageState extends State<RunSharePage> {
             children: <Widget>[
               _contentChip('Jarak', _showDistance, (bool v) => _showDistance = v),
               _contentChip('Durasi', _showDuration, (bool v) => _showDuration = v),
-              _contentChip('Pace', _showPace, (bool v) => _showPace = v),
+              _contentChip(
+                widget.session.activityType == RunActivityType.cycle
+                    ? 'Kecepatan rata-rata'
+                    : 'Pace',
+                _showPace,
+                (bool v) => _showPace = v,
+              ),
               _contentChip('Peta rute', _showMap, (bool v) => _showMap = v),
               _contentChip('Elevasi', _showElevation, (bool v) => _showElevation = v),
-              _contentChip('Jumlah langkah', _showSteps, (bool v) => _showSteps = v),
-              _contentChip('Cadence', _showCadence, (bool v) => _showCadence = v),
-              _contentChip('Kalori', _showCalories, (bool v) => _showCalories = v),
+              if (widget.session.activityType != RunActivityType.cycle) ...<Widget>[
+                _contentChip('Jumlah langkah', _showSteps, (bool v) => _showSteps = v),
+                _contentChip('Cadence', _showCadence, (bool v) => _showCadence = v),
+                _contentChip('Kalori', _showCalories, (bool v) => _showCalories = v),
+              ],
               _contentChip('Tanggal', _showDate, (bool v) => _showDate = v),
               _contentChip('Split per km', _showSplits, (bool v) {
                 _showSplits = v;
@@ -215,18 +223,22 @@ class _RunSharePageState extends State<RunSharePage> {
 
   List<_ShareMetric> _visibleMetrics() {
     final RunSession session = widget.session;
+    final bool cycling = session.activityType == RunActivityType.cycle;
     final RunElevationStats elevation = session.elevationStats;
     final List<_ShareMetric> metrics = <_ShareMetric>[];
     if (_showDuration) {
       metrics.add(_ShareMetric('duration', 'DURASI', session.elapsedText));
     }
     if (_showPace) {
+      final double? averageSpeed = session.averageSpeedKmh;
       metrics.add(_ShareMetric(
-        'pace',
-        'PACE',
-        session.averagePaceText == '--:--'
-            ? '--'
-            : '${session.averagePaceText}/km',
+        cycling ? 'speed' : 'pace',
+        cycling ? 'KECEPATAN' : 'PACE',
+        cycling
+            ? '${averageSpeed?.toStringAsFixed(1) ?? '--'} km/jam'
+            : session.averagePaceText == '--:--'
+                ? '--'
+                : '${session.averagePaceText}/km',
       ));
     }
     if (_showElevation) {
@@ -238,14 +250,14 @@ class _RunSharePageState extends State<RunSharePage> {
             : '--',
       ));
     }
-    if (_showSteps) {
+    if (_showSteps && !cycling) {
       metrics.add(_ShareMetric(
         'steps',
         'LANGKAH',
         session.totalSteps?.toString() ?? '--',
       ));
     }
-    if (_showCadence) {
+    if (_showCadence && !cycling) {
       metrics.add(_ShareMetric(
         'cadence',
         'CADENCE',
@@ -254,7 +266,7 @@ class _RunSharePageState extends State<RunSharePage> {
             : '${session.averageCadenceSpm!.round()} spm',
       ));
     }
-    if (_showCalories) {
+    if (_showCalories && !cycling) {
       metrics.add(_ShareMetric(
         'calories',
         'KALORI*',
@@ -266,13 +278,15 @@ class _RunSharePageState extends State<RunSharePage> {
 
   Widget _poster(_ShareTheme theme) {
     final RunSession session = widget.session;
-    final String activityLabel = session.activityType == RunActivityType.hiit
-        ? 'HIIT'
-        : session.intervalPlan != null
-            ? 'LARI INTERVAL'
-            : session.activityType == RunActivityType.walk
-                ? 'BERJALAN'
-                : 'BERLARI';
+    final String activityLabel = session.activityType == RunActivityType.cycle
+        ? 'BERSEPEDA'
+        : session.activityType == RunActivityType.hiit
+            ? 'HIIT'
+            : session.intervalPlan != null
+                ? 'LARI INTERVAL'
+                : session.activityType == RunActivityType.walk
+                    ? 'BERJALAN'
+                    : 'BERLARI';
     final double aspectRatio = _layout == _PosterLayout.minimal ? 0.76 : 0.64;
 
     return AspectRatio(
@@ -572,9 +586,11 @@ class _RunSharePageState extends State<RunSharePage> {
                   ),
                   const SizedBox(width: 7),
                   SizedBox(
-                    width: 38,
+                    width: session.activityType == RunActivityType.cycle ? 58 : 38,
                     child: Text(
-                      split.paceText.replaceAll('/km', ''),
+                      session.activityType == RunActivityType.cycle
+                          ? '${split.speedKmh.toStringAsFixed(1)} km/jam'
+                          : split.paceText.replaceAll('/km', ''),
                       textAlign: TextAlign.end,
                       style: TextStyle(
                         color: theme.text,

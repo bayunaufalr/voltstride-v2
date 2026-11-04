@@ -429,7 +429,9 @@ class RunHistoryPageState extends State<RunHistoryPage> {
                           ? Icons.fitness_center_rounded
                           : session.activityType == RunActivityType.walk
                               ? Icons.directions_walk_rounded
-                              : Icons.directions_run_rounded,
+                              : session.activityType == RunActivityType.cycle
+                                  ? Icons.directions_bike_rounded
+                                  : Icons.directions_run_rounded,
                     ),
                   ),
                   const SizedBox(width: 11),
@@ -462,6 +464,7 @@ class RunHistoryPageState extends State<RunHistoryPage> {
                     route: session.route,
                     laps: const <RunLap100m>[],
                     height: 145,
+                    speedMode: session.activityType == RunActivityType.cycle,
                   ),
                 ),
               ],
@@ -469,7 +472,12 @@ class RunHistoryPageState extends State<RunHistoryPage> {
               Row(
                 children: <Widget>[
                   _compactMetric('Waktu', session.elapsedText),
-                  _compactMetric('Pace', '${session.averagePaceText}/km'),
+                  _compactMetric(
+                    session.activityType == RunActivityType.cycle ? 'Kecepatan' : 'Pace',
+                    session.activityType == RunActivityType.cycle
+                        ? '${session.averageSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                        : '${session.averagePaceText}/km',
+                  ),
                   _compactMetric('Lokasi', session.environment.label),
                 ],
               ),

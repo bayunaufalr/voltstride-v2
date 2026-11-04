@@ -247,6 +247,8 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
 
   String _activityLabel(RunSession session) {
     if (session.activityType == RunActivityType.walk) return _text('Berjalan', 'Walk');
+    if (session.activityType == RunActivityType.cycle) return _text('Bersepeda', 'Cycling');
+    if (session.activityType == RunActivityType.hiit) return 'HIIT';
     if (session.intervalPlan != null) return _text('Lari interval', 'Interval run');
     return _text('Lari', 'Run');
   }
@@ -308,6 +310,7 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                         route: session.route,
                         laps: const <RunLap100m>[],
                         height: 150,
+                        speedMode: session.activityType == RunActivityType.cycle,
                       ),
                     ),
                   ),
@@ -317,7 +320,14 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                   children: <Widget>[
                     _activityMetric(session.distanceText, _text('km', 'km')),
                     _activityMetric(session.elapsedText, _text('waktu', 'time')),
-                    _activityMetric(session.averagePaceText, _text('pace/km', 'pace/km')),
+                    _activityMetric(
+                      session.activityType == RunActivityType.cycle
+                          ? '${session.averageSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                          : session.averagePaceText,
+                      session.activityType == RunActivityType.cycle
+                          ? _text('kecepatan', 'speed')
+                          : _text('pace/km', 'pace/km'),
+                    ),
                     if (session.elevationStats.hasAltitudeData)
                       _activityMetric('+${session.elevationStats.totalAscentMeters.round()} m', _text('Elevasi', 'Elevation')),
                   ],

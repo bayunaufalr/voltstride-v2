@@ -31,7 +31,7 @@ class ActivityStartConfig {
   });
 }
 
-enum _ActivityMode { run, interval, walk, hiit }
+enum _ActivityMode { run, interval, walk, cycle, hiit }
 
 class ActivitySetupPage extends StatefulWidget {
   const ActivitySetupPage({
@@ -227,6 +227,17 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             ),
             const SizedBox(height: 9),
             _choiceCard(
+              selected: _mode == _ActivityMode.cycle,
+              title: _text('Bersepeda', 'Cycling'),
+              subtitle: _text(
+                'Rekam jarak, kecepatan, rute, elevasi, segmen, dan detak jantung.',
+                'Record distance, speed, route, elevation, segments, and heart rate.',
+              ),
+              horizontal: true,
+              onTap: () => setState(() => _mode = _ActivityMode.cycle),
+            ),
+            const SizedBox(height: 9),
+            _choiceCard(
               selected: _mode == _ActivityMode.hiit,
               title: 'HIIT',
               subtitle: _text('Interval kerja dan pemulihan, dengan detak jantung.', 'Work and recovery intervals with heart-rate tracking.'),
@@ -318,10 +329,15 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             Padding(
               padding: const EdgeInsets.only(top: 2, bottom: 8),
               child: Text(
-                _text(
-                  'Cadence dihitung dari sensor langkah ponsel; bawa ponsel di badan selama lari. Smartwatch tidak wajib. Sensor Bluetooth hanya diperlukan untuk data detak jantung otomatis.',
-                  'Cadence is estimated from your phone step sensor; carry the phone on your body while running. A smartwatch is not required. A Bluetooth sensor is only needed for automatic heart-rate data.',
-                ),
+                _mode == _ActivityMode.cycle
+                    ? _text(
+                        'Mode sepeda menggunakan kecepatan (km/jam), bukan pace lari. Sensor HR Bluetooth bersifat opsional untuk merekam detak jantung.',
+                        'Cycling uses speed (km/h), not running pace. A Bluetooth heart-rate sensor is optional.',
+                      )
+                    : _text(
+                        'Cadence dihitung dari sensor langkah ponsel; bawa ponsel di badan selama lari. Smartwatch tidak wajib. Sensor Bluetooth hanya diperlukan untuk data detak jantung otomatis.',
+                        'Cadence is estimated from your phone step sensor; carry the phone on your body while running. A smartwatch is not required. A Bluetooth sensor is only needed for automatic heart-rate data.',
+                      ),
                 style: TextStyle(
                   color: teksSekunder,
                   fontSize: 11,
@@ -711,8 +727,14 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     }
     double? targetDistanceKm;
     double? targetPaceSecondsPerKm;
-    final String targetDistanceText = _targetDistanceKm.text.trim();
-    final String targetPaceText = _targetPace.text.trim();
+    final bool supportsRunTargets =
+        _mode == _ActivityMode.run || _mode == _ActivityMode.interval;
+    final String targetDistanceText = supportsRunTargets
+        ? _targetDistanceKm.text.trim()
+        : '';
+    final String targetPaceText = supportsRunTargets
+        ? _targetPace.text.trim()
+        : '';
     if (targetDistanceText.isNotEmpty || targetPaceText.isNotEmpty) {
       if (targetDistanceText.isEmpty || targetPaceText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -810,9 +832,11 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     widget.onStart(ActivityStartConfig(
       activityType: _mode == _ActivityMode.walk
           ? RunActivityType.walk
-          : _mode == _ActivityMode.hiit
-              ? RunActivityType.hiit
-              : RunActivityType.run,
+          : _mode == _ActivityMode.cycle
+              ? RunActivityType.cycle
+              : _mode == _ActivityMode.hiit
+                  ? RunActivityType.hiit
+                  : RunActivityType.run,
       environment: _environment,
       intervalPlan: plan,
       targetDistanceKm: targetDistanceKm,

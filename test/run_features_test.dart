@@ -197,4 +197,48 @@ void main() {
     );
     expect(evaluateRun(session).title, 'Data masih terbatas');
   });
+  test('cycling session keeps its type, heart rate, and average speed in storage', () {
+    final RunSession original = RunSession(
+      startedAt: DateTime.utc(2026, 11, 5, 6),
+      finishedAt: DateTime.utc(2026, 11, 5, 7),
+      distanceMeters: 20000,
+      elapsed: const Duration(hours: 1),
+      movingTime: const Duration(minutes: 55),
+      averagePaceSecondsPerKm: 165,
+      currentPaceSecondsPerKm: 150,
+      gpsAccuracyMeters: 5,
+      acceptedPoints: 300,
+      rejectedPoints: 4,
+      route: const <RunPoint>[],
+      splits: const <RunSplit>[],
+      activityType: RunActivityType.cycle,
+      averageHeartRateBpm: 142,
+      heartRateSamples: const <RunHeartRateSample>[
+        RunHeartRateSample(elapsedSeconds: 15, bpm: 138),
+        RunHeartRateSample(elapsedSeconds: 30, bpm: 146),
+      ],
+    );
+
+    final RunSession restored =
+        RunSession.fromStorageMap(original.toStorageMap());
+
+    expect(restored.activityType, RunActivityType.cycle);
+    expect(restored.displayLabel, 'Bersepeda');
+    expect(restored.averageSpeedKmh, closeTo(21.818, 0.01));
+    expect(restored.currentSpeedKmh, closeTo(24, 0.001));
+    expect(restored.averageHeartRateBpm, 142);
+    expect(restored.heartRateSamples, hasLength(2));
+  });
+
+  test('kilometer split exposes average speed for cycling summaries', () {
+    const RunSplit split = RunSplit(
+      kilometer: 1,
+      durationSeconds: 300,
+      paceSecondsPerKm: 300,
+      distanceMeters: 1000,
+    );
+
+    expect(split.speedKmh, closeTo(12, 0.001));
+  });
+
 }

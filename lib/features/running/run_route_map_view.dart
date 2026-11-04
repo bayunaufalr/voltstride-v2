@@ -11,7 +11,7 @@ import '../../services/app_language_service.dart';
 import 'models/run_session.dart';
 import 'run_segment_data.dart';
 
-/// Peta rute yang menampilkan warna pace dengan label kecil, bukan kartu besar.
+/// Peta rute yang menampilkan penanda segmen dan jalur aktivitas.
 /// Garis display boleh disederhanakan untuk visual; data GPS asli tidak diubah.
 class RunRouteMapView extends StatefulWidget {
   const RunRouteMapView({
@@ -26,6 +26,7 @@ class RunRouteMapView extends StatefulWidget {
     this.initialIntervalMeters = 100,
     this.selectedIntervalMeters,
     this.onIntervalMetersChanged,
+    this.speedMode = false,
   });
 
   final List<RunPoint> route;
@@ -41,6 +42,8 @@ class RunRouteMapView extends StatefulWidget {
   /// Jika diisi, pemilihan interval dikendalikan bersama oleh halaman induk.
   final int? selectedIntervalMeters;
   final ValueChanged<int>? onIntervalMetersChanged;
+  /// Mode sepeda menampilkan kecepatan segmen tanpa menandai segmen tercepat.
+  final bool speedMode;
 
   @override
   State<RunRouteMapView> createState() => _RunRouteMapViewState();
@@ -258,7 +261,9 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
       final _DisplayPoint current = display[i];
       final double middleMeters = (previous.distanceMeters + current.distanceMeters) / 2;
       final RunDistanceSegment? split = _splitForDistance(splits, middleMeters);
-      final Color nextColor = _paceColor(split?.paceSecondsPerKm);
+      final Color nextColor = widget.speedMode
+          ? const Color(0xFF666666)
+          : _paceColor(split?.paceSecondsPerKm);
       if (current.point.startsNewSegment) {
         if (currentPoints.length >= 2) {
           result.add(Polyline(points: currentPoints, strokeWidth: 4.5, color: currentColor ?? nextColor));
@@ -488,12 +493,14 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     // untuk setiap segmen hasil pilihan interval, bukan dijarangkan per 500 m
     // atau 2 km seperti versi sebelumnya.
     int? fastestIndex;
-    double fastestPace = double.infinity;
-    for (int index = 0; index < splits.length; index++) {
-      final double? pace = splits[index].paceSecondsPerKm;
-      if (pace != null && pace.isFinite && pace > 0 && pace < fastestPace) {
-        fastestPace = pace;
-        fastestIndex = index;
+    if (!widget.speedMode) {
+      double fastestPace = double.infinity;
+      for (int index = 0; index < splits.length; index++) {
+        final double? pace = splits[index].paceSecondsPerKm;
+        if (pace != null && pace.isFinite && pace > 0 && pace < fastestPace) {
+          fastestPace = pace;
+          fastestIndex = index;
+        }
       }
     }
 
@@ -528,8 +535,17 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     required Offset labelOffset,
   }) {
     final double? pace = split.paceSecondsPerKm;
-    final Color paceColor = _paceColor(pace);
-    final String paceText = pace == null ? '--:--' : _formatPace(pace);
+    final double? speed = split.speedKmh;
+    final Color paceColor = widget.speedMode
+        ? const Color(0xFF666666)
+        : _paceColor(pace);
+    final String paceText = widget.speedMode
+        ? speed == null
+            ? '--'
+            : speed.toStringAsFixed(1)
+        : pace == null
+            ? '--:--'
+            : _formatPace(pace);
     // Label terang di atas latar gelap membuat angka pace tetap terbaca
     // pada peta yang penuh detail. Pace tercepat ditandai dengan inversi warna.
     final Color labelColor = isFastest ? Colors.black : Colors.white;
@@ -612,6 +628,12 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
     final String altitude = split.relativeElevationMeters != null && split.relativeElevationMeters!.isFinite
         ? '${split.relativeElevationMeters! >= 0 ? '+' : ''}${split.relativeElevationMeters!.round()} m'
         : '--';
+    final String paceDetailId = widget.speedMode
+        ? ''
+        : 'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n';
+    final String paceDetailEn = widget.speedMode
+        ? ''
+        : 'Average pace: ${pace == null ? '--:--' : _formatPace(pace)}/km\n';
     await showDialog<void>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -621,12 +643,12 @@ class _RunRouteMapViewState extends State<RunRouteMapView> {
             context,
             'Panjang segmen: ${split.distanceMeters.toStringAsFixed(0)} m\n'
                 'Durasi: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} detik\n'
-                'Pace rata-rata: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
+                '$paceDetailId'
                 'Kecepatan rata-rata: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/jam\n'
                 'Elevasi dari awal: $altitude',
             'Segment length: ${split.distanceMeters.toStringAsFixed(0)} m\n'
                 'Duration: ${(split.durationMilliseconds / 1000).toStringAsFixed(1)} seconds\n'
-                'Average pace: ${pace == null ? '--:--' : _formatPace(pace)}/km\n'
+                '$paceDetailEn'
                 'Average speed: ${speed == null ? '--' : speed.toStringAsFixed(1)} km/h\n'
                 'Elevation from start: $altitude',
           ),

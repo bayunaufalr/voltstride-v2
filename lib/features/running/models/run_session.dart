@@ -12,12 +12,13 @@ enum RunStatus {
   error,
 }
 
-enum RunActivityType { run, walk, hiit }
+enum RunActivityType { run, walk, cycle, hiit }
 enum RunEnvironment { outdoor, indoor }
 
 extension RunActivityTypeLabel on RunActivityType {
   String get label => switch (this) {
         RunActivityType.walk => 'Berjalan',
+        RunActivityType.cycle => 'Bersepeda',
         RunActivityType.hiit => 'HIIT',
         RunActivityType.run => 'Berlari',
       };
@@ -82,6 +83,11 @@ class RunSplit {
   final int durationSeconds;
   final int paceSecondsPerKm;
   final double distanceMeters;
+
+  double get speedKmh {
+    if (durationSeconds <= 0 || distanceMeters <= 0) return 0;
+    return distanceMeters / durationSeconds * 3.6;
+  }
 
   const RunSplit({
     required this.kilometer,
@@ -581,6 +587,23 @@ class RunSession {
   String get averagePaceText => _formatPace(averagePaceSecondsPerKm);
 
   String get currentPaceText => _formatPace(currentPaceSecondsPerKm);
+
+  /// Kecepatan rata-rata memakai waktu bergerak agar jeda tidak menurunkan
+  /// nilai. Untuk aktivitas tanpa moving time, gunakan waktu total.
+  double? get averageSpeedKmh {
+    final Duration duration = movingTime > Duration.zero ? movingTime : elapsed;
+    if (distanceMeters <= 0 || duration.inMilliseconds <= 0) return null;
+    final double speed =
+        distanceMeters / (duration.inMilliseconds / 1000.0) * 3.6;
+    return speed.isFinite ? speed : null;
+  }
+
+  double? get currentSpeedKmh {
+    final double? pace = currentPaceSecondsPerKm;
+    if (pace == null || !pace.isFinite || pace <= 0) return null;
+    final double speed = 3600.0 / pace;
+    return speed.isFinite ? speed : null;
+  }
 
   String get gpsAccuracyText {
     final double? accuracy = gpsAccuracyMeters;

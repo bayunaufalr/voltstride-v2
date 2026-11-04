@@ -9,7 +9,7 @@ import '../account/account_service.dart';
 import '../../theme/volt_theme.dart';
 import 'models/run_session.dart';
 
-enum _MetricKind { elevation, pace, cadence, heartRate }
+enum _MetricKind { elevation, pace, speed, cadence, heartRate }
 
 /// Grafik lokal tanpa dependensi tambahan. Grafik dapat digeser/disentuh untuk
 /// membaca nilai tepat pada jarak yang dipilih.
@@ -23,6 +23,7 @@ class RunActivityCharts extends StatelessWidget {
     String text(String indonesia, String english) =>
         AppLanguageService.text(context, indonesia, english);
     final List<Offset> elevation = _elevationPoints(session.route);
+    final bool cycling = session.activityType == RunActivityType.cycle;
     final List<Offset> pace = session.hundredMeterLaps
         .where((RunLap100m lap) {
           final double? value = lap.paceSecondsPerKm;
@@ -33,6 +34,16 @@ class RunActivityCharts extends StatelessWidget {
         .map((RunLap100m lap) => Offset(
               lap.distanceMeters / 1000,
               lap.paceSecondsPerKm!,
+            ))
+        .toList(growable: false);
+    final List<Offset> speed = session.hundredMeterLaps
+        .where((RunLap100m lap) {
+          final double? value = lap.speedKmh;
+          return value != null && value.isFinite && value >= 0 && value <= 75;
+        })
+        .map((RunLap100m lap) => Offset(
+              lap.distanceMeters / 1000,
+              lap.speedKmh!,
             ))
         .toList(growable: false);
     final List<Offset> heartRate = _downsample(
@@ -74,16 +85,18 @@ class RunActivityCharts extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         _InteractiveMetricChart(
-          key: const ValueKey<String>('pace-chart'),
-          title: 'Pace',
-          subtitle: text('Menit per kilometer', 'Minutes per kilometer'),
-          points: pace,
+          key: ValueKey<String>(cycling ? 'speed-chart' : 'pace-chart'),
+          title: cycling ? text('Kecepatan', 'Speed') : 'Pace',
+          subtitle: cycling
+              ? text('Kilometer per jam • jarak', 'Kilometers per hour • distance')
+              : text('Menit per kilometer', 'Minutes per kilometer'),
+          points: cycling ? speed : pace,
           emptyText: text('Belum ada split 100 m yang lengkap.', 'No complete 100 m splits are available.'),
           color: Theme.of(context).brightness == Brightness.dark
               ? const Color(0xFFBDBDBD)
               : const Color(0xFF555555),
-          kind: _MetricKind.pace,
-          invertVertical: true,
+          kind: cycling ? _MetricKind.speed : _MetricKind.pace,
+          invertVertical: !cycling,
         ),
         const SizedBox(height: 12),
         _InteractiveMetricChart(
@@ -102,7 +115,7 @@ class RunActivityCharts extends StatelessWidget {
         const SizedBox(height: 8),
         _HeartRateZoneBreakdown(session: session),
         const SizedBox(height: 12),
-        _InteractiveMetricChart(
+        if (!cycling) _InteractiveMetricChart(
           key: const ValueKey<String>('cadence-chart'),
           title: 'Cadence',
           subtitle: text('Langkah per menit', 'Steps per minute'),
@@ -651,6 +664,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
       case _MetricKind.pace:
         final int seconds = value.round();
         return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}/km';
+      case _MetricKind.speed:
+        return '${value.toStringAsFixed(1)} km/jam';
       case _MetricKind.elevation:
         return '${value > 0 ? '+' : ''}${value.round()} m';
       case _MetricKind.cadence:
@@ -672,6 +687,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
     switch (widget.kind) {
       case _MetricKind.pace:
         return AppLanguageService.text(context, 'Pace pada jarak ini', 'Pace at this distance');
+      case _MetricKind.speed:
+        return AppLanguageService.text(context, 'Kecepatan pada jarak ini', 'Speed at this distance');
       case _MetricKind.elevation:
         return AppLanguageService.text(context, 'Elevasi relatif', 'Relative elevation');
       case _MetricKind.cadence:
@@ -687,6 +704,8 @@ class _InteractiveMetricChartState extends State<_InteractiveMetricChart> {
     final double high = values.reduce((double a, double b) => a > b ? a : b);
     switch (widget.kind) {
       case _MetricKind.pace:
+        return AppLanguageService.text(context, 'Rentang ${_valueText(low)} – ${_valueText(high)}', 'Range ${_valueText(low)} – ${_valueText(high)}');
+      case _MetricKind.speed:
         return AppLanguageService.text(context, 'Rentang ${_valueText(low)} – ${_valueText(high)}', 'Range ${_valueText(low)} – ${_valueText(high)}');
       case _MetricKind.elevation:
         return AppLanguageService.text(context, 'Terendah ${_valueText(low)} • tertinggi ${_valueText(high)}', 'Lowest ${_valueText(low)} • highest ${_valueText(high)}');
@@ -1012,6 +1031,8 @@ class _MetricChartPainter extends CustomPainter {
       case _MetricKind.pace:
         final int seconds = value.round().clamp(0, 99999).toInt();
         return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+      case _MetricKind.speed:
+        return value.toStringAsFixed(0);
       case _MetricKind.elevation:
         return value.round().toString();
       case _MetricKind.cadence:

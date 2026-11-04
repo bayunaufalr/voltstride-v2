@@ -59,6 +59,9 @@ class GeolocatorRunningLocationSource implements RunningLocationSource {
 class RunningEngine extends ChangeNotifier {
   static const double maxAccuracyMeters = 50.0;
   static const double maxSpeedKmh = 35.0;
+  // Batas ini hanya menyaring lonjakan GPS yang tidak masuk akal untuk sepeda.
+  // Angka tersebut bukan target atau rekomendasi kecepatan.
+  static const double maxCyclingSpeedKmh = 75.0;
   // Jangan membuang setiap langkah pelan. Ambang adaptif di bawah menjaga
   // gerakan kecil tetap dihitung tanpa menjumlahkan jitter GPS yang sangat kecil.
   static const double minMovementMeters = 0.7;
@@ -597,7 +600,11 @@ class RunningEngine extends ChangeNotifier {
     final double speedMps = rawDistanceMeters / dtSeconds;
     final double speedKmh = speedMps * 3.6;
 
-    if (!speedKmh.isFinite || speedKmh > maxSpeedKmh) {
+    final double maximumAcceptedSpeed =
+        _activityType == RunActivityType.cycle
+            ? maxCyclingSpeedKmh
+            : maxSpeedKmh;
+    if (!speedKmh.isFinite || speedKmh > maximumAcceptedSpeed) {
       // Kode lama membuang lonjakan tanpa memperbarui titik acuan. Akibatnya,
       // semua titik sesudahnya dibandingkan dengan koordinat lama dan GPS
       // dapat terlihat macet sepanjang sesi. Re-anchor tanpa menambahkan jarak
@@ -881,9 +888,11 @@ class RunningEngine extends ChangeNotifier {
 
     final double elapsedSeconds = elapsedMilliseconds / 1000.0;
     final double speedMps = distanceMeters / elapsedSeconds;
+    final double maximumPaceSpeed =
+        _activityType == RunActivityType.cycle ? 20.0 : maxPaceSpeedMps;
     if (!speedMps.isFinite ||
         speedMps < minPaceSpeedMps ||
-        speedMps > maxPaceSpeedMps) {
+        speedMps > maximumPaceSpeed) {
       return;
     }
 
@@ -1005,6 +1014,7 @@ class RunningEngine extends ChangeNotifier {
             : _intervalPlan != null
                 ? 'Lari interval'
                 : _activityType.label,
+        activityIsCycling: _activityType == RunActivityType.cycle,
       );
     } catch (_) {
       // Kegagalan notifikasi tidak boleh menghentikan perekaman GPS.

@@ -81,14 +81,17 @@ class _RunDetailPageState extends State<RunDetailPage> {
     final DateTime start = session.startedAt.toLocal();
     final DateTime? finish = session.finishedAt?.toLocal();
     final RunElevationStats elevation = session.elevationStats;
+    final bool isCycling = session.activityType == RunActivityType.cycle;
     final RunEvaluation evaluation = evaluateRun(session);
-    final String routeActivityLabel = session.activityType == RunActivityType.hiit
-        ? 'HIIT'
-        : session.activityType == RunActivityType.walk
-            ? 'BERJALAN'
-            : session.intervalPlan != null
-                ? 'LARI INTERVAL'
-                : 'LARI';
+    final String routeActivityLabel = isCycling
+        ? 'BERSEPEDA'
+        : session.activityType == RunActivityType.hiit
+            ? 'HIIT'
+            : session.activityType == RunActivityType.walk
+                ? 'BERJALAN'
+                : session.intervalPlan != null
+                    ? 'LARI INTERVAL'
+                    : 'LARI';
 
     return Scaffold(
       appBar: AppBar(
@@ -127,7 +130,12 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       children: <Widget>[
                         _heroMetric('WAKTU', session.elapsedText),
                         _heroMetric('MOVING', session.movingTimeText),
-                        _heroMetric('PACE', '${session.averagePaceText}/km'),
+                        _heroMetric(
+                          isCycling ? 'KECEPATAN' : 'PACE',
+                          isCycling
+                              ? '${session.averageSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                              : '${session.averagePaceText}/km',
+                        ),
                       ],
                     ),
                     if (finish != null) ...<Widget>[
@@ -214,6 +222,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         height: 300,
                         showIntervalSelector: true,
                         selectedIntervalMeters: _selectedIntervalMeters,
+                        speedMode: isCycling,
                         onIntervalMetersChanged: (int meters) {
                           setState(() => _selectedIntervalMeters = meters);
                         },
@@ -222,7 +231,9 @@ class _RunDetailPageState extends State<RunDetailPage> {
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text(
-                        'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
+                        isCycling
+                            ? 'Pilih rentang segmen di peta. Penanda menunjukkan kecepatan rata-rata tiap segmen; ketuk titik untuk melihat detail. Peta dasar memerlukan internet.'
+                            : 'Pilih rentang split di peta. Garis berwarna mengikuti pace; ketuk titik untuk melihat detail segmen. Peta dasar memerlukan internet.',
                         style: TextStyle(
                           fontSize: 11,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -239,7 +250,12 @@ class _RunDetailPageState extends State<RunDetailPage> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: <Widget>[
-                      Icon(Icons.directions_run_rounded, color: VoltWarna.aksen),
+                      Icon(
+                        isCycling
+                            ? Icons.directions_bike_rounded
+                            : Icons.directions_run_rounded,
+                        color: VoltWarna.aksen,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(child: Text('Sesi dalam ruangan. Jarak dicatat dari nilai yang dimasukkan saat selesai; peta dan elevasi GPS tidak tersedia.')),
                     ],
@@ -250,7 +266,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
             const SizedBox(height: 12),
             _elevationCard(elevation),
             const SizedBox(height: 12),
-            _sectionCard(
+            if (!isCycling) _sectionCard(
               title: 'LANGKAH, CADENCE, DAN KALORI',
               child: Column(
                 children: <Widget>[
@@ -276,14 +292,29 @@ class _RunDetailPageState extends State<RunDetailPage> {
                   _dataRow('Jarak', '${session.distanceMeters.toStringAsFixed(0)} m'),
                   _dataRow('Waktu total', session.elapsedText),
                   _dataRow('Waktu bergerak', session.movingTimeText),
-                  _dataRow('Pace rata-rata', '${session.averagePaceText}/km'),
+                  _dataRow(
+                    isCycling ? 'Kecepatan rata-rata' : 'Pace rata-rata',
+                    isCycling
+                        ? '${session.averageSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                        : '${session.averagePaceText}/km',
+                  ),
                   _dataRow(
                     'Detak jantung rata-rata',
                     session.averageHeartRateBpm == null
                         ? 'Tidak tersedia'
                         : '${session.averageHeartRateBpm} bpm',
                   ),
-                  _dataRow('Pace saat disimpan', session.currentPaceText),
+                  if (isCycling && session.heartRateSamples.isNotEmpty)
+                    _dataRow(
+                      'Detak jantung maksimum',
+                      '${session.heartRateSamples.map((RunHeartRateSample sample) => sample.bpm).reduce((int a, int b) => a > b ? a : b)} bpm',
+                    ),
+                  _dataRow(
+                    isCycling ? 'Kecepatan saat disimpan' : 'Pace saat disimpan',
+                    isCycling
+                        ? '${session.currentSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                        : session.currentPaceText,
+                  ),
                   _dataRow('Akurasi GPS terakhir', session.gpsAccuracyText),
                   _dataRow('Titik diterima', '${session.acceptedPoints}'),
                   _dataRow('Titik ditolak', '${session.rejectedPoints}'),
@@ -305,20 +336,27 @@ class _RunDetailPageState extends State<RunDetailPage> {
             _segmentDetailsCard(),
             const SizedBox(height: 12),
             _sectionCard(
-              title: 'SPLIT PER KM',
+              title: isCycling ? 'SEGMEN PER KM' : 'SPLIT PER KM',
               child: session.splits.isEmpty
-                  ? const Text('Belum mencapai satu kilometer penuh.')
+                  ? Text(
+                      isCycling
+                          ? 'Belum ada segmen kilometer penuh.'
+                          : 'Belum mencapai satu kilometer penuh.',
+                    )
                   : Column(
                       children: session.splits.map((RunSplit split) => _dataRow(
                         'KM ${split.kilometer}',
-                        '${split.durationSeconds} dtk • ${split.paceText}',
+                        isCycling
+                            ? '${split.durationSeconds} dtk • ${split.speedKmh.toStringAsFixed(1)} km/jam'
+                            : '${split.durationSeconds} dtk • ${split.paceText}',
                       )).toList(growable: false),
                     ),
             ),
-            const SizedBox(height: 12),
-            _sectionCard(
-              title: 'EVALUASI DAN SARAN',
-              child: Column(
+            if (!isCycling) ...<Widget>[
+              const SizedBox(height: 12),
+              _sectionCard(
+                title: 'EVALUASI DAN SARAN',
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   const Text('PENGAMATAN', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -343,6 +381,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                 ],
               ),
             ),
+            ],
           ],
         ),
       ),
@@ -350,12 +389,13 @@ class _RunDetailPageState extends State<RunDetailPage> {
   }
 
   Widget _segmentDetailsCard() {
+    final bool isCycling = session.activityType == RunActivityType.cycle;
     final List<RunDistanceSegment> segments = buildRunDistanceSegments(
       session.hundredMeterLaps,
       _selectedIntervalMeters,
     );
     return _sectionCard(
-      title: 'KECEPATAN PER SEGMEN',
+      title: isCycling ? 'KECEPATAN PER SEGMEN' : 'PACE DAN KECEPATAN PER SEGMEN',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -409,7 +449,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: SizedBox(
-                width: 520,
+                width: isCycling ? 416 : 520,
                 child: Column(
                   children: <Widget>[
                     _segmentTableRow(
@@ -418,6 +458,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                       speedLabel: 'km/jam',
                       paceLabel: 'Pace',
                       altitudeLabel: 'Elev. relatif',
+                      showPace: !isCycling,
                       header: true,
                     ),
                     const Divider(height: 14),
@@ -434,6 +475,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
                         altitudeLabel: segment.relativeElevationMeters == null
                             ? '--'
                             : '${segment.relativeElevationMeters! >= 0 ? '+' : ''}${segment.relativeElevationMeters!.round()} m',
+                        showPace: !isCycling,
                       );
                     }),
                   ],
@@ -442,7 +484,9 @@ class _RunDetailPageState extends State<RunDetailPage> {
             ),
           const SizedBox(height: 8),
           Text(
-            'Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.',
+            isCycling
+                ? 'Kecepatan adalah rata-rata tiap segmen; elevasi memakai data GPS.'
+                : 'Waktu dan pace adalah rata-rata segmen; elevasi memakai data GPS.',
             style: TextStyle(
               fontSize: 11,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -459,6 +503,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
     required String speedLabel,
     required String paceLabel,
     required String altitudeLabel,
+    bool showPace = true,
     bool header = false,
   }) {
     final TextStyle style = TextStyle(
@@ -487,7 +532,7 @@ class _RunDetailPageState extends State<RunDetailPage> {
         cell(segmentLabel, 122),
         cell(durationLabel, 86, align: TextAlign.end),
         cell(speedLabel, 78, align: TextAlign.end),
-        cell(paceLabel, 104, align: TextAlign.end),
+        if (showPace) cell(paceLabel, 104, align: TextAlign.end),
         cell(altitudeLabel, 80, align: TextAlign.end),
       ],
     );

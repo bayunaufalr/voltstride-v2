@@ -81,9 +81,11 @@ class StravaFileExportService {
     final int? averageHeartRate = session.averageHeartRateBpm ??
         _averageHeartRate(session.heartRateSamples);
     final int? maximumHeartRate = _maximumHeartRate(session.heartRateSamples);
-    final String sport = session.activityType == RunActivityType.run
-        ? 'Running'
-        : 'Other';
+    final String sport = session.activityType == RunActivityType.cycle
+        ? 'Biking'
+        : session.activityType == RunActivityType.run
+            ? 'Running'
+            : 'Other';
 
     final StringBuffer xml = StringBuffer()
       ..writeln('<?xml version="1.0" encoding="UTF-8"?>')
@@ -104,6 +106,8 @@ class StravaFileExportService {
       xml.writeln('<Notes>VoltStride HIIT: $notes</Notes>');
     } else if (session.activityType == RunActivityType.walk) {
       xml.writeln('<Notes>VoltStride activity type: walk</Notes>');
+    } else if (session.activityType == RunActivityType.cycle) {
+      xml.writeln('<Notes>VoltStride activity type: cycling</Notes>');
     }
 
     xml
@@ -443,11 +447,16 @@ class StravaFileExportService {
       final bool isHiit = notes.toLowerCase().contains('voltstride hiit');
       final bool isWalk = sport.contains('walk') ||
           notes.toLowerCase().contains('activity type: walk');
+      final bool isCycling = sport.contains('bik') ||
+          sport.contains('cycl') ||
+          notes.toLowerCase().contains('activity type: cycling');
       final RunActivityType activityType = isHiit
           ? RunActivityType.hiit
           : isWalk
               ? RunActivityType.walk
-              : RunActivityType.run;
+              : isCycling
+                  ? RunActivityType.cycle
+                  : RunActivityType.run;
 
       final List<RunPoint> route = <RunPoint>[];
       final List<RunHeartRateSample> heartRates = <RunHeartRateSample>[];

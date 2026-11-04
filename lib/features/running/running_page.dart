@@ -215,7 +215,9 @@ class _RunningPageState extends State<RunningPage> {
       _lastIntervalPhaseKey = null;
       _activeIntervalPlan = null;
     }
-    if (statusChanged && currentStatus == RunStatus.running) {
+    if (statusChanged &&
+        currentStatus == RunStatus.running &&
+        widget.activityType != RunActivityType.cycle) {
       unawaited(_ensureStepTracking());
     }
 
@@ -264,7 +266,7 @@ class _RunningPageState extends State<RunningPage> {
         stage: phase.stage.name,
         repetition: phase.repetition,
         totalRepetitions: plan.repetitions,
-        activityLabel: widget.activityType == RunActivityType.hiit ? 'HIIT' : 'Lari',
+        activityLabel: _activityDisplayLabel,
       );
     } catch (_) {
       // A failed notice must not interrupt GPS recording or interval timing.
@@ -641,7 +643,9 @@ class _RunningPageState extends State<RunningPage> {
           ? _text('Lari interval', 'Interval run')
           : widget.activityType == RunActivityType.walk
               ? _text('Berjalan', 'Walk')
-              : _text('Lari', 'Run');
+              : widget.activityType == RunActivityType.cycle
+                  ? _text('Bersepeda', 'Cycling')
+                  : _text('Lari', 'Run');
 
   Widget _buildAcquiringGps() {
     final bool countingDown = _countdownValue != null;
@@ -747,7 +751,13 @@ class _RunningPageState extends State<RunningPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      Icon(Icons.directions_run_rounded, size: 48, color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        widget.activityType == RunActivityType.cycle
+                            ? Icons.directions_bike_rounded
+                            : Icons.directions_run_rounded,
+                        size: 48,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(height: 16),
                       Text(_formatDuration(_controller.elapsed), style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
@@ -818,6 +828,7 @@ class _RunningPageState extends State<RunningPage> {
                 height: MediaQuery.sizeOf(context).height,
                 followLastPoint: !paused,
                 showIntervalSelector: true,
+                speedMode: widget.activityType == RunActivityType.cycle,
               ),
             ),
           ),
@@ -929,7 +940,14 @@ class _RunningPageState extends State<RunningPage> {
                           Row(
                             children: <Widget>[
                               _liveMapMetric(_text('WAKTU', 'TIME'), _formatDuration(_controller.elapsed)),
-                              _liveMapMetric(_text('PACE', 'PACE'), _formatPace(pace)),
+                              _liveMapMetric(
+                                widget.activityType == RunActivityType.cycle
+                                    ? _text('KECEPATAN', 'SPEED')
+                                    : _text('PACE', 'PACE'),
+                                widget.activityType == RunActivityType.cycle
+                                    ? '${_formatCurrentSpeed(pace)} km/jam'
+                                    : _formatPace(pace),
+                              ),
                               _liveMapMetric(_text('JARAK', 'DISTANCE'), '${_controller.distanceKm.toStringAsFixed(2)} km'),
                             ],
                           ),
@@ -957,7 +975,14 @@ class _RunningPageState extends State<RunningPage> {
                               Icon(Icons.speed, color: overlayMuted, size: 18),
                               const SizedBox(width: 6),
                               Text(
-                                speedKmh != null && speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
+                                speedKmh != null &&
+                                        speedKmh.isFinite &&
+                                        speedKmh >= 0.5 &&
+                                        speedKmh <=
+                                            (widget.activityType ==
+                                                    RunActivityType.cycle
+                                                ? 75
+                                                : 35)
                                     ? (AppLanguageService.localeNotifier.value.languageCode == 'en' ? '${speedKmh.toStringAsFixed(1)} km/h' : '${speedKmh.toStringAsFixed(1)} km/jam')
                                     : (AppLanguageService.localeNotifier.value.languageCode == 'en' ? '-- km/h' : '-- km/jam'),
                                 style: TextStyle(
@@ -1003,25 +1028,27 @@ class _RunningPageState extends State<RunningPage> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 10),
-                          Row(
-                            children: <Widget>[
-                              _liveMapMiniMetric(
-                                _text('LANGKAH', 'STEPS'),
-                                _stepsThisActivity.toString(),
-                              ),
-                              _liveMapMiniMetric(
-                                _text('CADENCE', 'CADENCE'),
-                                _cadenceSamples.isEmpty
-                                    ? '--'
-                                    : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm',
-                              ),
-                              _liveMapMiniMetric(
-                                _text('KALORI*', 'CALORIES*'),
-                                '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()} kcal',
-                              ),
-                            ],
-                          ),
+                          if (widget.activityType != RunActivityType.cycle) ...<Widget>[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: <Widget>[
+                                _liveMapMiniMetric(
+                                  _text('LANGKAH', 'STEPS'),
+                                  _stepsThisActivity.toString(),
+                                ),
+                                _liveMapMiniMetric(
+                                  _text('CADENCE', 'CADENCE'),
+                                  _cadenceSamples.isEmpty
+                                      ? '--'
+                                      : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm',
+                                ),
+                                _liveMapMiniMetric(
+                                  _text('KALORI*', 'CALORIES*'),
+                                  '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()} kcal',
+                                ),
+                              ],
+                            ),
+                          ],
                           if (widget.environment == RunEnvironment.outdoor &&
                               widget.activityType == RunActivityType.run) ...<Widget>[
                             const SizedBox(height: 10),
@@ -1435,7 +1462,7 @@ class _RunningPageState extends State<RunningPage> {
               ],
             ],
             const SizedBox(height: 12),
-            _liveMetricsBuilder(() => Row(
+              _liveMetricsBuilder(() => Row(
               children: <Widget>[
                 Expanded(
                   child: _metricCard(
@@ -1447,8 +1474,12 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _metricCard(
-                    label: _text('PACE RATA-RATA', 'AVG PACE'),
-                    value: _formatPace(_controller.averagePaceSecondsPerKm),
+                    label: widget.activityType == RunActivityType.cycle
+                        ? _text('KECEPATAN RATA-RATA', 'AVERAGE SPEED')
+                        : _text('PACE RATA-RATA', 'AVG PACE'),
+                    value: widget.activityType == RunActivityType.cycle
+                        ? '${_formatAverageSpeed()} km/jam'
+                        : _formatPace(_controller.averagePaceSecondsPerKm),
                     icon: Icons.speed,
                   ),
                 ),
@@ -1484,16 +1515,18 @@ class _RunningPageState extends State<RunningPage> {
                 ),
               ],
             )),
-            const SizedBox(height: 10),
-            _liveMetricsBuilder(() => Row(
-              children: <Widget>[
-                Expanded(child: _metricCard(label: _text('LANGKAH', 'STEPS'), value: _stepsThisActivity.toString(), icon: Icons.directions_walk_rounded)),
-                const SizedBox(width: 10),
-                Expanded(child: _metricCard(label: 'CADENCE', value: _cadenceSamples.isEmpty ? '--' : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm', icon: Icons.speed_rounded)),
-                const SizedBox(width: 10),
-                Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()}', icon: Icons.local_fire_department_outlined)),
-              ],
-            )),
+            if (widget.activityType != RunActivityType.cycle) ...<Widget>[
+              const SizedBox(height: 10),
+              _liveMetricsBuilder(() => Row(
+                children: <Widget>[
+                  Expanded(child: _metricCard(label: _text('LANGKAH', 'STEPS'), value: _stepsThisActivity.toString(), icon: Icons.directions_walk_rounded)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _metricCard(label: 'CADENCE', value: _cadenceSamples.isEmpty ? '--' : '${(_cadenceSamples.map((RunCadenceSample item) => item.cadenceSpm).reduce((double a, double b) => a + b) / _cadenceSamples.length).round()} spm', icon: Icons.speed_rounded)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${(_controller.distanceKm * (widget.activityType == RunActivityType.walk ? 40 : 60)).round()}', icon: Icons.local_fire_department_outlined)),
+                ],
+              )),
+            ],
             const SizedBox(height: 12),
             _liveMetricsBuilder(() => Column(
               children: <Widget>[
@@ -1547,9 +1580,11 @@ class _RunningPageState extends State<RunningPage> {
         ? 'HIIT'
         : session.activityType == RunActivityType.walk
             ? _text('Berjalan', 'Walk')
-            : session.intervalPlan != null
-                ? _text('Lari interval', 'Interval run')
-                : _text('Lari', 'Run');
+            : session.activityType == RunActivityType.cycle
+                ? _text('Bersepeda', 'Cycling')
+                : session.intervalPlan != null
+                    ? _text('Lari interval', 'Interval run')
+                    : _text('Lari', 'Run');
 
     return Scaffold(
       appBar: AppBar(
@@ -1578,11 +1613,18 @@ class _RunningPageState extends State<RunningPage> {
             _saveStatusCard(),
             if (session.environment == RunEnvironment.outdoor) ...<Widget>[
               const SizedBox(height: 12),
-              _routeMapCard(session.route, session.hundredMeterLaps, activityLabel: routeActivityLabel),
+              _routeMapCard(
+                session.route,
+                session.hundredMeterLaps,
+                activityLabel: routeActivityLabel,
+                speedMode: session.activityType == RunActivityType.cycle,
+              ),
             ] else ...<Widget>[
               const SizedBox(height: 12),
               _infoCard(
-                icon: Icons.directions_run_rounded,
+                icon: session.activityType == RunActivityType.cycle
+                    ? Icons.directions_bike_rounded
+                    : Icons.directions_run_rounded,
                 title: _text('Aktivitas dalam ruangan', 'Indoor activity'),
                 text: _text('Jarak dicatat dari nilai yang dimasukkan saat sesi selesai. Peta dan elevasi GPS tidak tersedia untuk sesi ini.', 'Distance is based on the value entered at the end of the session. GPS maps and elevation are unavailable indoors.'),
               ),
@@ -1590,8 +1632,10 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 12),
             _elevationStatsCard(session.elevationStats),
             const SizedBox(height: 12),
-            _metricCard(label: _text('JUMLAH LANGKAH', 'TOTAL STEPS'), value: session.totalSteps?.toString() ?? _text('Tidak tersedia', 'Unavailable'), icon: Icons.directions_walk_rounded),
-            const SizedBox(height: 8),
+            if (session.activityType != RunActivityType.cycle) ...<Widget>[
+              _metricCard(label: _text('JUMLAH LANGKAH', 'TOTAL STEPS'), value: session.totalSteps?.toString() ?? _text('Tidak tersedia', 'Unavailable'), icon: Icons.directions_walk_rounded),
+              const SizedBox(height: 8),
+            ],
             _metricCard(
               label: _text('DETAK JANTUNG RATA-RATA', 'AVERAGE HEART RATE'),
               value: session.averageHeartRateBpm == null
@@ -1600,11 +1644,12 @@ class _RunningPageState extends State<RunningPage> {
               icon: Icons.favorite_outline_rounded,
             ),
             const SizedBox(height: 8),
-            Row(children: <Widget>[
-              Expanded(child: _metricCard(label: _text('CADENCE RATA-RATA', 'AVERAGE CADENCE'), value: session.averageCadenceSpm == null ? '--' : '${session.averageCadenceSpm!.round()} spm', icon: Icons.speed_rounded)),
-              const SizedBox(width: 10),
-              Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${session.estimatedCalories.round()} kcal', icon: Icons.local_fire_department_outlined)),
-            ]),
+            if (session.activityType != RunActivityType.cycle)
+              Row(children: <Widget>[
+                Expanded(child: _metricCard(label: _text('CADENCE RATA-RATA', 'AVERAGE CADENCE'), value: session.averageCadenceSpm == null ? '--' : '${session.averageCadenceSpm!.round()} spm', icon: Icons.speed_rounded)),
+                const SizedBox(width: 10),
+                Expanded(child: _metricCard(label: _text('KALORI*', 'CALORIES*'), value: '${session.estimatedCalories.round()} kcal', icon: Icons.local_fire_department_outlined)),
+              ]),
             const SizedBox(height: 12),
             Padding(padding: const EdgeInsets.only(left: 4), child: Text(_text('GRAFIK AKTIVITAS', 'ACTIVITY CHARTS'), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
             RunActivityCharts(session: session),
@@ -1623,8 +1668,12 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _metricCard(
-                    label: _text('PACE RATA-RATA', 'AVG PACE'),
-                    value: session.averagePaceText,
+                    label: session.activityType == RunActivityType.cycle
+                        ? _text('KECEPATAN RATA-RATA', 'AVERAGE SPEED')
+                        : _text('PACE RATA-RATA', 'AVG PACE'),
+                    value: session.activityType == RunActivityType.cycle
+                        ? '${session.averageSpeedKmh?.toStringAsFixed(1) ?? '--'} km/jam'
+                        : session.averagePaceText,
                     icon: Icons.speed,
                   ),
                 ),
@@ -1971,6 +2020,7 @@ class _RunningPageState extends State<RunningPage> {
         paceSecondsPerKm: pace,
         paused: paused,
         activityLabel: _activityDisplayLabel,
+        activityIsCycling: widget.activityType == RunActivityType.cycle,
       );
     } catch (_) {
       // Notifikasi status tidak boleh menghentikan sesi GPS.
@@ -2144,24 +2194,25 @@ class _RunningPageState extends State<RunningPage> {
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  child: Text(
-                    'PACE  ${_formatPace(_controller.currentPaceSecondsPerKm)} / km',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
+                if (widget.activityType != RunActivityType.cycle)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.zero,
+                    ),
+                    child: Text(
+                      'PACE  ${_formatPace(_controller.currentPaceSecondsPerKm)} / km',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,
@@ -2172,7 +2223,9 @@ class _RunningPageState extends State<RunningPage> {
                     borderRadius: BorderRadius.zero,
                   ),
                   child: Text(
-                    'SPEED  ${_formatCurrentSpeed(_controller.currentPaceSecondsPerKm)} km/jam',
+                    widget.activityType == RunActivityType.cycle
+                        ? 'KECEPATAN  ${_formatCurrentSpeed(_controller.currentPaceSecondsPerKm)} km/jam'
+                        : 'SPEED  ${_formatCurrentSpeed(_controller.currentPaceSecondsPerKm)} km/jam',
                     style: TextStyle(
                       color: VoltWarna.hijau,
                       fontWeight: FontWeight.w900,
@@ -2196,7 +2249,18 @@ class _RunningPageState extends State<RunningPage> {
       return '--';
     }
     final double speed = 3600 / paceSecondsPerKm;
-    if (!speed.isFinite || speed > 35) return '--';
+    final double maximumSpeed =
+        widget.activityType == RunActivityType.cycle ? 75 : 35;
+    if (!speed.isFinite || speed > maximumSpeed) return '--';
+    return speed.toStringAsFixed(1);
+  }
+
+  String _formatAverageSpeed() {
+    final double? speed = _controller.averagePaceSecondsPerKm == null ||
+            _controller.averagePaceSecondsPerKm! <= 0
+        ? null
+        : 3600.0 / _controller.averagePaceSecondsPerKm!;
+    if (speed == null || !speed.isFinite || speed > 75) return '--';
     return speed.toStringAsFixed(1);
   }
 
@@ -2350,7 +2414,9 @@ class _RunningPageState extends State<RunningPage> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  _text('SPLIT PER KILOMETER', 'KILOMETER SPLITS'),
+                  widget.activityType == RunActivityType.cycle
+                      ? _text('SEGMEN PER KILOMETER', 'KILOMETER SEGMENTS')
+                      : _text('SPLIT PER KILOMETER', 'KILOMETER SPLITS'),
                   style: const TextStyle(
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.7,
@@ -2395,7 +2461,9 @@ class _RunningPageState extends State<RunningPage> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          split.paceText,
+                          widget.activityType == RunActivityType.cycle
+                              ? '${split.speedKmh.toStringAsFixed(1)} km/jam'
+                              : split.paceText,
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                           ),
@@ -2571,6 +2639,7 @@ class _RunningPageState extends State<RunningPage> {
     List<RunPoint> route,
     List<RunLap100m> laps, {
     required String activityLabel,
+    bool speedMode = false,
   }) {
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -2592,12 +2661,15 @@ class _RunningPageState extends State<RunningPage> {
               laps: laps,
               height: 290,
               showIntervalSelector: true,
+              speedMode: speedMode,
             ),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              _text('Pilih jarak split melalui menu peta. Garis berwarna menunjukkan pace, sementara rute asli tetap tersimpan lokal.', 'Choose a split distance from the map menu. Colored segments show pace; the original route remains saved on this device.'),
+              speedMode
+                  ? _text('Pilih jarak segmen melalui menu peta. Titik menunjukkan kecepatan rata-rata tiap segmen.', 'Choose a segment distance from the map menu. Markers show each segment average speed.')
+                  : _text('Pilih jarak split melalui menu peta. Garis berwarna menunjukkan pace, sementara rute asli tetap tersimpan lokal.', 'Choose a split distance from the map menu. Colored segments show pace; the original route remains saved on this device.'),
               style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
@@ -2620,7 +2692,9 @@ class _RunningPageState extends State<RunningPage> {
             subtitle: Text(
               paused
                   ? _text('Perekaman dijeda', 'Recording paused')
-                  : _text('Rute dan titik kecepatan diperbarui saat GPS masuk', 'Route and pace points update as GPS data arrives'),
+              : widget.activityType == RunActivityType.cycle
+                  ? _text('Rute dan segmen diperbarui saat GPS masuk', 'Route and segments update as GPS data arrives')
+                  : _text('Rute dan titik pace diperbarui saat GPS masuk', 'Route and pace points update as GPS data arrives'),
             ),
             trailing: IconButton(
               tooltip: _liveMapExpanded ? _text('Tutup peta', 'Close map') : _text('Buka peta', 'Open map'),
@@ -2645,6 +2719,7 @@ class _RunningPageState extends State<RunningPage> {
                   height: 300,
                   followLastPoint: !paused,
                   showIntervalSelector: true,
+                  speedMode: widget.activityType == RunActivityType.cycle,
                 ),
               ),
             ),
@@ -2714,6 +2789,7 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   Widget _hundredMeterLapsCard(RunSession session) {
+    final bool cycling = session.activityType == RunActivityType.cycle;
     final List<RunLap100m> laps = session.hundredMeterLaps;
     double? elevasiAwal;
     for (final RunLap100m lap in laps) {
@@ -2729,12 +2805,16 @@ class _RunningPageState extends State<RunningPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              _text('PACE TIAP 100 METER', 'PACE EVERY 100 METRES'),
+              cycling
+                  ? _text('KECEPATAN TIAP 100 METER', 'SPEED EVERY 100 METRES')
+                  : _text('PACE TIAP 100 METER', 'PACE EVERY 100 METRES'),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
-              _text('Pace, kecepatan, elevasi tiap 100 m.', 'Pace, speed, and elevation every 100 metres.'),
+              cycling
+                  ? _text('Kecepatan rata-rata dan elevasi tiap 100 m.', 'Average speed and elevation every 100 metres.')
+                  : _text('Pace, kecepatan, elevasi tiap 100 m.', 'Pace, speed, and elevation every 100 metres.'),
               style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
@@ -2747,9 +2827,31 @@ class _RunningPageState extends State<RunningPage> {
                       children: <Widget>[
                         SizedBox(width: 62, child: Text('${lap.distanceMeters.round()} m', style: TextStyle(fontWeight: FontWeight.w800))),
                         Expanded(child: Text(_formatDuration(Duration(milliseconds: lap.durationMilliseconds)))),
-                        SizedBox(width: 76, child: Text(lap.speedKmh == null ? '--' : '${lap.speedKmh!.toStringAsFixed(1)} km/h', textAlign: TextAlign.end, style: TextStyle(fontWeight: FontWeight.w900))),
-                        const SizedBox(width: 10),
-                        SizedBox(width: 55, child: Text(lap.paceSecondsPerKm == null ? '--' : _formatPace(lap.paceSecondsPerKm), textAlign: TextAlign.end, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
+                        SizedBox(
+                          width: cycling ? 92 : 76,
+                          child: Text(
+                            lap.speedKmh == null
+                                ? '--'
+                                : '${lap.speedKmh!.toStringAsFixed(1)} ${cycling ? 'km/jam' : 'km/h'}',
+                            textAlign: TextAlign.end,
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        if (!cycling) ...<Widget>[
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 55,
+                            child: Text(
+                              lap.paceSecondsPerKm == null
+                                  ? '--'
+                                  : _formatPace(lap.paceSecondsPerKm),
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 6),
                         SizedBox(width: 48, child: Text(lap.altitudeMeters == null || elevasiAwal == null ? '--' : '${lap.altitudeMeters! - elevasiAwal >= 0 ? '+' : ''}${(lap.altitudeMeters! - elevasiAwal).round()} m', textAlign: TextAlign.end, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11))),
                       ],
@@ -2770,7 +2872,9 @@ class _RunningPageState extends State<RunningPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              _text('SPLIT PER KM', 'KILOMETRE SPLITS'),
+              session.activityType == RunActivityType.cycle
+                  ? _text('SEGMEN PER KM', 'KILOMETRE SEGMENTS')
+                  : _text('SPLIT PER KM', 'KILOMETRE SPLITS'),
               style: const TextStyle(
                 fontWeight: FontWeight.w900,
                 letterSpacing: 0.8,
@@ -2779,7 +2883,9 @@ class _RunningPageState extends State<RunningPage> {
             const SizedBox(height: 12),
             if (session.splits.isEmpty)
               Text(
-                _text('Belum mencapai 1 km.', 'A full kilometre has not been completed yet.'),
+                session.activityType == RunActivityType.cycle
+                    ? _text('Belum ada segmen 1 km yang lengkap.', 'No full 1 km segment is available yet.')
+                    : _text('Belum mencapai 1 km.', 'A full kilometre has not been completed yet.'),
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -2813,7 +2919,9 @@ class _RunningPageState extends State<RunningPage> {
                           ),
                         ),
                         Text(
-                          split.paceText,
+                          widget.activityType == RunActivityType.cycle
+                              ? '${split.speedKmh.toStringAsFixed(1)} km/jam'
+                              : split.paceText,
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                           ),

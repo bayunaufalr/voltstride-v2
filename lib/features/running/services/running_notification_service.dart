@@ -50,6 +50,7 @@ class RunningNotificationService {
     required double? paceSecondsPerKm,
     required bool paused,
     String activityLabel = 'Aktivitas',
+    bool activityIsCycling = false,
   }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _ensureInitialized();
@@ -58,8 +59,11 @@ class RunningNotificationService {
         AppLanguageService.localeNotifier.value.languageCode == 'en';
     final String time = _formatDuration(elapsed);
     final String distance = (distanceMeters / 1000.0).toStringAsFixed(2);
+    final double maximumDisplayedSpeed = activityIsCycling ? 75 : 35;
     final String speed = speedKmh != null &&
-            speedKmh.isFinite && speedKmh >= 0.5 && speedKmh <= 35
+            speedKmh.isFinite &&
+            speedKmh >= 0.5 &&
+            speedKmh <= maximumDisplayedSpeed
         ? '${speedKmh.toStringAsFixed(1)} ${english ? 'km/h' : 'km/jam'}'
         : (english ? '-- km/h' : '-- km/jam');
     final String pace = _formatPace(paceSecondsPerKm);
@@ -75,8 +79,12 @@ class RunningNotificationService {
             ? 'PAUSED • $time • $distance km'
             : 'DIJEDA • $time • $distance km')
         : (english
-            ? 'Pace $pace/km • $speed • $distance km'
-            : 'Pace $pace/km • $speed • $distance km');
+            ? activityIsCycling
+                ? 'Speed $speed • $distance km'
+                : 'Pace $pace/km • $speed • $distance km'
+            : activityIsCycling
+                ? 'Kecepatan $speed • $distance km'
+                : 'Pace $pace/km • $speed • $distance km');
 
     const AndroidNotificationDetails android = AndroidNotificationDetails(
       'voltstride_live_run_stats_v4',
