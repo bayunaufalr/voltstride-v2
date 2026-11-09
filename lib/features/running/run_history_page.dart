@@ -156,7 +156,11 @@ class RunHistoryPageState extends State<RunHistoryPage> {
         await ReminderService.completeMatchingActivity(
           startedAt: session.startedAt,
           duration: session.elapsed,
-          activityCategory: session.activityType.name,
+          activityCategory: session.activityType == RunActivityType.hiit
+            ? 'hiit'
+            : session.intervalPlan != null
+                ? 'interval'
+                : session.activityType.name,
           finishedAt: session.finishedAt,
         );
         try {

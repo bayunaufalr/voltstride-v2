@@ -397,28 +397,11 @@ class ReminderPulseReceiver : BroadcastReceiver() {
 
         private fun showReminder(context: Context, id: Int, config: JSONObject, startAt: Long) {
             createNotificationChannel(context)
-            val title = config.optString("title", "Latihan")
-            val category = config.optString("category", "Lari")
-            val interval = config.optInt("repeatIntervalSeconds", 60)
-            val activeEndAt = preferences(context).getLong(activeEndKey(id), 0L)
-            val remainingSeconds = if (activeEndAt > 0L) {
-                ((activeEndAt - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L
-            } else {
-                config.optInt("durationMinutes", 30) * 60L
-            }
-            val remainingMinutes = ((remainingSeconds + 59L) / 60L).toInt()
-            val english = config.optString("doneLabel", "Selesai") == "Done"
-            val body = if (remainingSeconds <= 0L) {
-                if (english) {
-                    "Planned time has passed. Open VoltStride to complete or report this session."
-                } else {
-                    "Waktu rencana terlewati. Buka VoltStride untuk menyelesaikan atau menandai tidak terlaksana."
-                }
-            } else if (english) {
-                "$category · $remainingMinutes min remaining · repeats every $interval sec"
-            } else {
-                "$category · sisa $remainingMinutes menit · diulang setiap $interval detik"
-            }
+            val title = config.optString("title", "Latihan rutin")
+            val body = config.optString(
+                "bodyLabel",
+                "Buka VoltStride untuk melihat pengingat aktivitas.",
+            )
             val openAppIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -436,7 +419,7 @@ class ReminderPulseReceiver : BroadcastReceiver() {
                 .setCategory(Notification.CATEGORY_REMINDER)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setPriority(Notification.PRIORITY_MAX)
-                .setWhen(startAt)
+                .setShowWhen(false)
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(false)

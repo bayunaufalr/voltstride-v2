@@ -307,4 +307,69 @@ void main() {
     );
   });
 
+  test('kategori pengingat mengikuti mode pada menu Rekam', () {
+    TrainingReminder reminderFor(String activity) => TrainingReminder(
+          id: 100,
+          activity: activity,
+          weekdays: const <int>[DateTime.monday],
+          hour: 7,
+          minute: 0,
+          durationMinutes: 30,
+          style: ReminderStyle.notificationOnly,
+          sound: 'lembut',
+        );
+
+    expect(
+      ReminderService.matchesActivityCategory(reminderFor('Lari'), 'run'),
+      isTrue,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(reminderFor('Lari'), 'interval'),
+      isFalse,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(
+        reminderFor('Lari interval'),
+        'interval',
+      ),
+      isTrue,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(
+        reminderFor('Lari interval'),
+        'run',
+      ),
+      isFalse,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(reminderFor('Jalan'), 'walk'),
+      isTrue,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(reminderFor('Bersepeda'), 'cycle'),
+      isTrue,
+    );
+    expect(
+      ReminderService.matchesActivityCategory(reminderFor('HIIT'), 'hiit'),
+      isTrue,
+    );
+  });
+
+  test('pengingat pemeriksaan motor tidak cocok dengan sesi olahraga', () {
+    final TrainingReminder reminder = TrainingReminder(
+      id: 101,
+      activity: 'Pemeriksaan motor',
+      weekdays: const <int>[DateTime.monday],
+      hour: 7,
+      minute: 0,
+      durationMinutes: 30,
+      style: ReminderStyle.notificationOnly,
+      sound: 'lembut',
+    );
+
+    expect(ReminderService.isVehicleCheckReminder(reminder), isTrue);
+    expect(ReminderService.matchesActivityCategory(reminder, 'run'), isFalse);
+    expect(ReminderService.matchesActivityCategory(reminder, 'cycle'), isFalse);
+  });
+
 }

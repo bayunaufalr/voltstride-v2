@@ -329,15 +329,12 @@ class ReminderService {
 
   static Future<void> _scheduleNativeReminder(TrainingReminder reminder) async {
     final String category = _activityName(reminder.activity);
-    final String title = reminder.activityName.isNotEmpty
-        ? reminder.activityName
-        : category;
     final DateTime? scheduledDate = reminder.specificDate;
     await _settingsChannel.invokeMethod<void>(
       'scheduleTrainingReminder',
       <String, Object?>{
         'id': reminder.id,
-        'title': title,
+        'title': _notificationTitle(reminder),
         'category': category,
         'weekdays': reminder.weekdays,
         'scheduleType': reminder.scheduleType.name,
@@ -347,7 +344,7 @@ class ReminderService {
         'durationMinutes': reminder.durationMinutes,
         'repeatIntervalSeconds': reminder.repeatIntervalSeconds,
         'doneLabel': _english ? 'Done' : 'Selesai',
-        'bodyLabel': _english ? 'Training reminder' : 'Pengingat latihan',
+        'bodyLabel': _notificationBody(reminder),
       },
     );
     for (final MapEntry<String, int> progress
@@ -532,24 +529,35 @@ class ReminderService {
     return reminder.weekdays.contains(localDate.weekday);
   }
 
-  /// Lari dan jalan dicocokkan dengan jenis aktivitas yang direkam.
-  /// Lainnya menerima sesi aktivitas yang valid karena tidak ada tipe ketiga
-  /// di perekam saat ini.
+  /// Memasangkan pengingat dengan jenis sesi yang benar-benar direkam.
+  /// Pemeriksaan motor tidak dicocokkan dengan sesi olahraga.
   static bool matchesActivityCategory(
     TrainingReminder reminder,
     String activityCategory,
   ) {
     final String planned = reminder.activity.toLowerCase();
     final String actual = activityCategory.toLowerCase();
-    if (planned.contains('lari') || planned.contains('run')) {
-      return actual == 'run';
+
+    if (planned.contains('motor')) return false;
+    if (planned.contains('interval')) return actual == 'interval';
+    if (planned.contains('sepeda') || planned.contains('cycling') ||
+        planned.contains('cycle')) {
+      return actual == 'cycle';
     }
+    if (planned.contains('hiit')) return actual == 'hiit';
     if (planned.contains('jalan') || planned.contains('walk')) {
       return actual == 'walk';
     }
-    return (planned.contains('lain') || planned.contains('other')) &&
-        actual.isNotEmpty;
+    if (planned.contains('lari') || planned.contains('run')) {
+      return actual == 'run';
+    }
+    // Kategori lama "Lainnya" tetap tersimpan, tetapi tidak otomatis
+    // dianggap cocok dengan salah satu jenis rekaman olahraga.
+    return false;
   }
+
+  static bool isVehicleCheckReminder(TrainingReminder reminder) =>
+      reminder.activity.toLowerCase().contains('motor');
 
   /// Memeriksa tanggal dan kategori tanpa membandingkan jam selesai.
   /// Dipakai UI untuk menawarkan penyelesaian manual berwarna merah ketika
@@ -762,24 +770,64 @@ class ReminderService {
   }
 
   static String _notificationTitle(TrainingReminder reminder) {
-    final String activity = reminder.activityName.trim().isNotEmpty
-        ? reminder.activityName.trim()
-        : _activityName(reminder.activity);
-    return _english ? 'VoltStride · $activity' : 'VoltStride · $activity';
+    final String customName = reminder.activityName.trim();
+    if (isVehicleCheckReminder(reminder)) {
+      if (customName.isEmpty) {
+        return _english
+            ? 'Motorcycle inspection reminder'
+            : 'Pengingat pemeriksaan motor';
+      }
+      return _english
+          ? 'Motorcycle inspection · $customName'
+          : 'Pemeriksaan motor · $customName';
+    }
+
+    if (customName.isNotEmpty) {
+      return _english
+          ? 'Routine workout · $customName'
+          : 'Latihan rutin · $customName';
+    }
+    return _english
+        ? 'Routine workout · ${_activityName(reminder.activity)}'
+        : 'Latihan rutin ${_activityName(reminder.activity)}';
   }
 
   static String _activityName(String activity) {
     final String value = activity.toLowerCase();
-    if (value.contains('interval')) return _english ? 'interval run' : 'lari interval';
-    if (value.contains('jalan') || value.contains('walk')) return _english ? 'Walk' : 'Jalan';
-    if (value.contains('lain') || value.contains('other')) return _english ? 'Other' : 'Lainnya';
-    if (value.contains('lari') || value.contains('run')) return _english ? 'Run' : 'Lari';
-    return activity.toLowerCase();
+    if (value.contains('motor')) {
+      return _english ? 'motorcycle inspection' : 'pemeriksaan motor';
+    }
+    if (value.contains('interval')) {
+      return _english ? 'interval running' : 'lari interval';
+    }
+    if (value.contains('sepeda') || value.contains('cycling') ||
+        value.contains('cycle')) {
+      return _english ? 'cycling' : 'bersepeda';
+    }
+    if (value.contains('hiit')) return 'HIIT';
+    if (value.contains('jalan') || value.contains('walk')) {
+      return _english ? 'walking' : 'berjalan';
+    }
+    if (value.contains('lari') || value.contains('run')) {
+      return _english ? 'running' : 'berlari';
+    }
+    if (value.contains('lain') || value.contains('other')) {
+      return _english ? 'other activity' : 'aktivitas lainnya';
+    }
+    return activity;
   }
 
-  static String _notificationBody(TrainingReminder reminder) => _english
-      ? '${reminder.durationMinutes} min · repeats every ${reminder.repeatIntervalSeconds} sec until completed'
-      : '${reminder.durationMinutes} menit · diulang setiap ${reminder.repeatIntervalSeconds} detik sampai selesai';
+  static String _notificationBody(TrainingReminder reminder) {
+    if (isVehicleCheckReminder(reminder)) {
+      return _english
+          ? 'Before travelling, check the brakes, tires, lights, and safety equipment.'
+          : 'Sebelum berkendara, periksa rem, ban, lampu, dan perlengkapan keselamatan.';
+    }
+    final String activity = _activityName(reminder.activity);
+    return _english
+        ? 'Time for $activity. Open VoltStride to start your activity.'
+        : 'Waktunya $activity. Buka VoltStride untuk mulai merekam aktivitas.';
+  }
 
   static NotificationDetails _details() {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(

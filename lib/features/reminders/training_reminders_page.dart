@@ -256,13 +256,20 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     }
   }
 
+  String _activityCategoryForSession(RunSession session) {
+    // HIIT juga menyimpan rencana interval, jadi periksa jenis HIIT lebih dulu.
+    if (session.activityType == RunActivityType.hiit) return 'hiit';
+    if (session.intervalPlan != null) return 'interval';
+    return session.activityType.name;
+  }
+
   List<RunSession> _matchingActivitySessions(_ReminderOccurrence occurrence) {
     final TrainingReminder reminder = occurrence.reminder;
     final List<RunSession> matches = _sessions.where((RunSession session) {
       return ReminderService.matchesDateAndCategory(
         reminder: reminder,
         startedAt: session.startedAt,
-        activityCategory: session.activityType.name,
+        activityCategory: _activityCategoryForSession(session),
       );
     }).toList(growable: false)
       ..sort((RunSession a, RunSession b) =>
@@ -279,7 +286,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
               reminder: occurrence.reminder,
               startedAt: session.startedAt,
               duration: session.elapsed,
-              activityCategory: session.activityType.name,
+              activityCategory: _activityCategoryForSession(session),
               finishedAt: session.finishedAt,
             ))
         .toList(growable: false);
@@ -435,14 +442,25 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                   style: TextStyle(color: colors.onSurfaceVariant),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  '${reminder.durationMinutes} ${_text('menit', 'min')} · '
-                  '${_text('Notifikasi', 'Notification')}',
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 12,
+                if (!ReminderService.isVehicleCheckReminder(reminder))
+                  Text(
+                    '${_text('Target aktivitas', 'Activity target')}: '
+                    '${reminder.durationMinutes} ${_text('menit', 'min')} · '
+                    '${_text('Notifikasi', 'Notification')}',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  )
+                else
+                  Text(
+                    _text('Pemeriksaan kendaraan · Notifikasi',
+                        'Vehicle inspection · Notification'),
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -634,7 +652,13 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           ),
           const SizedBox(height: 4),
           Text('$dateText · ${reminder.timeText}'),
-          Text('${reminder.durationMinutes} ${_text('menit', 'min')}'),
+          if (!ReminderService.isVehicleCheckReminder(reminder))
+            Text(
+              '${_text('Target aktivitas', 'Activity target')}: '
+              '${reminder.durationMinutes} ${_text('menit', 'min')}',
+            ),
+          if (ReminderService.isVehicleCheckReminder(reminder))
+            Text(_text('Pemeriksaan kendaraan', 'Vehicle inspection')),
           const SizedBox(height: 10),
           if (occurrence.completed || occurrence.notCompleted)
             Container(
@@ -689,6 +713,40 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     final List<RunSession> activities =
         _eligibleActivitySessions(occurrence);
     final RunSession? latest = activities.isEmpty ? null : activities.first;
+    if (ReminderService.isVehicleCheckReminder(occurrence.reminder)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _text(
+              'Pengingat ini untuk pemeriksaan kendaraan, bukan sesi olahraga. Tandai selesai setelah pemeriksaan dilakukan.',
+              'This is a vehicle check reminder, not a workout. Mark it complete after checking the vehicle.',
+            ),
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => _setCompleted(occurrence, completed: true),
+                  icon: const Icon(Icons.check_circle_outline_rounded),
+                  label: Text(_text('Selesai', 'Complete')),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _markNotCompleted(occurrence),
+                  icon: const Icon(Icons.event_busy_outlined),
+                  label: Text(_text('Tidak terlaksana', 'Not completed')),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
     final int partialSeconds =
         occurrence.reminder.activityDurationSecondsByDate[occurrence.dateKey] ?? 0;
     final int targetSeconds = occurrence.reminder.durationMinutes * 60;
@@ -754,24 +812,50 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   }
 
   String _reminderTitle(TrainingReminder reminder) {
+    final bool english = Localizations.localeOf(context).languageCode == 'en';
+    if (ReminderService.isVehicleCheckReminder(reminder)) {
+      final String customName = reminder.activityName.trim();
+      if (customName.isEmpty) {
+        return _text('Pengingat pemeriksaan motor',
+            'Motorcycle inspection reminder');
+      }
+      return english
+          ? 'Motorcycle inspection · $customName'
+          : 'Pemeriksaan motor · $customName';
+    }
     final String name = reminder.activityName.trim();
-    return name.isNotEmpty ? name : _activityName(reminder.activity);
+    if (name.isNotEmpty) {
+      return english
+          ? 'Routine workout · $name'
+          : 'Latihan rutin · $name';
+    }
+    return english
+        ? 'Routine workout · ${_activityName(reminder.activity)}'
+        : 'Latihan rutin ${_activityName(reminder.activity)}';
   }
 
   String _activityName(String activity) {
     final String value = activity.toLowerCase();
     final bool english = Localizations.localeOf(context).languageCode == 'en';
-    if (value.contains('interval')) {
-      return english ? 'Interval run' : 'Lari interval';
+    if (value.contains('motor')) {
+      return english ? 'motorcycle inspection' : 'pemeriksaan motor';
     }
+    if (value.contains('interval')) {
+      return english ? 'interval running' : 'lari interval';
+    }
+    if (value.contains('sepeda') || value.contains('cycling') ||
+        value.contains('cycle')) {
+      return english ? 'cycling' : 'bersepeda';
+    }
+    if (value.contains('hiit')) return 'HIIT';
     if (value.contains('walk') || value.contains('jalan')) {
-      return english ? 'Walk' : 'Jalan';
+      return english ? 'walking' : 'berjalan';
     }
     if (value.contains('run') || value.contains('lari')) {
-      return english ? 'Run' : 'Lari';
+      return english ? 'running' : 'berlari';
     }
     if (value.contains('other') || value.contains('lain')) {
-      return english ? 'Other' : 'Lainnya';
+      return english ? 'other activity' : 'aktivitas lainnya';
     }
     return activity;
   }
@@ -932,11 +1016,23 @@ class _ReminderEditorState extends State<_ReminderEditor> {
     );
     final String savedActivity = old?.activity ?? 'Lari';
     final String normalized = savedActivity.toLowerCase();
-    _activity = normalized.contains('jalan') || normalized.contains('walk')
-        ? 'Jalan'
-        : normalized.contains('lain') || normalized.contains('other')
-            ? 'Lainnya'
-            : 'Lari';
+    _activity = normalized.contains('motor')
+        ? 'Pemeriksaan motor'
+        : normalized.contains('interval')
+            ? 'Lari interval'
+            : normalized.contains('sepeda') ||
+                    normalized.contains('cycling') ||
+                    normalized.contains('cycle')
+                ? 'Bersepeda'
+                : normalized.contains('hiit')
+                    ? 'HIIT'
+                    : normalized.contains('jalan') ||
+                            normalized.contains('walk')
+                        ? 'Jalan'
+                        : normalized.contains('lain') ||
+                                normalized.contains('other')
+                            ? 'Lainnya'
+                            : 'Lari';
     _time = TimeOfDay(hour: old?.hour ?? 7, minute: old?.minute ?? 0);
     _scheduleType = old?.scheduleType ?? ReminderScheduleType.routine;
     final DateTime today = DateTime.now();
@@ -1022,7 +1118,8 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         return;
       }
     }
-    if (duration == null || duration < 5 || duration > 360) {
+    if (_activity != 'Pemeriksaan motor' &&
+        (duration == null || duration < 5 || duration > 360)) {
       setState(() {
         _validationMessage = _text(
           context,
@@ -1062,7 +1159,9 @@ class _ReminderEditorState extends State<_ReminderEditor> {
         });
         return;
       }
-      _closeWithReminder(duration);
+      _closeWithReminder(
+        _activity == 'Pemeriksaan motor' ? 30 : duration!,
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1171,16 +1270,37 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                 items: <DropdownMenuItem<String>>[
                   DropdownMenuItem(
                     value: 'Lari',
-                    child: Text(_text(context, 'Lari', 'Run')),
+                    child: Text(_text(context, 'Lari biasa', 'Run')),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Lari interval',
+                    child: Text(_text(context, 'Lari interval', 'Interval run')),
                   ),
                   DropdownMenuItem(
                     value: 'Jalan',
-                    child: Text(_text(context, 'Jalan', 'Walk')),
+                    child: Text(_text(context, 'Berjalan', 'Walk')),
                   ),
                   DropdownMenuItem(
-                    value: 'Lainnya',
-                    child: Text(_text(context, 'Lainnya', 'Other')),
+                    value: 'Bersepeda',
+                    child: Text(_text(context, 'Bersepeda', 'Cycling')),
                   ),
+                  const DropdownMenuItem<String>(
+                    value: 'HIIT',
+                    child: Text('HIIT'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'Pemeriksaan motor',
+                    child: Text(_text(
+                      context,
+                      'Pemeriksaan motor',
+                      'Motorcycle inspection',
+                    )),
+                  ),
+                  if (_activity == 'Lainnya')
+                    DropdownMenuItem(
+                      value: 'Lainnya',
+                      child: Text(_text(context, 'Lainnya (lama)', 'Other (legacy)')),
+                    ),
                 ],
                 onChanged: _checkingPermission
                     ? null
@@ -1249,15 +1369,21 @@ class _ReminderEditorState extends State<_ReminderEditor> {
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _durationController,
-                enabled: !_checkingPermission,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: _text(context, 'Durasi (menit)', 'Duration (min)'),
+              if (_activity != 'Pemeriksaan motor') ...<Widget>[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _durationController,
+                  enabled: !_checkingPermission,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: _text(
+                      context,
+                      'Target durasi aktivitas (menit)',
+                      'Activity duration target (min)',
+                    ),
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 12),
               TextField(
                 controller: _repeatIntervalController,
