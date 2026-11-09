@@ -586,9 +586,9 @@ class _RunSharePageState extends State<RunSharePage> {
                   ),
                   const SizedBox(width: 7),
                   SizedBox(
-                    width: session.activityType == RunActivityType.cycle ? 58 : 38,
+                    width: widget.session.activityType == RunActivityType.cycle ? 58 : 38,
                     child: Text(
-                      session.activityType == RunActivityType.cycle
+                      widget.session.activityType == RunActivityType.cycle
                           ? '${split.speedKmh.toStringAsFixed(1)} km/jam'
                           : split.paceText.replaceAll('/km', ''),
                       textAlign: TextAlign.end,
