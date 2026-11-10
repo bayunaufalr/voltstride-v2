@@ -31,6 +31,7 @@ dependencies:
   # Hindari shared_preferences_android 2.5.0+ pada APK release Android;
   # versi tersebut dapat gagal dipanggil setelah optimasi R8/JNI.
   shared_preferences_android: '>=2.4.28 <2.5.0'
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
