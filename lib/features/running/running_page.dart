@@ -20,6 +20,8 @@ import 'run_share_page.dart';
 import 'services/heart_rate_service.dart';
 import 'services/running_notification_service.dart';
 import 'services/pacer_guidance.dart';
+import 'services/training_plan_service.dart';
+import 'services/training_plan_repository.dart';
 import '../reminders/reminder_service.dart';
 
 /// Perekaman aktivitas dan ringkasan sesi pengguna.
@@ -35,6 +37,8 @@ class RunningPage extends StatefulWidget {
     this.targetDurationMinutes,
     this.plannedWorkoutTitle,
     this.plannedWorkoutDescription,
+    this.trainingPlanId,
+    this.trainingPlanDayId,
     this.paceNotificationsEnabled = true,
     this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
@@ -53,6 +57,8 @@ class RunningPage extends StatefulWidget {
   final int? targetDurationMinutes;
   final String? plannedWorkoutTitle;
   final String? plannedWorkoutDescription;
+  final String? trainingPlanId;
+  final String? trainingPlanDayId;
   final bool paceNotificationsEnabled;
   final List<RunPoint> plannedRoute;
   final bool autoStart;
@@ -110,6 +116,7 @@ class _RunningPageState extends State<RunningPage> {
   int _lastStatsNotificationSecond = -10;
   RunSession? _completedSessionOverride;
   bool _targetDurationNotified = false;
+  bool _feedbackPromptShown = false;
 
   @override
   void initState() {
@@ -223,7 +230,6 @@ class _RunningPageState extends State<RunningPage> {
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
       if (previousKey == null && phase.stage != IntervalStage.complete) {
-        // Beri tanda saat fase kerja pertama dimulai setelah countdown GPS.
         unawaited(_handleIntervalTransition(phase, plan));
       } else if (previousKey != null && previousKey != phaseKey) {
         unawaited(_handleIntervalTransition(phase, plan));
@@ -2226,8 +2232,6 @@ class _RunningPageState extends State<RunningPage> {
       });
     }
 
-    // Tandai rencana selesai berdasarkan tanggal dan durasi aktivitas nyata.
-    // Jam yang dipilih pada jadwal tidak membatasi waktu pelaksanaan.
     try {
       await ReminderService.completeMatchingActivity(
         startedAt: session.startedAt,
@@ -2240,11 +2244,12 @@ class _RunningPageState extends State<RunningPage> {
         finishedAt: session.finishedAt,
       );
     } catch (_) {
-      // Kegagalan update jadwal tidak menghalangi penyimpanan sesi.
     }
 
+    bool saved = false;
     try {
       await RunHistoryRepository.instance.save(session);
+      saved = true;
       if (mounted) setState(() => _saveError = null);
     } catch (error) {
       if (mounted) {
@@ -2256,6 +2261,101 @@ class _RunningPageState extends State<RunningPage> {
       }
     } finally {
       if (mounted) setState(() => _isSavingSession = false);
+    }
+    if (saved && mounted && !_feedbackPromptShown) {
+      await _askTrainingEffort(session);
+    }
+  }
+
+  Future<void> _askTrainingEffort(RunSession session) async {
+    if (_feedbackPromptShown || !mounted) return;
+    _feedbackPromptShown = true;
+    final TrainingEffort? effort = await showDialog<TrainingEffort?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Bagaimana kesan latihan tadi?', 'How did the session feel?')),
+        content: Text(_text(
+          'Penilaian ini digunakan untuk menyesuaikan beban latihan berikutnya.',
+          'Your feedback helps adjust future training load.',
+        )),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(null),
+            child: Text(_text('Lewati', 'Skip')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.tooHard),
+            child: Text(_text('Terlalu berat', 'Too hard')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.normal),
+            child: Text(_text('Normal', 'Normal')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.tooEasy),
+            child: Text(_text('Terlalu mudah', 'Too easy')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    try {
+      await TrainingPlanRepository.instance.recordFeedback(
+        startedAt: session.startedAt,
+        effort: effort,
+        planId: widget.trainingPlanId,
+        dayId: widget.trainingPlanDayId,
+      );
+    } catch (_) {}
+
+    if (effort == null || effort == TrainingEffort.normal ||
+        widget.trainingPlanId == null) {
+      return;
+    }
+    final bool? adjust = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Sesuaikan rencana latihan?', 'Adjust the training plan?')),
+        content: Text(effort == TrainingEffort.tooHard
+            ? _text(
+                'Sesi terasa terlalu berat. Durasi sesi berikutnya dapat dikurangi dan interval diubah menjadi latihan ringan. Terapkan penyesuaian?',
+                'The session felt too hard. Upcoming sessions can be shortened and intervals changed to easy sessions. Apply the adjustment?',
+              )
+            : _text(
+                'Sesi terasa terlalu mudah. Durasi sesi berikutnya dapat dinaikkan sedikit tanpa menambah sesi berat. Terapkan penyesuaian?',
+                'The session felt too easy. Upcoming sessions can be increased slightly without adding hard sessions. Apply the adjustment?',
+              )),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_text('Jangan ubah', 'Keep plan')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_text('Sesuaikan', 'Adjust')),
+          ),
+        ],
+      ),
+    );
+    if (adjust == true && mounted) {
+      try {
+        await TrainingPlanRepository.instance.adjustFutureDays(
+          planId: widget.trainingPlanId!,
+          afterDate: session.finishedAt ?? DateTime.now(),
+          effort: effort,
+        );
+        if (widget.trainingPlanDayId != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_text('Sesi rencana berikutnya sudah disesuaikan.', 'Upcoming sessions have been adjusted.'))),
+          );
+        }
+      } catch (_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Penyesuaian rencana belum berhasil disimpan.', 'The plan adjustment could not be saved.'))),
+        );
+      }
     }
   }
 

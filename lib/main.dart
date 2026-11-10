@@ -323,9 +323,9 @@ class _RootShellState extends State<RootShell> {
         break;
       case 2:
         unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
+        unawaited(_activityKey.currentState?.refreshTrainingPlan() ?? Future<void>.value());
         break;
       case 3:
-        // Halaman Lainnya tidak memiliki data yang perlu dimuat ulang.
         break;
       case 4:
         unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
@@ -336,15 +336,11 @@ class _RootShellState extends State<RootShell> {
   void _handleBackNavigation() {
     if (!mounted || _showRunningPage) return;
 
-    // Dari tab mana pun, Back kembali ke Beranda terlebih dahulu.
-    // Jika panel perencana terbuka, _selectTab akan menutupnya sebelum
-    // Beranda ditampilkan, tanpa menambah route ke Navigator.
     if (_index != 0) {
       _selectTab(0);
       return;
     }
 
-    // Konfirmasi keluar hanya muncul ketika pengguna sudah berada di Beranda.
     unawaited(_confirmExitApplication());
   }
 
@@ -400,6 +396,7 @@ class _RootShellState extends State<RootShell> {
     });
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
+    unawaited(_activityKey.currentState?.refreshTrainingPlan() ?? Future<void>.value());
   }
 
   Widget _activeSessionBanner(BuildContext context) {
@@ -548,6 +545,8 @@ class _RootShellState extends State<RootShell> {
                   targetDurationMinutes: config.targetDurationMinutes,
                   plannedWorkoutTitle: config.plannedWorkoutTitle,
                   plannedWorkoutDescription: config.plannedWorkoutDescription,
+                  trainingPlanId: config.trainingPlanId,
+                  trainingPlanDayId: config.trainingPlanDayId,
                   plannedRoute: _plannedRoute,
                   paceNotificationsEnabled: config.paceNotificationsEnabled,
                   autoStart: true,

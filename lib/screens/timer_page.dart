@@ -181,7 +181,6 @@ class _TimerPageState extends State<TimerPage> {
 
     setState(() => _sisaDetik = sisaBaru < 0 ? 0 : sisaBaru);
 
-    // Beri tanda pada dua detik terakhir sebelum fase kerja dimulai.
     if (sisaBaru > 0 && sisaBaru <= 2) {
       unawaited(_vibrateTimerEvent('countdown'));
     }
@@ -302,7 +301,6 @@ class _TimerPageState extends State<TimerPage> {
         );
         if (vibrated == true) return;
       } catch (_) {
-        // Gunakan haptic Flutter bila pola getar native tidak tersedia.
       }
     }
 

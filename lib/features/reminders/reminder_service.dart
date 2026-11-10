@@ -829,6 +829,64 @@ class ReminderService {
         : 'Waktunya $activity. Buka VoltStride untuk mulai merekam aktivitas.';
   }
 
+  static Future<void> scheduleTrainingPlanReview({
+    required String planId,
+    required DateTime endDate,
+  }) async {
+    await initialize();
+    timezone.TZDateTime scheduled = timezone.TZDateTime(
+      timezone.local,
+      endDate.year,
+      endDate.month,
+      endDate.day,
+      19,
+    );
+    if (!scheduled.isAfter(timezone.TZDateTime.now(timezone.local))) {
+      scheduled = timezone.TZDateTime.now(timezone.local).add(
+        const Duration(minutes: 1),
+      );
+    }
+    final int id = _planReviewNotificationId(planId);
+    await _plugin.zonedSchedule(
+      id,
+      _english ? 'Review your training plan' : 'Evaluasi rencana latihan',
+      _english
+          ? 'Your plan ends today. Review your progress and prepare the next plan.'
+          : 'Rencana latihan berakhir hari ini. Tinjau hasil latihan dan susun rencana berikutnya.',
+      scheduled,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'voltstride_plan_review_v1',
+          _english ? 'Training plan review' : 'Evaluasi rencana latihan',
+          channelDescription: _english
+              ? 'A reminder when a multi-day training plan ends.'
+              : 'Pengingat saat rencana latihan beberapa hari berakhir.',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          autoCancel: true,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: 'training-plan-review:$planId',
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
+
+  static Future<void> cancelTrainingPlanReview(String planId) async {
+    await initialize();
+    await _plugin.cancel(_planReviewNotificationId(planId));
+  }
+
+  static int _planReviewNotificationId(String planId) {
+    int value = 0;
+    for (final int unit in planId.codeUnits) {
+      value = (value * 31 + unit) & 0x3fffffff;
+    }
+    return 1100000000 + value % 100000000;
+  }
+
   static NotificationDetails _details() {
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'voltstride_notice_priority_v6',

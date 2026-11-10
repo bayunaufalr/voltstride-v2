@@ -273,17 +273,14 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             val amplitudes: IntArray
             when (event) {
                 "recovery" -> {
-                    // Satu getaran panjang lalu satu pendek untuk awal pemulihan.
                     timings = longArrayOf(0, 300, 120, 120)
                     amplitudes = intArrayOf(0, 255, 0, 210)
                 }
                 "complete" -> {
-                    // Pola akhir sengaja lebih panjang dan berbeda dari transisi biasa.
                     timings = longArrayOf(0, 150, 90, 150, 90, 150, 90, 420)
                     amplitudes = intArrayOf(0, 235, 0, 235, 0, 235, 0, 255)
                 }
                 "work" -> {
-                    // Dua ketukan pendek dan satu penegasan saat fase kerja dimulai.
                     timings = longArrayOf(0, 110, 85, 110, 85, 220)
                     amplitudes = intArrayOf(0, 225, 0, 225, 0, 255)
                 }
