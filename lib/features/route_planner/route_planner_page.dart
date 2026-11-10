@@ -268,11 +268,11 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
         throw Exception(_text('Rute belum bisa dihitung. Coba lagi sebentar.', 'The route could not be calculated. Please try again.'));
       }
 
-      final Map<String, dynamic> data =
+      final Map<String, dynamic> hasilRuteApi =
           jsonDecode(jawaban.body) as Map<String, dynamic>;
       final List<dynamic> daftarRute =
-          data['routes'] as List<dynamic>? ?? <dynamic>[];
-      if (data['code'] != 'Ok' || daftarRute.isEmpty) {
+          hasilRuteApi['routes'] as List<dynamic>? ?? <dynamic>[];
+      if (hasilRuteApi['code'] != 'Ok' || daftarRute.isEmpty) {
         throw Exception(
           _text('Jalur tidak ditemukan. Coba pilih titik yang dekat jalan atau jalur.', 'No route was found. Choose points closer to roads or paths.'),
         );
@@ -416,10 +416,10 @@ class _RoutePlannerPageState extends State<RoutePlannerPage> {
       throw Exception(_text('Data elevasi belum tersedia.', 'Elevation data is currently unavailable.'));
     }
 
-    final Map<String, dynamic> data =
+    final Map<String, dynamic> hasilElevasiApi =
         jsonDecode(jawaban.body) as Map<String, dynamic>;
     final List<dynamic> hasil =
-        data['results'] as List<dynamic>? ?? <dynamic>[];
+        hasilElevasiApi['results'] as List<dynamic>? ?? <dynamic>[];
     return hasil
         .map((dynamic item) =>
             (item as Map<String, dynamic>)['elevation'] as num)

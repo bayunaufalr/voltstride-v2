@@ -1,10 +1,8 @@
-// ignore_for_file: lines_longer_than_80_chars, prefer_const_constructors
 import 'package:flutter/material.dart';
 
 import '../../services/app_language_service.dart';
-import '../ai_coach/training_data_export_service.dart';
 
-class MorePage extends StatefulWidget {
+class MorePage extends StatelessWidget {
   const MorePage({
     super.key,
     required this.onOpenTimer,
@@ -12,66 +10,27 @@ class MorePage extends StatefulWidget {
 
   final VoidCallback onOpenTimer;
 
-  @override
-  MorePageState createState() => MorePageState();
-}
-
-class MorePageState extends State<MorePage> {
-  Future<void> reload() async {}
-
-  String _text(String indonesia, String english) =>
+  String _text(BuildContext context, String indonesia, String english) =>
       AppLanguageService.text(context, indonesia, english);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_text('Lainnya', 'More'))),
+      appBar: AppBar(title: Text(_text(context, 'Lainnya', 'More'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
           _menuItem(
-            _text('Timer latihan', 'Workout timer'),
-            widget.onOpenTimer,
-          ),
-          _menuItem(
-            _text('Ekspor data latihan untuk AI', 'Export training data for AI'),
-            _exportTrainingData,
-            subtitle: _text(
-              'Bagikan satu file JSON ke ChatGPT atau layanan AI lain.',
-              'Share one JSON file with ChatGPT or another AI service.',
-            ),
+            context,
+            _text(context, 'Timer latihan', 'Workout timer'),
+            onOpenTimer,
           ),
         ],
       ),
     );
   }
 
-  Future<void> _exportTrainingData() async {
-    try {
-      final int count = await TrainingDataExportService.shareAllSessions();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text(
-            'Ekspor berisi $count sesi latihan. Pilih aplikasi AI dari menu berbagi.',
-            'Export contains $count training sessions. Choose an AI app from the share menu.',
-          )),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text(
-            'Ekspor data gagal: $error',
-            'Training data export failed: $error',
-          )),
-        ),
-      );
-    }
-  }
-
-  Widget _menuItem(String title, VoidCallback onTap, {String? subtitle}) {
+  Widget _menuItem(BuildContext context, String title, VoidCallback onTap) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -80,7 +39,6 @@ class MorePageState extends State<MorePage> {
       ),
       child: ListTile(
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: subtitle == null ? null : Text(subtitle),
         trailing: Icon(
           Icons.chevron_right,
           color: Theme.of(context).colorScheme.onSurfaceVariant,

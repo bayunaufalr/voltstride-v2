@@ -493,9 +493,8 @@ class RunningEngine extends ChangeNotifier {
   void _seedPosition(Position position) {
     final int activeElapsedMilliseconds =
         _stopwatch?.elapsedMilliseconds ?? 0;
-    // The first fix is acquired before the 5-second countdown. Anchor it to
-    // the real start moment, not the old acquisition timestamp, so the first
-    // movement is not divided by the GPS wait + countdown duration.
+    // Titik GPS pertama bisa datang sebelum countdown selesai. Pakai waktu mulai
+    // sesi sebagai acuan supaya jarak awal tidak ikut terbagi waktu tunggu GPS.
     final DateTime timestamp = DateTime.now();
     _gpsTimestampOffset = timestamp.difference(position.timestamp);
 
@@ -561,9 +560,8 @@ class RunningEngine extends ChangeNotifier {
         _stopwatch?.elapsedMilliseconds ?? elapsedBeforeUpdate;
     final int activeElapsedDelta = elapsedAfterUpdate - elapsedBeforeUpdate;
 
-    // GPS timestamp normally provides the best interval, including when the
-    // Android location provider delivers a delayed batch. If the timestamp is
-    // duplicated or moves backwards, repair it from the monotonic Stopwatch.
+    // Timestamp GPS biasanya paling pas, termasuk saat Android mengirim titik
+    // terlambat sekaligus. Kalau nilainya dobel atau mundur, pakai Stopwatch.
     // Semua timestamp stream digeser dengan offset yang sama. Ini penting
     // karena timestamp GPS pertama bisa jauh lebih awal daripada waktu sesi
     // setelah layar menampilkan countdown. Jangan mengganti setiap titik yang

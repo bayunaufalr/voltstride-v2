@@ -232,7 +232,6 @@ class _RootShellState extends State<RootShell> {
   final GlobalKey<ActivitySetupPageState> _activityKey =
       GlobalKey<ActivitySetupPageState>();
   final GlobalKey<AccountPageState> _accountKey = GlobalKey<AccountPageState>();
-  final GlobalKey<MorePageState> _moreKey = GlobalKey<MorePageState>();
 
   List<Widget> get _pages => <Widget>[
         HomeDashboardPage(
@@ -253,7 +252,6 @@ class _RootShellState extends State<RootShell> {
           onStart: _startActivity,
         ),
         MorePage(
-          key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
         ),
         AccountPage(key: _accountKey),
@@ -322,9 +320,6 @@ class _RootShellState extends State<RootShell> {
         break;
       case 2:
         unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
-        break;
-      case 3:
-        unawaited(_moreKey.currentState?.reload() ?? Future<void>.value());
         break;
       case 4:
         unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());

@@ -40,8 +40,6 @@ class RunHistoryRepository {
 
   Database? _database;
 
-  /// ID akun yang sedang masuk. Jika Firebase belum siap, data tetap bisa
-  /// diuji sebagai data lokal tanpa mencampurnya dengan akun sungguhan.
   String? get _akunAktifId {
     if (Firebase.apps.isEmpty) return null;
     return FirebaseAuth.instance.currentUser?.uid;
@@ -330,22 +328,18 @@ class RunHistoryRepository {
     return opened;
   }
 
-  /// Menyimpan aktivitas ke perangkat dan, bila sudah login, ke akun Firebase.
   Future<void> save(RunSession session) async {
     final Database db = await _db;
     final String? uid = _akunAktifId;
     final String pemilik = uid ?? 'guest';
 
-    // Simpan di perangkat lebih dulu. Dengan begitu, rekaman GPS tidak hilang
-    // hanya karena jaringan sedang bermasalah.
+    // Simpan di HP dulu. Kalau internet putus, rekaman tetap aman.
     await _tulisAktivitasLokal(db, session, pemilik);
 
-    // Saat pengguna masuk, salin data yang sama ke ruang milik akun tersebut.
+    // Setelah login, salin juga ke akun yang sedang dipakai.
     if (uid != null) await _unggahAktivitas(session, uid);
   }
 
-  /// Mengambil riwayat milik akun aktif, lalu memperbarui salinan lokal.
-  /// Saat internet tidak tersedia, aplikasi tetap memakai data di perangkat.
   Future<List<RunSession>> getAll({int? limit}) async {
     final Database db = await _db;
     final String? uid = _akunAktifId;
@@ -418,7 +412,6 @@ class RunHistoryRepository {
     return terurut.take(limit).toList(growable: false);
   }
 
-  /// Menghapus aktivitas dari akun dan perangkat.
   Future<void> delete(DateTime startedAt) async {
     final Database db = await _db;
     final String? uid = _akunAktifId;
@@ -497,8 +490,6 @@ class RunHistoryRepository {
     }
   }
 
-  /// Ringkasan sinkronisasi dan pemakaian Firestore untuk akun aktif.
-  /// Firestore membatasi ukuran satu dokumen, bukan memberi kuota total per akun.
   Future<Map<String, Object?>> cloudStorageSummary() async {
     const int maximumDocumentBytes = 1024 * 1024;
     final String? uid = _akunAktifId;
@@ -553,12 +544,8 @@ class RunHistoryRepository {
     }
   }
 
-  /// Nama lama tetap disediakan untuk kode yang masih memakainya.
   Future<int> legacySessionCount() => pendingSessionCount();
 
-  /// Memindahkan aktivitas lama dari perangkat ke akun yang sedang dibuka.
-  /// Satu catatan yang gagal tidak menghentikan catatan lain yang bisa dipindah.
-  /// Data guest baru dihapus setelah unggahan atau pemeriksaan cloud berhasil.
   Future<int> syncPendingSessionsToAccount() async {
     final String? uid = _akunAktifId;
     if (uid == null) {
@@ -667,11 +654,8 @@ class RunHistoryRepository {
     return jumlahBerhasil;
   }
 
-  /// Nama lama tetap didukung agar tombol pada versi terdahulu tidak rusak.
   Future<int> importLegacyHistoryToAccount() => syncPendingSessionsToAccount();
 
-  /// Membuat file cadangan JSON yang bisa disimpan di luar data aplikasi.
-  /// Cadangan tidak mengandung API key atau data akun.
   Future<String> exportBackupJson() async {
     final List<RunSession> sessions = await getAll();
     final Map<String, Object?> backup = <String, Object?>{
@@ -687,8 +671,6 @@ class RunHistoryRepository {
     return const JsonEncoder.withIndent('  ').convert(backup);
   }
 
-  /// Menggabungkan cadangan yang valid tanpa menghapus sesi yang sudah ada.
-  /// Jika startedAt sama, sesi dari cadangan menggantikan baris dengan kunci itu.
   Future<int> importBackupJson(String contents) async {
     final dynamic decoded;
     try {
@@ -749,7 +731,6 @@ class RunHistoryRepository {
     return sessions.length;
   }
 
-  /// Informasi diagnostik untuk membedakan database kosong dari database error.
   Future<Map<String, Object?>> diagnostics() async {
     final Database db = await _db;
     final String filePath = await databasePath;

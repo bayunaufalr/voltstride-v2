@@ -34,7 +34,6 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
     try {
       await value;
     } catch (_) {
-      // FutureBuilder menampilkan keadaan saat data belum bisa dibaca.
     }
   }
 

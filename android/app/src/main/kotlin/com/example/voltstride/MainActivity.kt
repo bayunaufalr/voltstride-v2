@@ -7,10 +7,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
 import android.content.Intent
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.net.Uri
 import android.provider.Settings
 import android.bluetooth.BluetoothAdapter
@@ -45,7 +41,6 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         private const val METHOD_CHANNEL = "voltstride/heart_rate"
         private const val EVENT_CHANNEL = "voltstride/heart_rate_events"
         private const val SETTINGS_CHANNEL = "voltstride/android_settings"
-        private const val STEP_COUNT_CHANNEL = "voltstride/step_count_events"
         private val HEART_RATE_SERVICE: UUID =
             UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         private val HEART_RATE_MEASUREMENT: UUID =
@@ -94,8 +89,6 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(this)
-        EventChannel(flutterEngine.dartExecutor.binaryMessenger, STEP_COUNT_CHANNEL)
-            .setStreamHandler(StepCounterStreamHandler(this))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -672,58 +665,5 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         if (scanResult != null) finishHeartRateScan(errorCode = -1, message = "Activity closed during Bluetooth scan.")
         disconnectHeartRateDevice()
         super.onDestroy()
-    }
-}
-
-
-/** Membaca sensor langkah bawaan Android tanpa plugin yang menerapkan KGP lama. */
-private class StepCounterStreamHandler(
-    private val context: Context,
-) : EventChannel.StreamHandler, SensorEventListener {
-    private var sensorManager: SensorManager? = null
-    private var eventSink: EventChannel.EventSink? = null
-
-    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-        eventSink = events
-        val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-        val sensor = manager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-        if (manager == null || sensor == null) {
-            events?.error(
-                "step_sensor_unavailable",
-                "This device does not provide a hardware step counter sensor.",
-                null,
-            )
-            eventSink = null
-            return
-        }
-        sensorManager = manager
-        if (!manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)) {
-            events?.error(
-                "step_sensor_unavailable",
-                "Android could not start the hardware step counter sensor.",
-                null,
-            )
-            sensorManager = null
-            eventSink = null
-        }
-    }
-
-    override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type != Sensor.TYPE_STEP_COUNTER) return
-        val steps = event.values.firstOrNull()?.toInt() ?: return
-        eventSink?.success(
-            mapOf(
-                "steps" to steps,
-                "timestampMillis" to System.currentTimeMillis(),
-            ),
-        )
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-
-    override fun onCancel(arguments: Any?) {
-        sensorManager?.unregisterListener(this)
-        sensorManager = null
-        eventSink = null
     }
 }

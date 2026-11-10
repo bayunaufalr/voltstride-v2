@@ -14,7 +14,6 @@ import '../running/services/run_history_repository.dart';
 class ProgressPage extends StatefulWidget {
   const ProgressPage({super.key, this.embedded = false, this.belowWeeklyChart});
 
-  // true: tampilkan isi kemajuan di dalam halaman Anda tanpa Scaffold/halaman baru.
   final bool embedded;
   final Widget? belowWeeklyChart;
 
@@ -41,7 +40,6 @@ class ProgressPageState extends State<ProgressPage> {
     try {
       await next;
     } catch (_) {
-      // FutureBuilder menampilkan keadaan saat data belum dapat dibaca.
     }
   }
 

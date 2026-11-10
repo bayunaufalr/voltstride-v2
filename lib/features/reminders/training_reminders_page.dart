@@ -505,7 +505,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
     final DateTime monday = today.subtract(Duration(days: today.weekday - 1));
-    final List<_ReminderOccurrence> result = <_ReminderOccurrence>[];
+    final List<_ReminderOccurrence> jadwalMingguan = <_ReminderOccurrence>[];
 
     for (int offset = 0; offset < 7; offset++) {
       final DateTime day = monday.add(Duration(days: offset));
@@ -518,14 +518,14 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
               scheduledDate.day != day.day) {
             continue;
           }
-          result.add(_ReminderOccurrence(reminder: reminder, date: day));
+          jadwalMingguan.add(_ReminderOccurrence(reminder: reminder, date: day));
         } else if (reminder.weekdays.contains(day.weekday)) {
-          result.add(_ReminderOccurrence(reminder: reminder, date: day));
+          jadwalMingguan.add(_ReminderOccurrence(reminder: reminder, date: day));
         }
       }
     }
 
-    result.sort((_ReminderOccurrence a, _ReminderOccurrence b) {
+    jadwalMingguan.sort((_ReminderOccurrence a, _ReminderOccurrence b) {
       final DateTime dateA = DateTime(
         a.date.year,
         a.date.month,
@@ -542,7 +542,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       );
       return dateA.compareTo(dateB);
     });
-    return result;
+    return jadwalMingguan;
   }
 
   List<_ReminderOccurrence> _completedOccurrences() {
