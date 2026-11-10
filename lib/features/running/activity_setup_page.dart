@@ -1011,7 +1011,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
           ),
         ),
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
