@@ -267,7 +267,7 @@ class TrainingPlanService {
         : 'perkiraan VO₂max berbasis performa ${estimatedVo2Max.toStringAsFixed(1)}, bukan hasil tes laboratorium';
     final String heartRateText = averageHeartRate == null
         ? 'detak jantung belum cukup tercatat'
-        : 'detak jantung rata-rata ${averageHeartRate} bpm';
+        : 'detak jantung rata-rata $averageHeartRate bpm';
     final String targetFit = _targetFitDescription(
       request: request,
       longestRunKm: longestRunKm,
@@ -713,8 +713,9 @@ class TrainingPlanService {
     return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 
-  static String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
 }
+
+String _dateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
