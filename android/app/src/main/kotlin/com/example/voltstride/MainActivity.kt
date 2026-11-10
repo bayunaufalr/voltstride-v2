@@ -7,6 +7,10 @@ import android.os.Environment
 import android.provider.MediaStore
 import java.io.File
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.provider.Settings
 import android.bluetooth.BluetoothAdapter
@@ -41,6 +45,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         private const val METHOD_CHANNEL = "voltstride/heart_rate"
         private const val EVENT_CHANNEL = "voltstride/heart_rate_events"
         private const val SETTINGS_CHANNEL = "voltstride/android_settings"
+        private const val STEP_COUNT_CHANNEL = "voltstride/step_count_events"
         private val HEART_RATE_SERVICE: UUID =
             UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
         private val HEART_RATE_MEASUREMENT: UUID =
@@ -89,6 +94,8 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, EVENT_CHANNEL)
             .setStreamHandler(this)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, STEP_COUNT_CHANNEL)
+            .setStreamHandler(StepCounterStreamHandler(this))
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SETTINGS_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -108,6 +115,12 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                     "vibrateIntervalTransition" -> {
                         vibrateIntervalTransition(
                             call.argument<String>("stage") ?: "work",
+                            result,
+                        )
+                    }
+                    "vibrateWorkoutTimer" -> {
+                        vibrateWorkoutTimer(
+                            call.argument<String>("event") ?: "ready",
                             result,
                         )
                     }
@@ -211,50 +224,111 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     }
 
     @Suppress("DEPRECATION")
+    private fun vibratorOrNull(): Vibrator? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+    }
+
+    @Suppress("DEPRECATION")
     private fun vibrateIntervalTransition(
         stage: String,
         result: MethodChannel.Result,
     ) {
+        vibrateWithPattern(
+            event = stage,
+            result = result,
+            isTimer = false,
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibrateWorkoutTimer(
+        event: String,
+        result: MethodChannel.Result,
+    ) {
+        vibrateWithPattern(
+            event = event,
+            result = result,
+            isTimer = true,
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun vibrateWithPattern(
+        event: String,
+        result: MethodChannel.Result,
+        isTimer: Boolean,
+    ) {
         try {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                getSystemService(VibratorManager::class.java).defaultVibrator
-            } else {
-                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            }
-            if (!vibrator.hasVibrator()) {
+            val vibrator = vibratorOrNull()
+            if (vibrator == null || !vibrator.hasVibrator()) {
                 result.success(false)
                 return
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val timings: LongArray
-                val amplitudes: IntArray
-                when (stage) {
-                    "recovery" -> {
-                        // Lari selesai: dua ketukan pendek dan satu ketukan panjang
-                        // agar awal pemulihan berbeda jelas dari mulai lari.
-                        timings = longArrayOf(0, 180, 100, 180, 100, 480)
-                        amplitudes = intArrayOf(0, 230, 0, 230, 0, 255)
-                    }
-                    "complete" -> {
-                        // Tiga getaran pendek menandai interval selesai.
-                        timings = longArrayOf(0, 160, 100, 160, 100, 160)
-                        amplitudes = intArrayOf(0, 230, 0, 230, 0, 255)
-                    }
-                    else -> {
-                        // Dua getaran pendek menandai mulai lari/kerja.
-                        timings = longArrayOf(0, 180, 100, 180)
-                        amplitudes = intArrayOf(0, 230, 0, 255)
-                    }
+            val timings: LongArray
+            val amplitudes: IntArray
+            when (event) {
+                "recovery" -> {
+                    // Satu getaran panjang lalu satu pendek untuk awal pemulihan.
+                    timings = longArrayOf(0, 300, 120, 120)
+                    amplitudes = intArrayOf(0, 255, 0, 210)
                 }
-                vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
+                "complete" -> {
+                    // Pola akhir sengaja lebih panjang dan berbeda dari transisi biasa.
+                    timings = longArrayOf(0, 150, 90, 150, 90, 150, 90, 420)
+                    amplitudes = intArrayOf(0, 235, 0, 235, 0, 235, 0, 255)
+                }
+                "work" -> {
+                    // Dua ketukan pendek dan satu penegasan saat fase kerja dimulai.
+                    timings = longArrayOf(0, 110, 85, 110, 85, 220)
+                    amplitudes = intArrayOf(0, 225, 0, 225, 0, 255)
+                }
+                "ready" -> {
+                    timings = longArrayOf(0, 90, 80, 90, 80, 90)
+                    amplitudes = intArrayOf(0, 190, 0, 210, 0, 230)
+                }
+                "countdown" -> {
+                    timings = longArrayOf(0, 65)
+                    amplitudes = intArrayOf(0, 175)
+                }
+                "pause" -> {
+                    timings = longArrayOf(0, 180)
+                    amplitudes = intArrayOf(0, 200)
+                }
+                "resume" -> {
+                    timings = longArrayOf(0, 100, 80, 180)
+                    amplitudes = intArrayOf(0, 190, 0, 230)
+                }
+                else -> {
+                    timings = longArrayOf(0, 110, 85, 110, 85, 220)
+                    amplitudes = intArrayOf(0, 225, 0, 225, 0, 255)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    VibrationEffect.createWaveform(timings, amplitudes, -1),
+                )
             } else {
-                vibrator.vibrate(if (stage == "recovery") 450L else 300L)
+                val duration = when (event) {
+                    "recovery" -> 420L
+                    "complete" -> 850L
+                    "ready" -> 360L
+                    "countdown" -> 65L
+                    "pause" -> 180L
+                    "resume" -> 280L
+                    else -> 440L
+                }
+                vibrator.vibrate(duration)
             }
             result.success(true)
         } catch (error: Exception) {
             result.error(
-                "interval_vibration_failed",
+                if (isTimer) "timer_vibration_failed" else "interval_vibration_failed",
                 error.message ?: "Vibration could not be started.",
                 null,
             )
@@ -665,5 +739,58 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         if (scanResult != null) finishHeartRateScan(errorCode = -1, message = "Activity closed during Bluetooth scan.")
         disconnectHeartRateDevice()
         super.onDestroy()
+    }
+}
+
+
+/** Membaca sensor langkah bawaan Android tanpa plugin yang menerapkan KGP lama. */
+private class StepCounterStreamHandler(
+    private val context: Context,
+) : EventChannel.StreamHandler, SensorEventListener {
+    private var sensorManager: SensorManager? = null
+    private var eventSink: EventChannel.EventSink? = null
+
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+        eventSink = events
+        val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = manager?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        if (manager == null || sensor == null) {
+            events?.error(
+                "step_sensor_unavailable",
+                "This device does not provide a hardware step counter sensor.",
+                null,
+            )
+            eventSink = null
+            return
+        }
+        sensorManager = manager
+        if (!manager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)) {
+            events?.error(
+                "step_sensor_unavailable",
+                "Android could not start the hardware step counter sensor.",
+                null,
+            )
+            sensorManager = null
+            eventSink = null
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type != Sensor.TYPE_STEP_COUNTER) return
+        val steps = event.values.firstOrNull()?.toInt() ?: return
+        eventSink?.success(
+            mapOf(
+                "steps" to steps,
+                "timestampMillis" to System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+    override fun onCancel(arguments: Any?) {
+        sensorManager?.unregisterListener(this)
+        sensorManager = null
+        eventSink = null
     }
 }

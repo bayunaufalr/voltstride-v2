@@ -32,6 +32,9 @@ class RunningPage extends StatefulWidget {
     this.activityDetails,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
+    this.targetDurationMinutes,
+    this.plannedWorkoutTitle,
+    this.plannedWorkoutDescription,
     this.paceNotificationsEnabled = true,
     this.plannedRoute = const <RunPoint>[],
     this.autoStart = false,
@@ -47,6 +50,9 @@ class RunningPage extends StatefulWidget {
   final String? activityDetails;
   final double? targetDistanceKm;
   final double? targetPaceSecondsPerKm;
+  final int? targetDurationMinutes;
+  final String? plannedWorkoutTitle;
+  final String? plannedWorkoutDescription;
   final bool paceNotificationsEnabled;
   final List<RunPoint> plannedRoute;
   final bool autoStart;
@@ -103,6 +109,7 @@ class _RunningPageState extends State<RunningPage> {
   int _lastPacerMinute = 0;
   int _lastStatsNotificationSecond = -10;
   RunSession? _completedSessionOverride;
+  bool _targetDurationNotified = false;
 
   @override
   void initState() {
@@ -197,6 +204,16 @@ class _RunningPageState extends State<RunningPage> {
       }
     }
 
+    final int? targetMinutes = widget.targetDurationMinutes;
+    if (targetMinutes != null &&
+        targetMinutes > 0 &&
+        currentStatus == RunStatus.running &&
+        !_targetDurationNotified &&
+        _controller.elapsed >= Duration(minutes: targetMinutes)) {
+      _targetDurationNotified = true;
+      unawaited(_notifyTargetDurationReached());
+    }
+
     final IntervalRunPlan? plan = _activeIntervalPlan;
     if (plan != null && currentStatus == RunStatus.running) {
       final IntervalPhase phase = plan.phaseAtProgress(
@@ -205,7 +222,10 @@ class _RunningPageState extends State<RunningPage> {
       );
       final String phaseKey = '${phase.stage.name}-${phase.repetition}';
       final String? previousKey = _lastIntervalPhaseKey;
-      if (previousKey != null && previousKey != phaseKey) {
+      if (previousKey == null && phase.stage != IntervalStage.complete) {
+        // Beri tanda saat fase kerja pertama dimulai setelah countdown GPS.
+        unawaited(_handleIntervalTransition(phase, plan));
+      } else if (previousKey != null && previousKey != phaseKey) {
         unawaited(_handleIntervalTransition(phase, plan));
       }
       _lastIntervalPhaseKey = phaseKey;
@@ -250,6 +270,35 @@ class _RunningPageState extends State<RunningPage> {
     }
   }
 
+  Future<void> _notifyTargetDurationReached() async {
+    bool vibrated = false;
+    if (_activeIntervalPlan == null &&
+        defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        vibrated = await const MethodChannel('voltstride/android_settings')
+                .invokeMethod<bool>(
+              'vibrateWorkoutTimer',
+              <String, Object?>{'event': 'complete'},
+            ) ??
+            false;
+      } catch (_) {
+        vibrated = false;
+      }
+    }
+    if (_activeIntervalPlan == null && !vibrated) {
+      await HapticFeedback.heavyImpact();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_text(
+          'Durasi target tercapai. Kamu dapat menyelesaikan sesi saat siap.',
+          'Target duration reached. You can finish the session when ready.',
+        )),
+      ),
+    );
+  }
+
   Future<void> _handleIntervalTransition(
     IntervalPhase phase,
     IntervalRunPlan plan,
@@ -288,7 +337,17 @@ class _RunningPageState extends State<RunningPage> {
         // Jika jembatan Android tidak tersedia, gunakan haptic Flutter sebagai cadangan.
       }
     }
-    await HapticFeedback.heavyImpact();
+    switch (nextStage) {
+      case IntervalStage.work:
+        await HapticFeedback.mediumImpact();
+        break;
+      case IntervalStage.recovery:
+        await HapticFeedback.lightImpact();
+        break;
+      case IntervalStage.complete:
+        await HapticFeedback.heavyImpact();
+        break;
+    }
   }
 
   Future<void> _ensureStepTracking() async {
@@ -427,6 +486,7 @@ class _RunningPageState extends State<RunningPage> {
     _lastPacerMinute = 0;
     _lastStatsNotificationSecond = -10;
     _completedSessionOverride = null;
+    _targetDurationNotified = false;
     try {
       if (defaultTargetPlatform == TargetPlatform.android) {
         try {
@@ -762,6 +822,10 @@ class _RunningPageState extends State<RunningPage> {
                       Text(_formatDuration(_controller.elapsed), style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 8),
                       Text(paused ? _text('Dijeda', 'Paused') : _text('Aktivitas berlangsung', 'Activity in progress'), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                      if (widget.targetDurationMinutes != null) ...<Widget>[
+                        const SizedBox(height: 16),
+                        _plannedWorkoutCard(),
+                      ],
                       const SizedBox(height: 22),
                       Text('${_controller.distanceKm.toStringAsFixed(2)} km', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 5),
@@ -936,6 +1000,15 @@ class _RunningPageState extends State<RunningPage> {
                               letterSpacing: 1.2,
                             ),
                           ),
+                          if (widget.targetDurationMinutes != null) ...<Widget>[
+                            const SizedBox(height: 12),
+                            _plannedWorkoutCard(
+                              backgroundColor: overlayColor,
+                              foregroundColor: overlayText,
+                              mutedColor: overlayMuted,
+                              compact: true,
+                            ),
+                          ],
                           const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
@@ -1421,6 +1494,69 @@ class _RunningPageState extends State<RunningPage> {
     );
   }
 
+  Widget _plannedWorkoutCard({
+    Color? backgroundColor,
+    Color? foregroundColor,
+    Color? mutedColor,
+    bool compact = false,
+  }) {
+    final int? targetMinutes = widget.targetDurationMinutes;
+    if (targetMinutes == null || targetMinutes <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    final int targetSeconds = targetMinutes * 60;
+    final int elapsedSeconds = _controller.elapsed.inSeconds;
+    final double progress =
+        (elapsedSeconds / targetSeconds).clamp(0.0, 1.0).toDouble();
+    final int remainingSeconds = targetSeconds > elapsedSeconds
+        ? targetSeconds - elapsedSeconds
+        : 0;
+    final Color foreground =
+        foregroundColor ?? Theme.of(context).colorScheme.onSurface;
+    final Color muted =
+        mutedColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    final Color background = backgroundColor ??
+        Theme.of(context).colorScheme.surfaceContainerHighest;
+    final String? plannedTitle = widget.plannedWorkoutTitle?.trim();
+    final String title = plannedTitle != null && plannedTitle.isNotEmpty
+        ? plannedTitle
+        : _text('Target latihan', 'Workout target');
+    final String? description = widget.plannedWorkoutDescription?.trim();
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 9 : 14),
+      decoration: BoxDecoration(
+        color: background,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(title, style: TextStyle(color: foreground, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 5),
+          Text(
+            progress >= 1
+                ? _text('Target $targetMinutes menit tercapai', 'Target of $targetMinutes minutes reached')
+                : _text('Target $targetMinutes menit • tersisa ${remainingSeconds ~/ 60}:${(remainingSeconds % 60).toString().padLeft(2, '0')}', 'Target $targetMinutes min • ${remainingSeconds ~/ 60}:${(remainingSeconds % 60).toString().padLeft(2, '0')} left'),
+            style: TextStyle(color: muted, fontSize: 12),
+          ),
+          if (!compact && description != null && description.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: muted, fontSize: 12, height: 1.3),
+            ),
+          ],
+          SizedBox(height: compact ? 6 : 10),
+          LinearProgressIndicator(value: progress),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLiveRunDetails({required bool paused}) {
     return Scaffold(
       appBar: AppBar(
@@ -1439,6 +1575,10 @@ class _RunningPageState extends State<RunningPage> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: <Widget>[
             _statusBanner(paused),
+            if (widget.targetDurationMinutes != null) ...<Widget>[
+              const SizedBox(height: 10),
+              _liveMetricsBuilder(() => _plannedWorkoutCard()),
+            ],
             const SizedBox(height: 10),
             _liveMapSection(paused: paused),
             const SizedBox(height: 12),

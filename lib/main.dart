@@ -232,6 +232,7 @@ class _RootShellState extends State<RootShell> {
   final GlobalKey<ActivitySetupPageState> _activityKey =
       GlobalKey<ActivitySetupPageState>();
   final GlobalKey<AccountPageState> _accountKey = GlobalKey<AccountPageState>();
+  final GlobalKey<MorePageState> _moreKey = GlobalKey<MorePageState>();
 
   List<Widget> get _pages => <Widget>[
         HomeDashboardPage(
@@ -252,6 +253,7 @@ class _RootShellState extends State<RootShell> {
           onStart: _startActivity,
         ),
         MorePage(
+          key: _moreKey,
           onOpenTimer: () => _openPage(const TimerPage()),
         ),
         AccountPage(key: _accountKey),
@@ -310,6 +312,9 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _selectTab(int value) {
+    if (_index == 2 && value != 2) {
+      _activityKey.currentState?.closeTrainingPlanner();
+    }
     setState(() => _index = value);
     switch (value) {
       case 0:
@@ -321,10 +326,28 @@ class _RootShellState extends State<RootShell> {
       case 2:
         unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
         break;
+      case 3:
+        unawaited(_moreKey.currentState?.reload() ?? Future<void>.value());
+        break;
       case 4:
         unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
         break;
     }
+  }
+
+  void _handleBackNavigation() {
+    if (!mounted || _showRunningPage) return;
+
+    // Dari tab mana pun, Back kembali ke Beranda terlebih dahulu.
+    // Jika panel perencana terbuka, _selectTab akan menutupnya sebelum
+    // Beranda ditampilkan, tanpa menambah route ke Navigator.
+    if (_index != 0) {
+      _selectTab(0);
+      return;
+    }
+
+    // Konfirmasi keluar hanya muncul ketika pengguna sudah berada di Beranda.
+    unawaited(_confirmExitApplication());
   }
 
   void _openAccountSection(int section) {
@@ -384,13 +407,19 @@ class _RootShellState extends State<RootShell> {
   Widget _activeSessionBanner(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final ActivityStartConfig? config = _activeRunConfig;
-    final String activity = config?.activityType == RunActivityType.walk
-        ? AppLanguageService.text(context, 'Jalan', 'Walk')
-        : config?.activityType == RunActivityType.cycle
-            ? AppLanguageService.text(context, 'Sepeda', 'Cycling')
-            : config?.activityType == RunActivityType.hiit
-                ? 'HIIT'
-                : AppLanguageService.text(context, 'Lari', 'Run');
+    final String? plannedName = config?.plannedWorkoutTitle?.trim();
+    final String activity;
+    if (plannedName != null && plannedName.isNotEmpty) {
+      activity = plannedName;
+    } else if (config?.activityType == RunActivityType.walk) {
+      activity = AppLanguageService.text(context, 'Jalan', 'Walk');
+    } else if (config?.activityType == RunActivityType.cycle) {
+      activity = AppLanguageService.text(context, 'Sepeda', 'Cycling');
+    } else if (config?.activityType == RunActivityType.hiit) {
+      activity = 'HIIT';
+    } else {
+      activity = AppLanguageService.text(context, 'Lari', 'Run');
+    }
     return Material(
       color: colors.surface,
       elevation: 5,
@@ -426,7 +455,9 @@ class _RootShellState extends State<RootShell> {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 minimumSize: const Size(0, 36),
               ),
-              child: Text(AppLanguageService.text(context, 'Kembali', 'Resume')),
+              child: Text(
+                AppLanguageService.text(context, 'Kembali', 'Resume'),
+              ),
             ),
           ],
         ),
@@ -490,7 +521,7 @@ class _RootShellState extends State<RootShell> {
       canPop: _showRunningPage,
       onPopInvokedWithResult: (bool didPop, Object? result) {
         if (didPop || _showRunningPage) return;
-        unawaited(_confirmExitApplication());
+        _handleBackNavigation();
       },
       child: Scaffold(
       body: Stack(
@@ -516,6 +547,9 @@ class _RootShellState extends State<RootShell> {
                   activityDetails: config.activityDetails,
                   targetDistanceKm: config.targetDistanceKm,
                   targetPaceSecondsPerKm: config.targetPaceSecondsPerKm,
+                  targetDurationMinutes: config.targetDurationMinutes,
+                  plannedWorkoutTitle: config.plannedWorkoutTitle,
+                  plannedWorkoutDescription: config.plannedWorkoutDescription,
                   plannedRoute: _plannedRoute,
                   paceNotificationsEnabled: config.paceNotificationsEnabled,
                   autoStart: true,

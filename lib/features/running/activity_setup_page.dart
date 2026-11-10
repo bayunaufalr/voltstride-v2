@@ -10,6 +10,8 @@ import '../../services/lokasi_service.dart';
 import 'services/heart_rate_service.dart';
 import 'models/run_session.dart';
 import 'run_route_map_view.dart';
+import 'services/run_history_repository.dart';
+import 'services/training_recommendation_service.dart';
 
 class ActivityStartConfig {
   final RunActivityType activityType;
@@ -19,6 +21,9 @@ class ActivityStartConfig {
   final double? targetPaceSecondsPerKm;
   final bool paceNotificationsEnabled;
   final String? activityDetails;
+  final int? targetDurationMinutes;
+  final String? plannedWorkoutTitle;
+  final String? plannedWorkoutDescription;
 
   const ActivityStartConfig({
     required this.activityType,
@@ -28,6 +33,9 @@ class ActivityStartConfig {
     this.targetPaceSecondsPerKm,
     this.paceNotificationsEnabled = true,
     this.activityDetails,
+    this.targetDurationMinutes,
+    this.plannedWorkoutTitle,
+    this.plannedWorkoutDescription,
   });
 }
 
@@ -68,6 +76,12 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   bool _paceNotificationsEnabled = true;
   bool _searchingHeartRate = false;
   String? _heartRateDeviceName;
+  bool _showTrainingPlanner = false;
+  bool _loadingRecommendations = false;
+  TrainingGoal _selectedTrainingGoal = TrainingGoal.endurance;
+  final TextEditingController _trainingDuration =
+      TextEditingController(text: '30');
+  TrainingRecommendationOverview? _recommendationOverview;
 
   @override
   void initState() {
@@ -85,6 +99,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     _targetDistanceKm.dispose();
     _targetPace.dispose();
     _hiitDetails.dispose();
+    _trainingDuration.dispose();
     super.dispose();
   }
 
@@ -131,8 +146,330 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     }
   }
 
+  void closeTrainingPlanner() {
+    if (!_showTrainingPlanner || !mounted) return;
+    setState(() => _showTrainingPlanner = false);
+  }
+
+  void _openTrainingPlanner() {
+    setState(() {
+      _showTrainingPlanner = true;
+      _recommendationOverview = null;
+      _selectedTrainingGoal = TrainingGoal.endurance;
+    });
+  }
+
+  Future<void> _generateRecommendations() async {
+    final int? duration = int.tryParse(_trainingDuration.text.trim());
+    if (duration == null || duration < 10 || duration > 60) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Masukkan durasi antara 10 sampai 60 menit.',
+            'Enter a duration between 10 and 60 minutes.',
+          )),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _loadingRecommendations = true;
+      _recommendationOverview = null;
+    });
+    try {
+      final List<RunSession> history =
+          await RunHistoryRepository.instance.getAll(limit: 100);
+      final TrainingRecommendationOverview result =
+          TrainingRecommendationService.generate(
+        history: history,
+        goal: _selectedTrainingGoal,
+        durationMinutes: duration,
+      );
+      if (!mounted) return;
+      setState(() => _recommendationOverview = result);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_text(
+              'Data latihan belum dapat dibaca. Coba lagi.',
+              'Training data could not be loaded. Try again.',
+            )),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingRecommendations = false);
+    }
+  }
+
+  String _trainingGoalLabel(TrainingGoal goal) => switch (goal) {
+        TrainingGoal.endurance => _text('Daya tahan', 'Endurance'),
+        TrainingGoal.pace => _text('Pace', 'Pace'),
+        TrainingGoal.consistency => _text('Konsistensi', 'Consistency'),
+        TrainingGoal.generalFitness =>
+          _text('Kebugaran umum', 'General fitness'),
+      };
+
+  String _recommendationTitle(TrainingPlanKind kind) => switch (kind) {
+        TrainingPlanKind.easyRunWalk =>
+          _text('Lari-jalan ringan', 'Easy run-walk'),
+        TrainingPlanKind.controlledIntervals =>
+          _text('Interval terkontrol', 'Controlled intervals'),
+        TrainingPlanKind.steadyRun =>
+          _text('Lari stabil', 'Steady run'),
+        TrainingPlanKind.comfortableWalk =>
+          _text('Jalan nyaman', 'Comfortable walk'),
+        TrainingPlanKind.easyCycling =>
+          _text('Sepeda santai', 'Easy cycling'),
+        TrainingPlanKind.lowImpactHiit =>
+          _text('HIIT berdampak rendah', 'Low-impact HIIT'),
+      };
+
+  String _recommendationDescription(TrainingRecommendation recommendation) {
+    switch (recommendation.kind) {
+      case TrainingPlanKind.easyRunWalk:
+        return _text(
+          'Jogging ringan pada fase kerja, lalu berjalan pada fase pemulihan.',
+          'Jog easily during work phases, then walk during recovery phases.',
+        );
+      case TrainingPlanKind.controlledIntervals:
+        return _text(
+          'Lari singkat dengan usaha terkendali, diselingi pemulihan berjalan.',
+          'Short controlled running efforts separated by walking recovery.',
+        );
+      case TrainingPlanKind.steadyRun:
+        return _text(
+          'Pertahankan usaha nyaman dan ritme yang masih memungkinkan berbicara.',
+          'Keep a comfortable effort and a pace that still allows conversation.',
+        );
+      case TrainingPlanKind.comfortableWalk:
+        return _text(
+          'Berjalan dengan langkah nyaman dan ritme stabil.',
+          'Walk at a comfortable, steady rhythm.',
+        );
+      case TrainingPlanKind.easyCycling:
+        return _text(
+          'Bersepeda santai dengan kayuhan stabil dan rute yang aman.',
+          'Cycle at an easy, steady effort on a safe route.',
+        );
+      case TrainingPlanKind.lowImpactHiit:
+        return _text(
+          'Gunakan gerakan berdampak rendah yang sudah dikuasai, dengan pemulihan penuh.',
+          'Use familiar low-impact movements and take the full recovery periods.',
+        );
+    }
+  }
+
+  String _intensityDescription(TrainingLoadLevel level) => switch (level) {
+        TrainingLoadLevel.recovery => _text(
+            'Intensitas diturunkan karena sesi terakhir masih dekat atau aktivitas 7 hari terakhir cukup banyak.',
+            'Intensity is reduced because the last session was recent or activity over the last 7 days was substantial.',
+          ),
+        TrainingLoadLevel.starter => _text(
+            'Data masih terbatas atau belum cukup konsisten. Rekomendasi dimulai dari intensitas ringan.',
+            'Data is limited or not yet consistent. Recommendations start at an easy intensity.',
+          ),
+        TrainingLoadLevel.building => _text(
+            'Riwayat latihan menunjukkan pola yang cukup konsisten. Menu tetap dibatasi pada usaha ringan hingga sedang.',
+            'Your recent history is fairly consistent. Sessions remain limited to easy-to-moderate effort.',
+          ),
+      };
+
+  void _startRecommendedTraining(TrainingRecommendation recommendation) {
+    if (widget.sessionAlreadyActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text(
+            'Selesaikan sesi aktif sebelum memulai latihan baru.',
+            'Finish the active session before starting a new workout.',
+          )),
+        ),
+      );
+      return;
+    }
+
+    final String title = _recommendationTitle(recommendation.kind);
+    final String description = _recommendationDescription(recommendation);
+    setState(() => _showTrainingPlanner = false);
+    widget.onStart(
+      ActivityStartConfig(
+        activityType: recommendation.activityType,
+        environment: recommendation.activityType == RunActivityType.hiit
+            ? RunEnvironment.indoor
+            : _environment,
+        intervalPlan: recommendation.intervalPlan,
+        paceNotificationsEnabled: false,
+        activityDetails: '$title. ${recommendation.activityDetails}',
+        targetDurationMinutes: recommendation.durationMinutes,
+        plannedWorkoutTitle: title,
+        plannedWorkoutDescription: description,
+      ),
+    );
+  }
+
+  Widget _buildTrainingPlanner() {
+    final TrainingRecommendationOverview? overview = _recommendationOverview;
+    final Color secondary = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: _text('Kembali', 'Back'),
+          onPressed: closeTrainingPlanner,
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: Text(_text('Latihan personal', 'Personal workout')),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+          children: <Widget>[
+            Text(
+              _text('Apa tujuan latihanmu?', 'What is your training goal?'),
+              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: TrainingGoal.values.map((TrainingGoal goal) {
+                return ChoiceChip(
+                  label: Text(_trainingGoalLabel(goal)),
+                  selected: _selectedTrainingGoal == goal,
+                  onSelected: (bool selected) {
+                    if (selected) {
+                      setState(() {
+                        _selectedTrainingGoal = goal;
+                        _recommendationOverview = null;
+                      });
+                    }
+                  },
+                );
+              }).toList(growable: false),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              _text('Ingin latihan berapa menit?', 'How many minutes do you want to train?'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _trainingDuration,
+              keyboardType: TextInputType.number,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+              ],
+              decoration: InputDecoration(
+                labelText: _text('Durasi (10–60 menit)', 'Duration (10–60 minutes)'),
+                suffixText: _text('menit', 'min'),
+                isDense: true,
+              ),
+              onChanged: (_) => setState(() => _recommendationOverview = null),
+            ),
+            const SizedBox(height: 14),
+            FilledButton.icon(
+              onPressed: _loadingRecommendations ? null : _generateRecommendations,
+              icon: _loadingRecommendations
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome_rounded),
+              label: Text(_text('Buat menu latihan', 'Create workout options')),
+            ),
+            if (overview != null) ...<Widget>[
+              const SizedBox(height: 22),
+              Text(
+                _text('Menu latihan yang disarankan', 'Recommended workouts'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                overview.hasRecentData
+                    ? _text(
+                        'Berdasarkan ${overview.recentSessionCount} sesi dalam 30 hari dan ${overview.minutesLastSevenDays} menit aktivitas dalam 7 hari terakhir.',
+                        'Based on ${overview.recentSessionCount} sessions in 30 days and ${overview.minutesLastSevenDays} active minutes in the last 7 days.',
+                      )
+                    : _text(
+                        'Belum ada riwayat latihan terbaru. Menu awal dibuat ringan dan akan lebih personal setelah beberapa sesi tersimpan.',
+                        'There is no recent training history yet. Starter options are kept easy and become more personal after sessions are saved.',
+                      ),
+                style: TextStyle(color: secondary, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _intensityDescription(overview.loadLevel),
+                style: TextStyle(color: secondary, fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              ...overview.options.map(_recommendationCard),
+              const SizedBox(height: 8),
+              Text(
+                _text(
+                  'Gunakan intensitas yang terasa nyaman. Menu ini merupakan panduan umum, bukan penilaian medis. Hentikan latihan bila merasa nyeri, pusing, atau tidak enak badan.',
+                  'Keep the effort comfortable. These options are general guidance, not a medical assessment. Stop if you feel pain, dizzy, or unwell.',
+                ),
+                style: TextStyle(color: secondary, fontSize: 11, height: 1.4),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _recommendationCard(TrainingRecommendation recommendation) {
+    final Color secondary = Theme.of(context).colorScheme.onSurfaceVariant;
+    final IntervalRunPlan? interval = recommendation.intervalPlan;
+    final String intervalLabel = interval == null
+        ? ''
+        : _text(
+            '${interval.workSeconds} dtk kerja • ${interval.recoverySeconds} dtk pulih • ${interval.repetitions} ulangan',
+            '${interval.workSeconds}s work • ${interval.recoverySeconds}s recovery • ${interval.repetitions} rounds',
+          );
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              _recommendationTitle(recommendation.kind),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${recommendation.durationMinutes} ${_text('menit', 'minutes')} • ${recommendation.intensity}',
+              style: TextStyle(color: secondary, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(_recommendationDescription(recommendation)),
+            if (intervalLabel.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              Text(intervalLabel, style: TextStyle(color: secondary, fontSize: 12)),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: widget.sessionAlreadyActive
+                    ? null
+                    : () => _startRecommendedTraining(recommendation),
+                child: Text(_text('Pilih dan mulai', 'Choose and start')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_showTrainingPlanner) return _buildTrainingPlanner();
     final bool indoor = _environment == RunEnvironment.indoor;
     final Color teksSekunder = Theme.of(context).colorScheme.onSurfaceVariant;
     return Scaffold(
@@ -205,7 +542,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             _choiceCard(
               selected: _mode == _ActivityMode.run,
               title: _text('Lari biasa', 'Run'),
-              subtitle: _text('Jarak, pace, rute, dan elevasi.', 'Distance, pace, route, and elevation.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.run),
             ),
@@ -213,7 +549,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             _choiceCard(
               selected: _mode == _ActivityMode.interval,
               title: _text('Lari interval', 'Interval run'),
-              subtitle: _text('Atur kerja dan pemulihan.', 'Set work and recovery intervals.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.interval),
             ),
@@ -221,7 +556,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             _choiceCard(
               selected: _mode == _ActivityMode.walk,
               title: _text('Berjalan', 'Walk'),
-              subtitle: _text('Rekam perjalanan berjalan.', 'Track a walking session.'),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.walk),
             ),
@@ -229,10 +563,6 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             _choiceCard(
               selected: _mode == _ActivityMode.cycle,
               title: _text('Bersepeda', 'Cycling'),
-              subtitle: _text(
-                'Rekam jarak, kecepatan, rute, elevasi, segmen, dan detak jantung.',
-                'Record distance, speed, route, elevation, segments, and heart rate.',
-              ),
               horizontal: true,
               onTap: () => setState(() => _mode = _ActivityMode.cycle),
             ),
@@ -240,14 +570,25 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             _choiceCard(
               selected: _mode == _ActivityMode.hiit,
               title: 'HIIT',
-              subtitle: _text('Interval kerja dan pemulihan, dengan detak jantung.', 'Work and recovery intervals with heart-rate tracking.'),
               horizontal: true,
               onTap: () => setState(() {
                 _mode = _ActivityMode.hiit;
                 _intervalMeasure = IntervalMeasure.time;
               }),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: widget.sessionAlreadyActive ? null : _openTrainingPlanner,
+              icon: const Icon(Icons.auto_awesome_rounded),
+              label: Text(_text(
+                'Susun latihan dari data saya',
+                'Build a workout from my data',
+              )),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+              ),
+            ),
+            const SizedBox(height: 12),
             if (_mode == _ActivityMode.run || _mode == _ActivityMode.interval)
               _sectionTitle(_text('Target aktivitas (opsional)', 'Activity targets (optional)')),
             const SizedBox(height: 8),
@@ -262,11 +603,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    _text('Isi jarak target dan pace rata-rata yang ingin dicapai.', 'Set the target distance and desired average pace.'),
-                    style: TextStyle(color: teksSekunder, fontSize: 12, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 4),
                   Row(
                     children: <Widget>[
                       Expanded(
@@ -314,37 +651,11 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       () => _paceNotificationsEnabled = value,
                     ),
                     title: Text(_text('Pacer setiap menit', 'Minute-by-minute pacer')),
-                    subtitle: Text(
-                      _text(
-                        'Setiap menit, pacer menghitung pace yang dibutuhkan pada sisa jarak agar rata-rata akhir mencapai target.',
-                        'Every minute, the pacer calculates the pace needed over the remaining distance to reach your target average.',
-                      ),
-                      style: TextStyle(color: teksSekunder, fontSize: 12),
-                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.only(top: 2, bottom: 8),
-              child: Text(
-                _mode == _ActivityMode.cycle
-                    ? _text(
-                        'Mode sepeda menggunakan kecepatan (km/jam), bukan pace lari. Sensor HR Bluetooth bersifat opsional untuk merekam detak jantung.',
-                        'Cycling uses speed (km/h), not running pace. A Bluetooth heart-rate sensor is optional.',
-                      )
-                    : _text(
-                        'Cadence dihitung dari sensor langkah ponsel; bawa ponsel di badan selama lari. Smartwatch tidak wajib. Sensor Bluetooth hanya diperlukan untuk data detak jantung otomatis.',
-                        'Cadence is estimated from your phone step sensor; carry the phone on your body while running. A smartwatch is not required. A Bluetooth sensor is only needed for automatic heart-rate data.',
-                      ),
-                style: TextStyle(
-                  color: teksSekunder,
-                  fontSize: 11,
-                  height: 1.35,
-                ),
-              ),
-            ),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: _searchingHeartRate ? null : _toggleHeartRateDevice,
               icon: _searchingHeartRate
@@ -548,7 +859,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   Widget _choiceCard({
     required bool selected,
     required String title,
-    required String subtitle,
+    String? subtitle,
     required VoidCallback onTap,
     bool horizontal = false,
   }) {
@@ -585,11 +896,13 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       fontSize: horizontal ? 14 : 13,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(color: teksSekunder, fontSize: 11),
-                  ),
+                  if (subtitle != null && subtitle.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: teksSekunder, fontSize: 11),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -698,7 +1011,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
           ),
         ),
       );
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
