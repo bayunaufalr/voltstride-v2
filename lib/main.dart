@@ -220,6 +220,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  final List<int> _tabHistory = <int>[];
   List<RunPoint> _plannedRoute = <RunPoint>[];
   ActivityStartConfig? _activeRunConfig;
   bool _showRunningPage = false;
@@ -310,16 +311,19 @@ class _RootShellState extends State<RootShell> {
   }
 
   void _selectTab(int value) {
-    if (_index == 2 && value != 2) {
-      _activityKey.currentState?.closeTrainingPlanner();
-    }
-    setState(() => _index = value);
+    if (value < 0 || value > 4 || value == _index) return;
+    _tabHistory.add(_index);
+    if (_tabHistory.length > 32) _tabHistory.removeAt(0);
+    _showTab(value);
+  }
+
+  void _showTab(int value) {
+    if (_index != value) setState(() => _index = value);
     switch (value) {
       case 0:
         unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
         break;
       case 1:
-        // Perencana rute meminta lokasi ketika tab ini dibuka.
         break;
       case 2:
         unawaited(_activityKey.currentState?.loadLocation() ?? Future<void>.value());
@@ -336,11 +340,21 @@ class _RootShellState extends State<RootShell> {
   void _handleBackNavigation() {
     if (!mounted || _showRunningPage) return;
 
-    if (_index != 0) {
-      _selectTab(0);
+    if (_index == 2 && (_activityKey.currentState?.handleBack() ?? false)) {
       return;
     }
-
+    if (_index == 4 && (_accountKey.currentState?.handleBack() ?? false)) {
+      return;
+    }
+    if (_tabHistory.isNotEmpty) {
+      final int previousTab = _tabHistory.removeLast();
+      _showTab(previousTab);
+      return;
+    }
+    if (_index != 0) {
+      _showTab(0);
+      return;
+    }
     unawaited(_confirmExitApplication());
   }
 
@@ -383,6 +397,7 @@ class _RootShellState extends State<RootShell> {
     setState(() {
       _showRunningPage = false;
       _index = 0;
+      _tabHistory.clear();
     });
   }
 
@@ -393,6 +408,7 @@ class _RootShellState extends State<RootShell> {
       _showRunningPage = false;
       _runningSessionActive = false;
       _index = 0;
+      _tabHistory.clear();
     });
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());

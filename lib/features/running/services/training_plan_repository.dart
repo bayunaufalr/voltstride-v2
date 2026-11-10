@@ -197,6 +197,19 @@ class TrainingPlanRepository {
     return _decodePlan(rows.first);
   }
 
+  Future<List<SavedTrainingPlan>> getPlans({int limit = 12}) async {
+    if (limit < 1) return <SavedTrainingPlan>[];
+    final Database db = await _db;
+    final List<Map<String, Object?>> rows = await db.query(
+      'training_plans',
+      where: 'ownerId = ?',
+      whereArgs: <Object?>[_ownerId],
+      orderBy: 'createdAt DESC',
+      limit: limit,
+    );
+    return rows.map(_decodePlan).toList(growable: false);
+  }
+
   Future<SavedTrainingPlan?> getCurrentPlan() async {
     final Database db = await _db;
     final String today = _dateKey(DateTime.now());

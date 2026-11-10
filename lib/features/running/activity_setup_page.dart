@@ -172,6 +172,22 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     }
   }
 
+  bool handleBack() {
+    if (_showSavedPlan) {
+      setState(() => _showSavedPlan = false);
+      return true;
+    }
+    if (_showTrainingPlanner) {
+      setState(() {
+        _showTrainingPlanner = false;
+        _planOptions = <TrainingPlanOption>[];
+        _planRequest = null;
+      });
+      return true;
+    }
+    return false;
+  }
+
   void closeTrainingPlanner() {
     if (!mounted) return;
     setState(() {

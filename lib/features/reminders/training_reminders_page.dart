@@ -5,6 +5,8 @@ import '../../services/app_language_service.dart';
 import 'reminder_service.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
+import '../running/services/training_plan_repository.dart';
+import '../running/services/training_plan_service.dart';
 
 class TrainingRemindersPage extends StatefulWidget {
   const TrainingRemindersPage({super.key, this.embedded = false});
@@ -20,8 +22,13 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     with SingleTickerProviderStateMixin {
   List<TrainingReminder> _reminders = <TrainingReminder>[];
   List<RunSession> _sessions = <RunSession>[];
+  List<SavedTrainingPlan> _trainingPlans = <SavedTrainingPlan>[];
+  final Map<String, List<TrainingPlanDay>> _trainingPlanDays =
+      <String, List<TrainingPlanDay>>{};
   bool _loading = true;
   bool _saving = false;
+  int _lastCategoryIndex = 0;
+  final List<int> _categoryHistory = <int>[];
   late final TabController _categoryController;
 
   String _text(String indonesia, String english) =>
@@ -30,7 +37,8 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   @override
   void initState() {
     super.initState();
-    _categoryController = TabController(length: 4, vsync: this);
+    _categoryController = TabController(length: 5, vsync: this);
+    _categoryController.addListener(_trackCategoryHistory);
     ReminderService.changes.addListener(_onReminderDataChanged);
     _loadReminders();
   }
@@ -38,8 +46,25 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   @override
   void dispose() {
     ReminderService.changes.removeListener(_onReminderDataChanged);
+    _categoryController.removeListener(_trackCategoryHistory);
     _categoryController.dispose();
     super.dispose();
+  }
+
+  void _trackCategoryHistory() {
+    final int currentIndex = _categoryController.index;
+    if (currentIndex == _lastCategoryIndex) return;
+    _categoryHistory.add(_lastCategoryIndex);
+    if (_categoryHistory.length > 24) _categoryHistory.removeAt(0);
+    _lastCategoryIndex = currentIndex;
+  }
+
+  bool handleBack() {
+    if (_categoryHistory.isEmpty) return false;
+    final int previousIndex = _categoryHistory.removeLast();
+    _lastCategoryIndex = previousIndex;
+    _categoryController.animateTo(previousIndex);
+    return true;
   }
 
   void _onReminderDataChanged() {
@@ -53,13 +78,26 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       final List<dynamic> loaded = await Future.wait<dynamic>(<Future<dynamic>>[
         ReminderService.getAll(),
         RunHistoryRepository.instance.getAll(),
+        TrainingPlanRepository.instance.getPlans(limit: 12),
       ]);
       final List<TrainingReminder> saved = loaded[0] as List<TrainingReminder>;
       final List<RunSession> sessions = loaded[1] as List<RunSession>;
+      final List<SavedTrainingPlan> plans =
+          loaded[2] as List<SavedTrainingPlan>;
+      final Map<String, List<TrainingPlanDay>> planDays =
+          <String, List<TrainingPlanDay>>{};
+      for (final SavedTrainingPlan plan in plans) {
+        planDays[plan.id] =
+            await TrainingPlanRepository.instance.getDays(plan.id);
+      }
       if (!mounted) return;
       setState(() {
         _reminders = saved;
         _sessions = sessions;
+        _trainingPlans = plans;
+        _trainingPlanDays
+          ..clear()
+          ..addAll(planDays);
         _loading = false;
       });
     } catch (_) {
@@ -505,7 +543,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
     final DateTime monday = today.subtract(Duration(days: today.weekday - 1));
-    final List<_ReminderOccurrence> jadwalMingguan = <_ReminderOccurrence>[];
+    final List<_ReminderOccurrence> result = <_ReminderOccurrence>[];
 
     for (int offset = 0; offset < 7; offset++) {
       final DateTime day = monday.add(Duration(days: offset));
@@ -518,14 +556,14 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
               scheduledDate.day != day.day) {
             continue;
           }
-          jadwalMingguan.add(_ReminderOccurrence(reminder: reminder, date: day));
+          result.add(_ReminderOccurrence(reminder: reminder, date: day));
         } else if (reminder.weekdays.contains(day.weekday)) {
-          jadwalMingguan.add(_ReminderOccurrence(reminder: reminder, date: day));
+          result.add(_ReminderOccurrence(reminder: reminder, date: day));
         }
       }
     }
 
-    jadwalMingguan.sort((_ReminderOccurrence a, _ReminderOccurrence b) {
+    result.sort((_ReminderOccurrence a, _ReminderOccurrence b) {
       final DateTime dateA = DateTime(
         a.date.year,
         a.date.month,
@@ -542,7 +580,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
       );
       return dateA.compareTo(dateB);
     });
-    return jadwalMingguan;
+    return result;
   }
 
   List<_ReminderOccurrence> _completedOccurrences() {
@@ -893,6 +931,209 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   }
 
 
+  String _planGoalLabel(TrainingGoal goal) => switch (goal) {
+        TrainingGoal.endurance => _text('Daya tahan', 'Endurance'),
+        TrainingGoal.pace => _text('Pace', 'Pace'),
+        TrainingGoal.vo2max => 'VO₂max',
+      };
+
+  String _planStrategyLabel(TrainingStrategy strategy) => switch (strategy) {
+        TrainingStrategy.progressive => _text('Progresif', 'Progressive'),
+        TrainingStrategy.balanced => _text('Seimbang', 'Balanced'),
+        TrainingStrategy.lowImpact => _text('Beban ringan', 'Low impact'),
+      };
+
+  String _planActivityLabel(RunActivityType type) => switch (type) {
+        RunActivityType.run => _text('Lari', 'Run'),
+        RunActivityType.walk => _text('Berjalan', 'Walk'),
+        RunActivityType.cycle => _text('Bersepeda', 'Cycling'),
+        RunActivityType.hiit => 'HIIT',
+      };
+
+  String _planDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/${date.year}';
+
+  String _planStatus(SavedTrainingPlan plan) {
+    final DateTime today = DateTime.now();
+    final DateTime date = DateTime(today.year, today.month, today.day);
+    if (plan.endDate.isBefore(date)) return _text('Selesai', 'Completed');
+    if (plan.startDate.isAfter(date)) return _text('Akan datang', 'Upcoming');
+    return _text('Aktif', 'Active');
+  }
+
+  Widget _trainingPlansList() {
+    if (_trainingPlans.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Icon(Icons.event_note_outlined, size: 42),
+              const SizedBox(height: 10),
+              Text(
+                _text('Belum ada rencana latihan dari VoltStride.',
+                    'No training plans have been created in VoltStride yet.'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _text('Buat rencana melalui Rekam aktivitas. Rencana yang disimpan akan muncul di sini.',
+                    'Create a plan from Record activity. Saved plans will appear here.'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadReminders,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+        itemCount: _trainingPlans.length,
+        separatorBuilder: (BuildContext context, int index) =>
+            const SizedBox(height: 8),
+        itemBuilder: (BuildContext context, int index) {
+          final SavedTrainingPlan plan = _trainingPlans[index];
+          final List<TrainingPlanDay> days =
+              _trainingPlanDays[plan.id] ?? <TrainingPlanDay>[];
+          final int scheduledCount =
+              days.where((TrainingPlanDay day) => !day.isRestDay).length;
+          final int completedCount = days
+              .where((TrainingPlanDay day) =>
+                  !day.isRestDay && day.completed)
+              .length;
+          final double progress = scheduledCount == 0
+              ? 0
+              : completedCount / scheduledCount;
+          return Card(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              key: PageStorageKey<String>('saved-training-plan-${plan.id}'),
+              initiallyExpanded: index == 0,
+              leading: const Icon(Icons.event_note_rounded),
+              title: Text(
+                plan.title,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      '${_planGoalLabel(plan.goal)} • ${_planStrategyLabel(plan.strategy)} • ${_planStatus(plan)}',
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_planDate(plan.startDate)} – ${_planDate(plan.endDate)}',
+                    ),
+                    const SizedBox(height: 7),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 5,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '$completedCount/$scheduledCount ${_text('sesi selesai', 'sessions completed')}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              children: <Widget>[
+                if (plan.summary.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(plan.summary),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      plan.targetDescription,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                if (plan.advantages.isNotEmpty || plan.disadvantages.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${_text('Kelebihan', 'Advantages')}: ${plan.advantages.join('; ')}\n${_text('Hal yang perlu diperhatikan', 'Trade-offs')}: ${plan.disadvantages.join('; ')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                const Divider(height: 1),
+                ...days.map((TrainingPlanDay day) {
+                  final String dayDetails = day.isRestDay
+                      ? _text('Pemulihan', 'Recovery')
+                      : '${_planActivityLabel(day.activityType)} • ${day.durationMinutes} menit • ${day.intensity}';
+                  final String intervalDetails = day.intervalPlan == null
+                      ? ''
+                      : '\n${day.intervalPlan!.workSeconds} detik kerja • ${day.intervalPlan!.recoverySeconds} detik pemulihan • ${day.intervalPlan!.repetitions} ulangan';
+                  return ListTile(
+                    dense: true,
+                    leading: SizedBox(
+                      width: 43,
+                      child: Text(
+                        _planDate(day.date),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      day.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text('$dayDetails\n${day.description}$intervalDetails'),
+                    isThreeLine: true,
+                    trailing: Icon(
+                      day.completed
+                          ? Icons.check_circle_rounded
+                          : day.isRestDay
+                              ? Icons.self_improvement_rounded
+                              : Icons.schedule_rounded,
+                      color: day.completed
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      size: 19,
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final Widget isi = Column(
@@ -902,6 +1143,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: <Widget>[
+            Tab(text: _text('Rencana', 'Plans')),
             Tab(text: _text('Jadwal', 'Schedules')),
             Tab(text: _text('Minggu ini', 'This week')),
             Tab(text: _text('Selesai', 'Completed')),
@@ -913,6 +1155,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
           child: TabBarView(
             controller: _categoryController,
             children: <Widget>[
+              _trainingPlansList(),
               _routineScheduleList(),
               _categoryList(category: 0),
               _categoryList(category: 1),

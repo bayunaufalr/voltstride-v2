@@ -38,6 +38,8 @@ class AccountPageState extends State<AccountPage>
   int _legacyHistoryCount = 0;
   bool _cloudStorageAvailable = false;
   bool _cloudSignedIn = false;
+  int _lastSectionIndex = 0;
+  final List<int> _sectionHistory = <int>[];
   int _cloudSessionCount = 0;
   int _cloudEstimatedBytes = 0;
   int _cloudLargestDocumentBytes = 0;
@@ -57,7 +59,32 @@ class AccountPageState extends State<AccountPage>
   void initState() {
     super.initState();
     _sectionController = TabController(length: 3, vsync: this);
+    _sectionController.addListener(_trackSectionHistory);
     _loadRecovery();
+  }
+
+  void _trackSectionHistory() {
+    final int currentIndex = _sectionController.index;
+    if (currentIndex == _lastSectionIndex) return;
+    _sectionHistory.add(_lastSectionIndex);
+    if (_sectionHistory.length > 24) _sectionHistory.removeAt(0);
+    _lastSectionIndex = currentIndex;
+  }
+
+  bool handleBack() {
+    if (_showProfilePage) {
+      setState(() => _showProfilePage = false);
+      return true;
+    }
+    if (_sectionController.index == 2 &&
+        (_remindersKey.currentState?.handleBack() ?? false)) {
+      return true;
+    }
+    if (_sectionHistory.isEmpty) return false;
+    final int previousIndex = _sectionHistory.removeLast();
+    _lastSectionIndex = previousIndex;
+    _sectionController.animateTo(previousIndex);
+    return true;
   }
 
   void openSection(int index) {
@@ -82,6 +109,7 @@ class AccountPageState extends State<AccountPage>
 
   @override
   void dispose() {
+    _sectionController.removeListener(_trackSectionHistory);
     _sectionController.dispose();
     super.dispose();
   }
@@ -209,22 +237,16 @@ class AccountPageState extends State<AccountPage>
         : _text('Profil saya', 'My profile');
 
     if (_showProfilePage) {
-      return PopScope<Object?>(
-        canPop: false,
-        onPopInvokedWithResult: (bool didPop, Object? result) {
-          if (!didPop && mounted) setState(() => _showProfilePage = false);
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            leading: IconButton(
-              tooltip: _text('Kembali', 'Back'),
-              onPressed: () => setState(() => _showProfilePage = false),
-              icon: const Icon(Icons.arrow_back_rounded),
-            ),
-            title: Text(_text('Profil', 'Profile')),
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: _text('Kembali', 'Back'),
+            onPressed: () => setState(() => _showProfilePage = false),
+            icon: const Icon(Icons.arrow_back_rounded),
           ),
-          body: _profileTab(),
+          title: Text(_text('Profil', 'Profile')),
         ),
+        body: _profileTab(),
       );
     }
 
