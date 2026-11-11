@@ -829,6 +829,87 @@ class ReminderService {
         : 'Waktunya $activity. Buka VoltStride untuk mulai merekam aktivitas.';
   }
 
+  static Future<bool> scheduleTrainingPlanSessionReminder({
+    required String planId,
+    required String dayId,
+    required DateTime date,
+    required String title,
+    int sessionHour = 7,
+    int sessionMinute = 0,
+  }) async {
+    await initialize();
+    final timezone.TZDateTime sessionStart = timezone.TZDateTime(
+      timezone.local,
+      date.year,
+      date.month,
+      date.day,
+      sessionHour,
+      sessionMinute,
+    );
+    final timezone.TZDateTime notifyAt =
+        sessionStart.subtract(const Duration(hours: 2));
+    if (!notifyAt.isAfter(timezone.TZDateTime.now(timezone.local))) return false;
+    await _plugin.zonedSchedule(
+      _trainingPlanDayNotificationId(planId, dayId),
+      _english ? 'Training session in 2 hours' : 'Latihan dimulai 2 jam lagi',
+      _english
+          ? '$title is scheduled today. Open VoltStride to start.'
+          : '$title dijadwalkan hari ini. Buka VoltStride untuk memulai.',
+      notifyAt,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'voltstride_plan_session_v1',
+          _english ? 'Planned training sessions' : 'Jadwal latihan',
+          channelDescription: _english
+              ? 'Reminders two hours before planned sessions.'
+              : 'Pengingat dua jam sebelum sesi latihan terjadwal.',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          autoCancel: true,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: 'training-plan-session:$planId:$dayId',
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    return true;
+  }
+
+  static Future<void> cancelTrainingPlanDayNotification(
+    String planId,
+    String dateKey,
+  ) async {
+    await initialize();
+    await _plugin.cancel(
+      _trainingPlanDayNotificationId(planId, '${planId}_$dateKey'),
+    );
+  }
+
+  static Future<void> cancelTrainingPlanNotifications(
+    String planId,
+    Iterable<DateTime> dates,
+  ) async {
+    await initialize();
+    for (final DateTime date in dates) {
+      await _plugin.cancel(
+        _trainingPlanDayNotificationId(
+          planId,
+          '${planId}_${_reminderDateKey(date)}',
+        ),
+      );
+    }
+  }
+
+  static int _trainingPlanDayNotificationId(String planId, String dayId) {
+    int value = 0;
+    for (final int unit in '$planId:$dayId'.codeUnits) {
+      value = (value * 31 + unit) & 0x3fffffff;
+    }
+    return 1200000000 + value % 100000000;
+  }
+
   static Future<void> scheduleTrainingPlanReview({
     required String planId,
     required DateTime endDate,

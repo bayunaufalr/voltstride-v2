@@ -6,8 +6,6 @@ import 'package:share_plus/share_plus.dart';
 import '../running/models/run_session.dart';
 import '../running/services/run_history_repository.dart';
 
-/// Mengemas riwayat latihan menjadi satu JSON yang mudah dianalisis AI.
-/// Koordinat GPS dan rute mentah sengaja tidak diekspor demi privasi.
 class TrainingDataExportService {
   TrainingDataExportService._();
 
@@ -17,12 +15,15 @@ class TrainingDataExportService {
     final DateTime exportedAt = DateTime.now();
     final Map<String, Object?> payload = <String, Object?>{
       'format': 'voltstride-training-data',
-      'version': 1,
-      'exportedAt': exportedAt.toUtc().toIso8601String(),
+      'version': 2,
       'sessionCount': sessions.length,
       'privacy': <String, Object?>{
         'gpsCoordinatesIncluded': false,
-        'note': 'Aggregate training metrics only. Raw GPS route coordinates are excluded.',
+        'routeIncluded': false,
+        'profileIncluded': false,
+        'exactSessionTimesIncluded': false,
+        'bodyMeasurementsIncluded': false,
+        'note': 'Only workout metrics and the calendar day are included. Names, contact details, birth date, body measurements, GPS, routes, exact times, notes and raw samples are excluded.',
       },
       'sessions': sessions.map(_sessionToJson).toList(growable: false),
     };
@@ -46,7 +47,7 @@ class TrainingDataExportService {
           XFile(file.path, mimeType: 'application/json'),
         ],
         title: 'VoltStride training data',
-        text: 'Training history export for AI analysis. GPS coordinates are excluded.',
+        text: 'Workout metrics only. Personal profile, body measurements, GPS route and exact session times are excluded.',
       ),
     );
     return sessions.length;
@@ -54,43 +55,37 @@ class TrainingDataExportService {
 
   static Map<String, Object?> _sessionToJson(RunSession session) {
     final elevation = session.elevationStats;
-    return <String, Object?>{
-      'startedAt': session.startedAt.toUtc().toIso8601String(),
-      'finishedAt': session.finishedAt?.toUtc().toIso8601String(),
+    final DateTime localDate = session.startedAt.toLocal();
+    final Map<String, Object?> result = <String, Object?>{
+      'trainingDay': '${localDate.year.toString().padLeft(4, '0')}-'
+          '${localDate.month.toString().padLeft(2, '0')}-'
+          '${localDate.day.toString().padLeft(2, '0')}',
       'activityType': session.activityType.name,
-      'environment': session.environment.name,
       'distanceMeters': _finite(session.distanceMeters),
-      'distanceKilometers': _finite(session.distanceKm),
       'elapsedSeconds': session.elapsed.inSeconds,
       'movingSeconds': session.movingTime.inSeconds,
       'averagePaceSecondsPerKm': _finiteOrNull(session.averagePaceSecondsPerKm),
+      'averageSpeedKmh': _finiteOrNull(session.averageSpeedKmh),
       'averageHeartRateBpm': session.averageHeartRateBpm,
       'totalSteps': session.totalSteps,
       'averageCadenceSpm': _finiteOrNull(session.averageCadenceSpm),
       'maxCadenceSpm': _finiteOrNull(session.maxCadenceSpm),
-      'gpsAccuracyMeters': _finiteOrNull(session.gpsAccuracyMeters),
-      'gpsAcceptedPoints': session.acceptedPoints,
-      'gpsRejectedPoints': session.rejectedPoints,
-      'elevation': <String, Object?>{
-        'hasData': elevation.hasAltitudeData,
-        'ascentMeters': _finite(elevation.totalAscentMeters),
-        'descentMeters': _finite(elevation.totalDescentMeters),
-        'netChangeMeters': _finite(elevation.netChangeMeters),
-      },
-      'splits': session.splits.map((split) => split.toJson()).toList(growable: false),
-      'hundredMeterLaps': session.hundredMeterLaps.map((lap) {
-        return <String, Object?>{
-          'distanceMeters': _finite(lap.distanceMeters),
-          'durationMilliseconds': lap.durationMilliseconds,
-          'paceSecondsPerKm': _finiteOrNull(lap.paceSecondsPerKm),
-          'speedKmh': _finiteOrNull(lap.speedKmh),
-        };
-      }).toList(growable: false),
-      'intervalPlan': session.intervalPlan?.toJson(),
-      'cadenceSamples': session.cadenceSamples
-          .map((sample) => sample.toJson())
-          .toList(growable: false),
+      'elevationAscentMeters': elevation.hasAltitudeData
+          ? _finite(elevation.totalAscentMeters)
+          : null,
+      'elevationDescentMeters': elevation.hasAltitudeData
+          ? _finite(elevation.totalDescentMeters)
+          : null,
     };
+    final interval = session.intervalPlan;
+    if (interval != null) {
+      result['interval'] = <String, Object?>{
+        'workSeconds': interval.workSeconds,
+        'recoverySeconds': interval.recoverySeconds,
+        'repetitions': interval.repetitions,
+      };
+    }
+    return result;
   }
 
   static double _finite(double value) => value.isFinite ? value : 0;

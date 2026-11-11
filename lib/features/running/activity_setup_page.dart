@@ -97,6 +97,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
   final TextEditingController _planVo2Max = TextEditingController(text: '40');
   final TextEditingController _planSessionMinutes = TextEditingController(text: '30');
   DateTime _planStartDate = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _planSessionTime = const TimeOfDay(hour: 7, minute: 0);
   int _planDurationDays = 14;
   final Set<int> _planWeekdays = <int>{2, 4, 6};
   List<TrainingPlanOption> _planOptions = <TrainingPlanOption>[];
@@ -314,6 +315,19 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     }
   }
 
+  Future<void> _pickPlanSessionTime() async {
+    final TimeOfDay? selected = await showTimePicker(
+      context: context,
+      initialTime: _planSessionTime,
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _planSessionTime = selected;
+      _planOptions = <TrainingPlanOption>[];
+      _planRequest = null;
+    });
+  }
+
   Future<void> _generatePlanOptions() async {
     final int? sessionMinutes = int.tryParse(_planSessionMinutes.text.trim());
     if (sessionMinutes == null || sessionMinutes < 15 || sessionMinutes > 90) {
@@ -376,6 +390,8 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       startDate: _planStartDate,
       trainingWeekdays: _planWeekdays.toList()..sort(),
       sessionMinutes: sessionMinutes,
+      sessionHour: _planSessionTime.hour,
+      sessionMinute: _planSessionTime.minute,
       targetDistanceKm: distance,
       targetPaceSecondsPerKm: pace,
       targetFinishMinutes: finishMinutes,
@@ -414,39 +430,83 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     try {
       final SavedTrainingPlan? previousPlan =
           await TrainingPlanRepository.instance.getCurrentPlan();
-      final SavedTrainingPlan? pendingReview =
-          await TrainingPlanRepository.instance.getPlanNeedingReview();
+      if (previousPlan != null) {
+        final List<TrainingPlanDay> previousDays =
+            await TrainingPlanRepository.instance.getDays(previousPlan.id);
+        final int completedCount =
+            previousDays.where((TrainingPlanDay day) => day.completed).length;
+        final int replacedCount = previousDays.where((TrainingPlanDay day) =>
+            !day.completed && !day.isRestDay && !day.notCompleted).length;
+        final bool? replace = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) => AlertDialog(
+            title: Text(_text('Ganti rencana aktif?', 'Replace active plan?')),
+            content: Text(_text(
+              'Rencana ${previousPlan.title} masih aktif. $completedCount sesi yang selesai akan dipertahankan pada urutan sesi yang sama. $replacedCount sesi yang belum selesai akan diganti dengan rencana baru.',
+              '${previousPlan.title} is still active. $completedCount completed sessions will be kept in the same session order. $replacedCount unfinished sessions will be replaced by the new plan.',
+            )),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(_text('Pertahankan', 'Keep current')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(_text('Ganti rencana', 'Replace plan')),
+              ),
+            ],
+          ),
+        );
+        if (replace != true || !mounted) return;
+      }
+
       final String planId = await TrainingPlanRepository.instance.savePlan(
         request: request,
         option: option,
       );
-      final Set<String> replacedPlanIds = <String>{
-        if (previousPlan != null) previousPlan.id,
-        if (pendingReview != null) pendingReview.id,
-      };
-      for (final String replacedId in replacedPlanIds) {
-        try {
-          await TrainingPlanRepository.instance.markReviewPrompted(replacedId);
-          await ReminderService.cancelTrainingPlanReview(replacedId);
-        } catch (_) {}
-      }
       final DateTime endDate = DateTime(
         request.startDate.year,
         request.startDate.month,
         request.startDate.day + request.durationDays - 1,
       );
-      bool reminderScheduled = false;
+      int sessionRemindersScheduled = 0;
+      int sessionReminderCandidates = 0;
+      bool reviewReminderScheduled = false;
+      bool notificationsAllowed = false;
       try {
-        final bool notificationsAllowed =
+        notificationsAllowed =
             await ReminderService.requestNotificationPermission();
-        if (notificationsAllowed) {
+      } catch (_) {}
+      if (notificationsAllowed) {
+        try {
+          final List<TrainingPlanDay> savedDays =
+              await TrainingPlanRepository.instance.getDays(planId);
+          for (final TrainingPlanDay day in savedDays) {
+            if (day.isRestDay || day.completed || day.notCompleted) continue;
+            sessionReminderCandidates++;
+            try {
+              final bool scheduled =
+                  await ReminderService.scheduleTrainingPlanSessionReminder(
+                planId: planId,
+                dayId: day.id,
+                date: day.date,
+                title: day.title,
+                sessionHour: request.sessionHour,
+                sessionMinute: request.sessionMinute,
+              );
+              if (scheduled) sessionRemindersScheduled++;
+            } catch (_) {}
+          }
+        } catch (_) {}
+        try {
           await ReminderService.scheduleTrainingPlanReview(
             planId: planId,
             endDate: endDate,
           );
-          reminderScheduled = true;
-        }
-      } catch (_) {}
+          reviewReminderScheduled = true;
+        } catch (_) {}
+      }
       await _loadSavedPlan();
       if (!mounted) return;
       setState(() {
@@ -457,15 +517,12 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       });
       await showDialog<void>(
         context: context,
+        barrierDismissible: false,
         builder: (BuildContext dialogContext) => AlertDialog(
-          title: Text(_text('Rencana ditambahkan', 'Plan added')),
+          title: Text(_text('Rencana tersimpan', 'Plan saved')),
           content: Text(_text(
-            reminderScheduled
-                ? 'Rencana ${option.title} tersimpan untuk ${request.durationDays} hari. Jadwal per tanggal sudah masuk ke database dan pengingat akhir rencana sudah dipasang.'
-                : 'Rencana ${option.title} tersimpan untuk ${request.durationDays} hari. Jadwal per tanggal sudah masuk ke database, tetapi pengingat belum aktif karena izin notifikasi belum tersedia.',
-            reminderScheduled
-                ? '${option.title} has been saved for ${request.durationDays} days. Daily sessions are stored and the final-day reminder is scheduled.'
-                : '${option.title} has been saved for ${request.durationDays} days. Daily sessions are stored, but notifications are not enabled for the final-day reminder.',
+            'Rencana ${option.title} sudah tersimpan. Sesi selesai dari rencana sebelumnya dipertahankan. Pengingat 2 jam sebelum sesi terpasang untuk $sessionRemindersScheduled dari $sessionReminderCandidates sesi yang masih akan datang; pengingat akhir rencana ${reviewReminderScheduled ? 'sudah dipasang' : 'belum aktif'}. Waktu sesi: ${_planSessionTime.format(context)}.',
+            '${option.title} has been saved. Completed sessions from the previous plan were kept. Two-hour reminders were scheduled for $sessionRemindersScheduled of $sessionReminderCandidates upcoming sessions; the plan-end reminder ${reviewReminderScheduled ? 'is scheduled' : 'is not active'}. Session time: ${_planSessionTime.format(context)}.',
           )),
           actions: <Widget>[
             FilledButton(
@@ -515,7 +572,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
 
   Future<void> _startPlannedDay(TrainingPlanDay day) async {
     final SavedTrainingPlan? plan = _savedPlan;
-    if (plan == null || day.isRestDay || day.completed) return;
+    if (plan == null || day.isRestDay || day.completed || day.notCompleted) return;
     final DateTime today = DateTime.now();
     final bool isToday = day.date.year == today.year &&
         day.date.month == today.month && day.date.day == today.day;
@@ -532,7 +589,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
       activityType: day.activityType,
       environment: day.activityType == RunActivityType.hiit
           ? RunEnvironment.indoor
-          : _environment,
+          : RunEnvironment.outdoor,
       intervalPlan: day.intervalPlan,
       paceNotificationsEnabled: false,
       activityDetails: day.description,
@@ -714,6 +771,15 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               '30',
               decimal: false,
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _pickPlanSessionTime,
+                icon: const Icon(Icons.access_time_rounded),
+                label: Text('${_text('Jam sesi', 'Session time')}: ${_planSessionTime.format(context)}'),
+              ),
+            ),
             const SizedBox(height: 18),
             Text(
               _text('Lama rencana', 'Plan length'),
@@ -882,6 +948,62 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
     );
   }
 
+  TrainingPlanDay? get _todayPendingDay {
+    final DateTime now = DateTime.now();
+    for (final TrainingPlanDay day in _savedPlanDays) {
+      final bool isToday = day.date.year == now.year &&
+          day.date.month == now.month && day.date.day == now.day;
+      if (isToday && !day.isRestDay && !day.completed && !day.notCompleted) {
+        return day;
+      }
+    }
+    return null;
+  }
+
+  Widget _todayPendingSessionCard() {
+    final TrainingPlanDay? day = _todayPendingDay;
+    final SavedTrainingPlan? plan = _savedPlan;
+    if (day == null || plan == null) return const SizedBox.shrink();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.notifications_active_outlined,
+                    color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _text('Sesi terjadwal hari ini', 'Scheduled session today'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+            Text(day.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text('${_activityLabel(day.activityType)} • ${day.durationMinutes} menit • ${day.intensity}'),
+            const SizedBox(height: 6),
+            Text(day.description),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.sessionAlreadyActive ? null : () => _startPlannedDay(day),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(_text('Mulai sesi ini', 'Start this session')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _activePlanCard() {
     final SavedTrainingPlan? plan = _savedPlan;
     if (plan == null) return const SizedBox.shrink();
@@ -945,7 +1067,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
             Text(plan.summary),
             const SizedBox(height: 8),
             Text(plan.targetDescription, style: const TextStyle(fontWeight: FontWeight.w700)),
-            Text('${_formatPlanDate(plan.startDate)} – ${_formatPlanDate(plan.endDate)}'),
+            Text('${_formatPlanDate(plan.startDate)} – ${_formatPlanDate(plan.endDate)} • ${plan.sessionHour.toString().padLeft(2, '0')}:${plan.sessionMinute.toString().padLeft(2, '0')}'),
             if (plan.loadDescription.isNotEmpty) ...<Widget>[
               const SizedBox(height: 10),
               Text(plan.loadDescription, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, height: 1.4)),
@@ -972,11 +1094,13 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                   ? _text('Pemulihan', 'Rest day')
                   : day.completed
                       ? _text('Selesai', 'Completed')
-                      : isToday
-                          ? _text('Jadwal hari ini', 'Today')
-                          : isFuture
-                              ? _text('Akan datang', 'Upcoming')
-                              : _text('Belum diselesaikan', 'Not completed');
+                      : day.notCompleted
+                          ? _text('Tidak terlaksana', 'Missed')
+                          : isToday
+                              ? _text('Jadwal hari ini', 'Today')
+                              : isFuture
+                                  ? _text('Akan datang', 'Upcoming')
+                                  : _text('Belum diselesaikan', 'Not completed');
               return Card(
                 margin: const EdgeInsets.only(bottom: 9),
                 child: Padding(
@@ -1002,7 +1126,7 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
                       ],
                       if (day.effort != null) ...<Widget>[
                         const SizedBox(height: 4),
-                        Text('Evaluasi: ${switch (day.effort!) { TrainingEffort.tooEasy => 'Terlalu mudah', TrainingEffort.normal => 'Normal', TrainingEffort.tooHard => 'Terlalu berat' }}'),
+                        Text('Evaluasi: ${switch (day.effort!) { TrainingEffort.tooHard => 'Terlalu berat', TrainingEffort.hard => 'Berat', TrainingEffort.normal => 'Normal', TrainingEffort.light => 'Ringan', TrainingEffort.tooLight => 'Terlalu ringan' }}'),
                       ],
                       if (isToday && !day.isRestDay && !day.completed) ...<Widget>[
                         const SizedBox(height: 10),
@@ -1048,6 +1172,10 @@ class ActivitySetupPageState extends State<ActivitySetupPage> {
               _text('Pilih aktivitas', 'Choose an activity'),
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
             ),
+            if (_todayPendingDay != null) ...<Widget>[
+              const SizedBox(height: 12),
+              _todayPendingSessionCard(),
+            ],
             if (_savedPlan != null) ...<Widget>[
               const SizedBox(height: 12),
               _activePlanCard(),

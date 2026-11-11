@@ -28,7 +28,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   bool _loading = true;
   bool _saving = false;
   int _lastCategoryIndex = 0;
-  final List<int> _categoryHistory = <int>[];
+  int? _previousCategory;
   late final TabController _categoryController;
 
   String _text(String indonesia, String english) =>
@@ -54,14 +54,14 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   void _trackCategoryHistory() {
     final int currentIndex = _categoryController.index;
     if (currentIndex == _lastCategoryIndex) return;
-    _categoryHistory.add(_lastCategoryIndex);
-    if (_categoryHistory.length > 24) _categoryHistory.removeAt(0);
+    _previousCategory = _lastCategoryIndex;
     _lastCategoryIndex = currentIndex;
   }
 
   bool handleBack() {
-    if (_categoryHistory.isEmpty) return false;
-    final int previousIndex = _categoryHistory.removeLast();
+    final int? previousIndex = _previousCategory;
+    if (previousIndex == null) return false;
+    _previousCategory = null;
     _lastCategoryIndex = previousIndex;
     _categoryController.animateTo(previousIndex);
     return true;
@@ -950,6 +950,87 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
         RunActivityType.hiit => 'HIIT',
       };
 
+  Future<void> _deleteTrainingPlan(SavedTrainingPlan plan) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(_text('Hapus rencana latihan?', 'Delete training plan?')),
+          content: Text(_text(
+            'Rencana ${plan.title} dan seluruh jadwalnya akan dihapus. Riwayat aktivitas yang sudah direkam tidak ikut dihapus.',
+            '${plan.title} and its scheduled sessions will be deleted. Recorded activity history will remain.',
+          )),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_text('Batal', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_text('Hapus rencana', 'Delete plan')),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+      await TrainingPlanRepository.instance.deletePlan(plan.id);
+      await _loadReminders();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Rencana latihan dihapus.', 'Training plan deleted.'))),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Rencana belum berhasil dihapus.', 'Could not delete training plan.'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _markPlanDayNotCompleted(TrainingPlanDay day) async {
+    if (_saving || day.completed || day.isRestDay || day.notCompleted) return;
+    setState(() => _saving = true);
+    try {
+      final bool? confirm = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(_text('Tandai tidak terlaksana?', 'Mark as not completed?')),
+          content: Text(_text(
+            'Sesi ${day.title} akan ditandai tidak terlaksana. Sesi lain dalam rencana tidak berubah.',
+            '${day.title} will be marked as not completed. Other sessions in the plan will stay unchanged.',
+          )),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_text('Batal', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_text('Tandai', 'Mark')),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+      await TrainingPlanRepository.instance.markDayNotCompleted(day.id);
+      await _loadReminders();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_text('Status sesi belum berhasil diperbarui.', 'Could not update the session status.'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   String _planDate(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/'
       '${date.month.toString().padLeft(2, '0')}/${date.year}';
@@ -957,7 +1038,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
   String _planStatus(SavedTrainingPlan plan) {
     final DateTime today = DateTime.now();
     final DateTime date = DateTime(today.year, today.month, today.day);
-    if (plan.endDate.isBefore(date)) return _text('Selesai', 'Completed');
+    if (plan.endDate.isBefore(date)) return _text('Berakhir', 'Ended');
     if (plan.startDate.isAfter(date)) return _text('Akan datang', 'Upcoming');
     return _text('Aktif', 'Active');
   }
@@ -1019,6 +1100,17 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
               key: PageStorageKey<String>('saved-training-plan-${plan.id}'),
               initiallyExpanded: index == 0,
               leading: const Icon(Icons.event_note_rounded),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    tooltip: _text('Hapus rencana', 'Delete plan'),
+                    onPressed: _saving ? null : () => _deleteTrainingPlan(plan),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                  ),
+                  const Icon(Icons.expand_more_rounded),
+                ],
+              ),
               title: Text(
                 plan.title,
                 style: const TextStyle(fontWeight: FontWeight.w800),
@@ -1033,7 +1125,7 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${_planDate(plan.startDate)} – ${_planDate(plan.endDate)}',
+                      '${_planDate(plan.startDate)} – ${_planDate(plan.endDate)} • ${plan.sessionHour.toString().padLeft(2, '0')}:${plan.sessionMinute.toString().padLeft(2, '0')}',
                     ),
                     const SizedBox(height: 7),
                     ClipRRect(
@@ -1111,19 +1203,19 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                       day.title,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: Text('$dayDetails\n${day.description}$intervalDetails'),
+                    subtitle: Text('${day.notCompleted ? _text('Tidak terlaksana', 'Not completed') + '\n' : ''}$dayDetails\n${day.description}$intervalDetails'),
                     isThreeLine: true,
-                    trailing: Icon(
-                      day.completed
-                          ? Icons.check_circle_rounded
-                          : day.isRestDay
-                              ? Icons.self_improvement_rounded
-                              : Icons.schedule_rounded,
-                      color: day.completed
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      size: 19,
-                    ),
+                    trailing: day.completed
+                        ? Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary, size: 19)
+                        : day.isRestDay
+                            ? const Icon(Icons.self_improvement_rounded, size: 19)
+                            : day.notCompleted
+                                ? Icon(Icons.event_busy_rounded, color: Theme.of(context).colorScheme.error, size: 19)
+                                : IconButton(
+                                    tooltip: _text('Tandai tidak terlaksana', 'Mark not completed'),
+                                    onPressed: _saving ? null : () => _markPlanDayNotCompleted(day),
+                                    icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
+                                  ),
                   );
                 }),
               ],

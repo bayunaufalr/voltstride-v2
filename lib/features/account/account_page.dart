@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../theme/volt_theme.dart';
 import '../running/models/run_session.dart';
@@ -19,6 +20,7 @@ import '../reminders/training_reminders_page.dart';
 import '../../services/app_language_service.dart';
 import 'profile_training_summary.dart';
 import 'account_service.dart';
+import '../ai_coach/training_data_export_service.dart';
 import 'privacy_policy_page.dart';
 
 class AccountPage extends StatefulWidget {
@@ -39,7 +41,7 @@ class AccountPageState extends State<AccountPage>
   bool _cloudStorageAvailable = false;
   bool _cloudSignedIn = false;
   int _lastSectionIndex = 0;
-  final List<int> _sectionHistory = <int>[];
+  int? _previousSection;
   int _cloudSessionCount = 0;
   int _cloudEstimatedBytes = 0;
   int _cloudLargestDocumentBytes = 0;
@@ -66,8 +68,7 @@ class AccountPageState extends State<AccountPage>
   void _trackSectionHistory() {
     final int currentIndex = _sectionController.index;
     if (currentIndex == _lastSectionIndex) return;
-    _sectionHistory.add(_lastSectionIndex);
-    if (_sectionHistory.length > 24) _sectionHistory.removeAt(0);
+    _previousSection = _lastSectionIndex;
     _lastSectionIndex = currentIndex;
   }
 
@@ -80,8 +81,9 @@ class AccountPageState extends State<AccountPage>
         (_remindersKey.currentState?.handleBack() ?? false)) {
       return true;
     }
-    if (_sectionHistory.isEmpty) return false;
-    final int previousIndex = _sectionHistory.removeLast();
+    final int? previousIndex = _previousSection;
+    if (previousIndex == null) return false;
+    _previousSection = null;
     _lastSectionIndex = previousIndex;
     _sectionController.animateTo(previousIndex);
     return true;
@@ -254,6 +256,11 @@ class AccountPageState extends State<AccountPage>
       appBar: AppBar(
         title: Text(profileTitle),
         actions: <Widget>[
+          IconButton(
+            tooltip: _text('Ekspor data latihan', 'Export training data'),
+            onPressed: _confirmTrainingDataExport,
+            icon: const Icon(Icons.ios_share_rounded),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: IconButton(
@@ -312,6 +319,10 @@ class AccountPageState extends State<AccountPage>
       children: <Widget>[
         _accountCard(),
         const SizedBox(height: 12),
+        const _BodyMeasurementsCard(),
+        const SizedBox(height: 12),
+        _trainingDataExportCard(),
+        const SizedBox(height: 12),
         _cloudSyncStorageCard(),
         const SizedBox(height: 12),
         const ProfileTrainingSummary(),
@@ -348,6 +359,75 @@ class AccountPageState extends State<AccountPage>
         ],
       ],
     );
+  }
+
+  Widget _trainingDataExportCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            _text('Ekspor data latihan untuk AI', 'Export training data for AI'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(_text(
+            'Ekspor hanya berisi ringkasan performa latihan dan tanggal kalender. Data profil dan lokasi tidak disertakan.',
+            'The export contains only workout performance summaries and calendar days. Profile and location data are excluded.',
+          )),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _confirmTrainingDataExport,
+            icon: const Icon(Icons.ios_share_rounded),
+            label: Text(_text('Ekspor data latihan', 'Export training data')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmTrainingDataExport() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(_text('Periksa privasi ekspor', 'Review export privacy')),
+        content: Text(_text(
+          'File hanya berisi jenis aktivitas, tanggal latihan, jarak, durasi, pace, detak jantung rata-rata, langkah, cadence, dan ringkasan elevasi. Nama, email, tanggal lahir, tinggi, berat, koordinat GPS, rute, waktu mulai yang tepat, catatan, dan sampel mentah tidak disertakan. Setelah dibagikan, kendali atas file berada pada aplikasi tujuan.',
+          'The file contains only activity type, training day, distance, duration, pace, average heart rate, steps, cadence and elevation summaries. Name, email, birth date, height, weight, GPS coordinates, routes, exact start time, notes and raw samples are excluded. After sharing, control of the file belongs to the receiving app.',
+        )),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(_text('Batal', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(_text('Lanjutkan', 'Continue')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final int count = await TrainingDataExportService.shareAllSessions();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_text(
+          '$count sesi disiapkan untuk dibagikan.',
+          '$count sessions prepared for sharing.',
+        )),
+      ));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_text('Ekspor gagal: $error', 'Export failed: $error')),
+      ));
+    }
   }
 
   Widget _cloudSyncStorageCard() {
@@ -1000,6 +1080,141 @@ class _CropFotoDialogState extends State<_CropFotoDialog> {
 }
 
 /// Countdown terpisah agar pembaruannya tidak membangun ulang seluruh halaman akun.
+class _BodyMeasurementsCard extends StatefulWidget {
+  const _BodyMeasurementsCard();
+
+  @override
+  State<_BodyMeasurementsCard> createState() => _BodyMeasurementsCardState();
+}
+
+class _BodyMeasurementsCardState extends State<_BodyMeasurementsCard> {
+  static const String _weightKey = 'profile_weight_kg_local';
+  static const String _heightKey = 'profile_height_cm_local';
+  final TextEditingController _weightController = TextEditingController();
+  final TextEditingController _heightController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    _weightController.text = prefs.getString(_weightKey) ?? '';
+    _heightController.text = prefs.getString(_heightKey) ?? '';
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save() async {
+    final double? weight = double.tryParse(_weightController.text.replaceAll(',', '.'));
+    final double? height = double.tryParse(_heightController.text.replaceAll(',', '.'));
+    if ((_weightController.text.trim().isNotEmpty && weight == null) ||
+        (_heightController.text.trim().isNotEmpty && height == null) ||
+        (weight != null && (!weight.isFinite || weight < 20 || weight > 250)) ||
+        (height != null && (!height.isFinite || height < 100 || height > 230))) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLanguageService.text(
+          context,
+          'Periksa kembali nilai BB dan TB.',
+          'Check the weight and height values.',
+        )),
+      ));
+      return;
+    }
+    setState(() => _saving = true);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_weightController.text.trim().isEmpty) {
+      await prefs.remove(_weightKey);
+    } else {
+      await prefs.setString(_weightKey, weight!.toString());
+    }
+    if (_heightController.text.trim().isEmpty) {
+      await prefs.remove(_heightKey);
+    } else {
+      await prefs.setString(_heightKey, height!.toString());
+    }
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(AppLanguageService.text(context, 'Data tersimpan di perangkat.', 'Data saved on this device.')),
+    ));
+  }
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _heightController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            AppLanguageService.text(context, 'Data tubuh (opsional)', 'Body measurements (optional)'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(AppLanguageService.text(
+            context,
+            'Berat dan tinggi dapat menjadi konteks tambahan untuk memahami performa, tetapi tidak cukup untuk menentukan kemampuan atau intensitas latihan sendirian. Data ini hanya disimpan di perangkat dan tidak masuk ke ekspor AI.',
+            'Weight and height can provide context for performance, but cannot determine ability or training intensity on their own. These values are stored only on this device and are not included in the AI export.',
+          )),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: TextField(
+                  controller: _weightController,
+                  enabled: !_loading && !_saving,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: AppLanguageService.text(context, 'BB (kg)', 'Weight (kg)'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _heightController,
+                  enabled: !_loading && !_saving,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: AppLanguageService.text(context, 'TB (cm)', 'Height (cm)'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: _loading || _saving ? null : _save,
+              child: Text(_saving
+                  ? AppLanguageService.text(context, 'Menyimpan...', 'Saving...')
+                  : AppLanguageService.text(context, 'Simpan', 'Save')),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RecoveryCountdownCard extends StatefulWidget {
   const _RecoveryCountdownCard({
     required this.recommendedResumeAt,

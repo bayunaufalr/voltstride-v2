@@ -18,6 +18,8 @@ import 'features/home/home_dashboard_page.dart';
 import 'features/running/activity_setup_page.dart';
 import 'features/running/models/run_session.dart';
 import 'features/running/running_page.dart';
+import 'features/running/services/training_plan_repository.dart';
+import 'features/running/services/training_plan_service.dart';
 import 'features/splash/animated_splash_gate.dart';
 import 'screens/timer_page.dart';
 import 'theme/volt_theme.dart';
@@ -211,6 +213,17 @@ class _AccountGateState extends State<AccountGate> {
   }
 }
 
+
+Future<void> _restorePlanNotificationsAfterLogin() async {
+  try {
+    await TrainingPlanRepository.instance.restoreUpcomingNotifications().timeout(
+      const Duration(seconds: 20),
+    );
+  } catch (error) {
+    debugPrint('Pengingat rencana latihan belum dapat dipulihkan: $error');
+  }
+}
+
 class RootShell extends StatefulWidget {
   const RootShell({super.key});
 
@@ -219,8 +232,15 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      unawaited(_restorePlanNotificationsAfterLogin());
+    });
+  }
   int _index = 0;
-  final List<int> _tabHistory = <int>[];
+  int? _previousTab;
   List<RunPoint> _plannedRoute = <RunPoint>[];
   ActivityStartConfig? _activeRunConfig;
   bool _showRunningPage = false;
@@ -239,6 +259,7 @@ class _RootShellState extends State<RootShell> {
           key: _homeKey,
           onRecord: () => _selectTab(2),
           onHistory: () => _openAccountSection(1),
+          onStartPlannedSession: _startPlannedSession,
         ),
         RoutePlannerPage(
           active: _index == 1,
@@ -312,8 +333,7 @@ class _RootShellState extends State<RootShell> {
 
   void _selectTab(int value) {
     if (value < 0 || value > 4 || value == _index) return;
-    _tabHistory.add(_index);
-    if (_tabHistory.length > 32) _tabHistory.removeAt(0);
+    _previousTab = _index;
     _showTab(value);
   }
 
@@ -346,8 +366,9 @@ class _RootShellState extends State<RootShell> {
     if (_index == 4 && (_accountKey.currentState?.handleBack() ?? false)) {
       return;
     }
-    if (_tabHistory.isNotEmpty) {
-      final int previousTab = _tabHistory.removeLast();
+    final int? previousTab = _previousTab;
+    if (previousTab != null) {
+      _previousTab = null;
       _showTab(previousTab);
       return;
     }
@@ -363,6 +384,31 @@ class _RootShellState extends State<RootShell> {
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       _accountKey.currentState?.openSection(section);
     });
+  }
+
+  void _startPlannedSession(PlannedTrainingSession planned) {
+    final TrainingPlanDay day = planned.day;
+    if (day.isRestDay || day.completed || day.notCompleted) return;
+    if (_runningSessionActive) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selesaikan sesi yang sedang merekam terlebih dahulu.')),
+      );
+      return;
+    }
+    _startActivity(ActivityStartConfig(
+      activityType: day.activityType,
+      environment: day.activityType == RunActivityType.hiit
+          ? RunEnvironment.indoor
+          : RunEnvironment.outdoor,
+      intervalPlan: day.intervalPlan,
+      paceNotificationsEnabled: false,
+      activityDetails: day.description,
+      targetDurationMinutes: day.durationMinutes,
+      plannedWorkoutTitle: day.title,
+      plannedWorkoutDescription: day.description,
+      trainingPlanId: planned.planId,
+      trainingPlanDayId: day.id,
+    ));
   }
 
   void _startActivity(ActivityStartConfig config) {
@@ -397,7 +443,7 @@ class _RootShellState extends State<RootShell> {
     setState(() {
       _showRunningPage = false;
       _index = 0;
-      _tabHistory.clear();
+      _previousTab = null;
     });
   }
 
@@ -408,7 +454,7 @@ class _RootShellState extends State<RootShell> {
       _showRunningPage = false;
       _runningSessionActive = false;
       _index = 0;
-      _tabHistory.clear();
+      _previousTab = null;
     });
     unawaited(_homeKey.currentState?.reload() ?? Future<void>.value());
     unawaited(_accountKey.currentState?.reload() ?? Future<void>.value());
