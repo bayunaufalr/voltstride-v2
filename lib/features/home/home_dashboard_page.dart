@@ -6,16 +6,20 @@ import '../running/models/run_session.dart';
 import '../running/run_route_map_view.dart';
 import '../running/run_detail_page.dart';
 import '../running/services/run_history_repository.dart';
+import '../running/services/training_plan_repository.dart';
+import '../running/services/training_plan_service.dart';
 
 class HomeDashboardPage extends StatefulWidget {
   const HomeDashboardPage({
     super.key,
     required this.onRecord,
     required this.onHistory,
+    this.onStartPlannedSession,
   });
 
   final VoidCallback onRecord;
   final VoidCallback onHistory;
+  final ValueChanged<PlannedTrainingSession>? onStartPlannedSession;
 
   @override
   State<HomeDashboardPage> createState() => HomeDashboardPageState();
@@ -26,14 +30,24 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
       AppLanguageService.text(context, indonesia, english);
   Future<List<RunSession>> _sessionsFuture =
       RunHistoryRepository.instance.getAll();
+  Future<PlannedTrainingSession?> _todaySessionFuture =
+      TrainingPlanRepository.instance.getTodayPendingSession();
 
   Future<void> reload() async {
     final Future<List<RunSession>> value =
         RunHistoryRepository.instance.getAll();
-    if (mounted) setState(() => _sessionsFuture = value);
+    final Future<PlannedTrainingSession?> todaySession =
+        TrainingPlanRepository.instance.getTodayPendingSession();
+    if (mounted) {
+      setState(() {
+        _sessionsFuture = value;
+        _todaySessionFuture = todaySession;
+      });
+    }
     try {
       await value;
     } catch (_) {
+      // FutureBuilder menampilkan keadaan saat data belum bisa dibaca.
     }
   }
 
@@ -82,7 +96,9 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
                 padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
                 children: <Widget>[
                   _header(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 14),
+                  _todayTrainingSessionCard(),
+                  const SizedBox(height: 12),
                   _weeklyRhythm(week, now),
                   const SizedBox(height: 16),
                   _weeklySummary(distanceKm, duration, ascent),
@@ -101,6 +117,71 @@ class HomeDashboardPageState extends State<HomeDashboardPage> {
           },
         ),
       ),
+    );
+  }
+
+  Widget _todayTrainingSessionCard() {
+    return FutureBuilder<PlannedTrainingSession?>(
+      future: _todaySessionFuture,
+      builder: (BuildContext context,
+          AsyncSnapshot<PlannedTrainingSession?> snapshot) {
+        final PlannedTrainingSession? planned = snapshot.data;
+        if (!snapshot.hasData || planned == null) {
+          return const SizedBox.shrink();
+        }
+        final TrainingPlanDay day = planned.day;
+        final String activity = switch (day.activityType) {
+          RunActivityType.run => _text('Lari', 'Run'),
+          RunActivityType.walk => _text('Berjalan', 'Walk'),
+          RunActivityType.cycle => _text('Bersepeda', 'Cycling'),
+          RunActivityType.hiit => 'HIIT',
+        };
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: Theme.of(context).colorScheme.primary),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Icon(Icons.event_available_rounded,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _text('Sesi latihan hari ini belum dikerjakan',
+                          'Today’s training session is not completed'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(day.title,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+              Text('$activity • ${day.durationMinutes} menit • ${day.intensity}'),
+              const SizedBox(height: 6),
+              Text(day.description,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: widget.onStartPlannedSession == null
+                      ? null
+                      : () => widget.onStartPlannedSession!(planned),
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: Text(_text('Mulai sesi', 'Start session')),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 

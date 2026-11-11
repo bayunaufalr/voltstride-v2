@@ -1187,6 +1187,9 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                   final String intervalDetails = day.intervalPlan == null
                       ? ''
                       : '\n${day.intervalPlan!.workSeconds} detik kerja • ${day.intervalPlan!.recoverySeconds} detik pemulihan • ${day.intervalPlan!.repetitions} ulangan';
+                  final String missedPrefix = day.notCompleted
+                      ? '${_text('Tidak terlaksana', 'Not completed')}\n'
+                      : '';
                   return ListTile(
                     dense: true,
                     leading: SizedBox(
@@ -1203,7 +1206,9 @@ class TrainingRemindersPageState extends State<TrainingRemindersPage>
                       day.title,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    subtitle: Text('${day.notCompleted ? _text('Tidak terlaksana', 'Not completed') + '\n' : ''}$dayDetails\n${day.description}$intervalDetails'),
+                    subtitle: Text(
+                      '$missedPrefix$dayDetails\n${day.description}$intervalDetails',
+                    ),
                     isThreeLine: true,
                     trailing: day.completed
                         ? Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary, size: 19)

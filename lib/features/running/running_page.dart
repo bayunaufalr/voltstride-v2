@@ -2275,31 +2275,53 @@ class _RunningPageState extends State<RunningPage> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(_text('Bagaimana kesan latihan tadi?', 'How did the session feel?')),
-        content: Text(_text(
-          'Penilaian ini digunakan untuk menyesuaikan beban latihan berikutnya.',
-          'Your feedback helps adjust future training load.',
-        )),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(_text(
+                'Penilaian ini digunakan untuk menyesuaikan beban latihan berikutnya.',
+                'Your feedback helps adjust future training load.',
+              )),
+              const SizedBox(height: 12),
+              _effortOption(
+                dialogContext,
+                TrainingEffort.tooHard,
+                _text('Terlalu berat', 'Much too hard'),
+              ),
+              _effortOption(
+                dialogContext,
+                TrainingEffort.hard,
+                _text('Berat', 'Hard'),
+              ),
+              _effortOption(
+                dialogContext,
+                TrainingEffort.normal,
+                _text('Normal', 'Normal'),
+              ),
+              _effortOption(
+                dialogContext,
+                TrainingEffort.light,
+                _text('Ringan', 'Easy'),
+              ),
+              _effortOption(
+                dialogContext,
+                TrainingEffort.tooLight,
+                _text('Terlalu ringan', 'Much too easy'),
+              ),
+            ],
+          ),
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(null),
             child: Text(_text('Lewati', 'Skip')),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.tooHard),
-            child: Text(_text('Terlalu berat', 'Too hard')),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.normal),
-            child: Text(_text('Normal', 'Normal')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(TrainingEffort.tooEasy),
-            child: Text(_text('Terlalu mudah', 'Too easy')),
-          ),
         ],
       ),
     );
     if (!mounted) return;
+
     try {
       await TrainingPlanRepository.instance.recordFeedback(
         startedAt: session.startedAt,
@@ -2309,54 +2331,141 @@ class _RunningPageState extends State<RunningPage> {
       );
     } catch (_) {}
 
-    if (effort == null || effort == TrainingEffort.normal ||
+    if (effort == null ||
+        effort == TrainingEffort.normal ||
         widget.trainingPlanId == null) {
       return;
     }
-    final bool? adjust = await showDialog<bool>(
+
+    final bool feltHeavy = effort == TrainingEffort.tooHard ||
+        effort == TrainingEffort.hard;
+    final String explanation = feltHeavy
+        ? _text(
+            'Sesi terasa berat. Durasi atau intensitas sesi berikutnya dapat diturunkan.',
+            'The session felt hard. Upcoming duration or intensity can be reduced.',
+          )
+        : _text(
+            'Sesi terasa ringan. Beban sesi berikutnya dapat dinaikkan sedikit tanpa menambah sesi berat secara mendadak.',
+            'The session felt easy. Upcoming load can increase slightly without suddenly adding hard sessions.',
+          );
+    final bool? showPreview = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(_text('Sesuaikan rencana latihan?', 'Adjust the training plan?')),
-        content: Text(effort == TrainingEffort.tooHard
-            ? _text(
-                'Sesi terasa terlalu berat. Durasi sesi berikutnya dapat dikurangi dan interval diubah menjadi latihan ringan. Terapkan penyesuaian?',
-                'The session felt too hard. Upcoming sessions can be shortened and intervals changed to easy sessions. Apply the adjustment?',
-              )
-            : _text(
-                'Sesi terasa terlalu mudah. Durasi sesi berikutnya dapat dinaikkan sedikit tanpa menambah sesi berat. Terapkan penyesuaian?',
-                'The session felt too easy. Upcoming sessions can be increased slightly without adding hard sessions. Apply the adjustment?',
-              )),
+        content: Text(
+          '$explanation\n\n${_text('Tampilkan pratinjau perubahan sebelum menerapkannya?', 'Preview the changes before applying them?')}',
+        ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(_text('Jangan ubah', 'Keep plan')),
+            child: Text(_text('Tidak', 'No')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(_text('Sesuaikan', 'Adjust')),
+            child: Text(_text('Tampilkan pratinjau', 'Show preview')),
           ),
         ],
       ),
     );
-    if (adjust == true && mounted) {
-      try {
+    if (showPreview != true || !mounted) return;
+
+    try {
+      final List<TrainingPlanDay> preview =
+          await TrainingPlanRepository.instance.previewAdjustedDays(
+        planId: widget.trainingPlanId!,
+        afterDate: session.finishedAt ?? DateTime.now(),
+        effort: effort,
+      );
+      if (!mounted || preview.isEmpty) return;
+
+      final bool? applyChanges = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: Text(_text('Pratinjau rencana baru', 'Adjusted plan preview')),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.55,
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: preview.length,
+                itemBuilder: (BuildContext context, int index) {
+                  final TrainingPlanDay day = preview[index];
+                  final String date =
+                      '${day.date.day.toString().padLeft(2, '0')}/'
+                      '${day.date.month.toString().padLeft(2, '0')}';
+                  return ListTile(
+                    dense: true,
+                    title: Text('$date • ${day.title}'),
+                    subtitle: Text(
+                      '${day.durationMinutes} menit • ${day.intensity}\n'
+                      '${day.description}',
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_text('Tidak, tetap seperti semula', 'Keep current plan')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_text('Ya, terapkan', 'Apply changes')),
+            ),
+          ],
+        ),
+      );
+
+      if (applyChanges == true && mounted) {
         await TrainingPlanRepository.instance.adjustFutureDays(
           planId: widget.trainingPlanId!,
           afterDate: session.finishedAt ?? DateTime.now(),
           effort: effort,
         );
-        if (widget.trainingPlanDayId != null) {
+        if (widget.trainingPlanDayId != null && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_text('Sesi rencana berikutnya sudah disesuaikan.', 'Upcoming sessions have been adjusted.'))),
+            SnackBar(
+              content: Text(_text(
+                'Sesi rencana berikutnya sudah disesuaikan.',
+                'Upcoming sessions have been adjusted.',
+              )),
+            ),
           );
         }
-      } catch (_) {
+      }
+    } catch (_) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_text('Penyesuaian rencana belum berhasil disimpan.', 'The plan adjustment could not be saved.'))),
+          SnackBar(
+            content: Text(_text(
+              'Penyesuaian rencana belum berhasil disimpan.',
+              'The plan adjustment could not be saved.',
+            )),
+          ),
         );
       }
     }
+  }
+
+  Widget _effortOption(
+    BuildContext dialogContext,
+    TrainingEffort effort,
+    String label,
+  ) {
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: () => Navigator.of(dialogContext).pop(effort),
+    );
   }
 
   void _backToRun() {

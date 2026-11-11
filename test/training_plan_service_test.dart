@@ -37,6 +37,30 @@ void main() {
       );
 
   group('TrainingPlanService', () {
+    test('keeps session time and day status in the plan model', () {
+      final TrainingPlanRequest timedRequest = request();
+      expect(timedRequest.sessionHour, 7);
+      expect(timedRequest.sessionMinute, 0);
+
+      final TrainingPlanDay missedDay = TrainingPlanDay(
+        id: 'day-test',
+        date: start,
+        title: 'Lari mudah',
+        description: 'Lari dengan intensitas ringan.',
+        activityType: RunActivityType.run,
+        durationMinutes: 25,
+        intensity: 'Ringan',
+        isRestDay: false,
+        notCompleted: true,
+        effort: TrainingEffort.hard,
+      );
+      final TrainingPlanDay decoded =
+          TrainingPlanDay.fromJson(Map<String, dynamic>.from(missedDay.toJson()));
+
+      expect(decoded.notCompleted, isTrue);
+      expect(decoded.effort, TrainingEffort.hard);
+    });
+
     test('creates three date-based options for a 14-day plan', () {
       final List<TrainingPlanOption> options = TrainingPlanService.buildOptions(
         request: request(),

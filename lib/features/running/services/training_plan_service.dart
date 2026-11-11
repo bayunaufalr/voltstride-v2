@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import '../models/run_session.dart';
 
 enum TrainingGoal { endurance, pace, vo2max }
-enum TrainingEffort { tooEasy, normal, tooHard }
+enum TrainingEffort { tooHard, hard, normal, light, tooLight }
 enum TrainingStrategy { progressive, balanced, lowImpact }
 
 class TrainingPlanRequest {
@@ -13,6 +13,8 @@ class TrainingPlanRequest {
     required this.startDate,
     required this.trainingWeekdays,
     required this.sessionMinutes,
+    this.sessionHour = 7,
+    this.sessionMinute = 0,
     this.targetDistanceKm,
     this.targetPaceSecondsPerKm,
     this.targetFinishMinutes,
@@ -24,6 +26,8 @@ class TrainingPlanRequest {
   final DateTime startDate;
   final List<int> trainingWeekdays;
   final int sessionMinutes;
+  final int sessionHour;
+  final int sessionMinute;
   final double? targetDistanceKm;
   final int? targetPaceSecondsPerKm;
   final int? targetFinishMinutes;
@@ -42,6 +46,7 @@ class TrainingPlanDay {
     required this.isRestDay,
     this.intervalPlan,
     this.completed = false,
+    this.notCompleted = false,
     this.effort,
   });
 
@@ -55,6 +60,7 @@ class TrainingPlanDay {
   final bool isRestDay;
   final IntervalRunPlan? intervalPlan;
   final bool completed;
+  final bool notCompleted;
   final TrainingEffort? effort;
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -68,6 +74,7 @@ class TrainingPlanDay {
         'isRestDay': isRestDay,
         'intervalPlan': intervalPlan?.toJson(),
         'completed': completed,
+        'notCompleted': notCompleted,
         'effort': effort?.name,
       };
 
@@ -80,6 +87,9 @@ class TrainingPlanDay {
         effort = value;
         break;
       }
+    }
+    if (effort == null && effortName == 'tooEasy') {
+      effort = TrainingEffort.tooLight;
     }
     return TrainingPlanDay(
       id: json['id'] as String,
@@ -97,6 +107,7 @@ class TrainingPlanDay {
           ? IntervalRunPlan.fromJson(Map<String, dynamic>.from(intervalValue))
           : null,
       completed: json['completed'] == true,
+      notCompleted: json['notCompleted'] == true,
       effort: effort,
     );
   }
@@ -108,6 +119,7 @@ class TrainingPlanDay {
     int? durationMinutes,
     String? intensity,
     bool? completed,
+    bool? notCompleted,
     TrainingEffort? effort,
     bool clearInterval = false,
     IntervalRunPlan? intervalPlan,
@@ -123,6 +135,7 @@ class TrainingPlanDay {
         isRestDay: isRestDay,
         intervalPlan: clearInterval ? null : intervalPlan ?? this.intervalPlan,
         completed: completed ?? this.completed,
+        notCompleted: notCompleted ?? this.notCompleted,
         effort: effort ?? this.effort,
       );
 }
@@ -167,6 +180,10 @@ class TrainingPlanService {
     }
     if (request.sessionMinutes < 15 || request.sessionMinutes > 90) {
       throw RangeError.range(request.sessionMinutes, 15, 90, 'sessionMinutes');
+    }
+    if (request.sessionHour < 0 || request.sessionHour > 23 ||
+        request.sessionMinute < 0 || request.sessionMinute > 59) {
+      throw ArgumentError('Waktu sesi latihan tidak valid.');
     }
     _validateTarget(request);
 
@@ -239,10 +256,12 @@ class TrainingPlanService {
         : reference.difference(latest!.finishedAt!).inHours;
     final List<TrainingEffort> latestEfforts = recentEfforts.take(3).toList();
     final int hardFeedback = latestEfforts
-        .where((TrainingEffort value) => value == TrainingEffort.tooHard)
+        .where((TrainingEffort value) =>
+            value == TrainingEffort.tooHard || value == TrainingEffort.hard)
         .length;
     final int easyFeedback = latestEfforts
-        .where((TrainingEffort value) => value == TrainingEffort.tooEasy)
+        .where((TrainingEffort value) =>
+            value == TrainingEffort.tooLight || value == TrainingEffort.light)
         .length;
     final bool recovery =
         (hoursSince != null && hoursSince < 14) || minutesSevenDays >= 240 || hardFeedback >= 2;
@@ -703,9 +722,11 @@ class TrainingPlanService {
   }
 
   static String _effortLabel(TrainingEffort effort) => switch (effort) {
-        TrainingEffort.tooEasy => 'terlalu mudah',
-        TrainingEffort.normal => 'normal',
         TrainingEffort.tooHard => 'terlalu berat',
+        TrainingEffort.hard => 'berat',
+        TrainingEffort.normal => 'normal',
+        TrainingEffort.light => 'ringan',
+        TrainingEffort.tooLight => 'terlalu ringan',
       };
 
   static String _paceText(double pace) {
